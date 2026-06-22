@@ -878,8 +878,14 @@ async function doAreaCapture(tabId) {
             var scrollMoved = Math.abs(realProbe - base) > 1;
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
               var E = window.__screenshotStickies[s].el;
-              var isStart = (idx === 0 && E.hasAttribute('data-screenshot-start-sticky'));
-              if (isStart) continue;
+              // PRIMA SLICE: non nascondo MAI gli sticky. In cima alla pagina top-bar
+              // e barre tipo "Oggi/Domani/Dopodomani" sono al loro posto reale e vanno
+              // tenute. La duplicazione degli sticky (che giustifica il nascondere) si
+              // verifica solo dalle slice successive, quando lo scroll li reincolla.
+              // Senza questo, su selezioni che restano nella prima schermata quelle
+              // barre sparivano per sbaglio (il micro-scroll di test le marcava
+              // ancorate e le nascondeva).
+              if (idx === 0) continue;
               // ancorato = lo scroll è cambiato ma la posizione dell'elemento no
               var anchored = scrollMoved && (Math.abs(tops1[s] - tops2[s]) < 2);
               if (anchored) E.style.visibility = 'hidden';
