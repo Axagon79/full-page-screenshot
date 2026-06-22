@@ -18,13 +18,16 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 // Ricevi messaggio dal popup per avviare cattura
 chrome.runtime.onMessage.addListener(function(msg) {
   if (msg.action === 'startCapture') {
-    if (msg.mode === 'full') {
-      doFullCapture(msg.tabId);
-    } else if (msg.mode === 'visible') {
-      doVisibleCapture(msg.tabId);
-    } else if (msg.mode === 'area') {
-      doAreaCapture(msg.tabId);
-    }
+    // Pausa animazioni CSS + video appena clicchi (non tocca il motore JS).
+    pauseCssAnims(msg.tabId).then(function() {
+      if (msg.mode === 'full') {
+        doFullCapture(msg.tabId);
+      } else if (msg.mode === 'visible') {
+        doVisibleCapture(msg.tabId);
+      } else if (msg.mode === 'area') {
+        doAreaCapture(msg.tabId);
+      }
+    });
   }
 });
 
@@ -42,6 +45,89 @@ function sendSuccess() {
 
 function sendError(msg) {
   chrome.runtime.sendMessage({ type: 'error', message: msg }).catch(function() {});
+}
+
+// === CONGELA ANIMAZIONI DURANTE LA CATTURA ===
+// Tre cose, tutte REVERSIBILI e SENZA toccare requestAnimationFrame (che
+// romperebbe la cattura):
+//  1) animazioni CSS in pausa (animation-play-state:paused);
+//  2) video in pausa;
+//  3) elementi mossi via JS (transform inline tipo ticker/carosello): si
+//     INTERCETTA la proprietà transform di quell'elemento con defineProperty
+//     (get = valore congelato, set = ignora). Il JS del sito continua a girare
+//     ma le sue scritture su transform cadono nel vuoto → l'elemento resta fermo.
+async function pauseCssAnims(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      world: 'MAIN',  // serve per intercettare le scritture transform del JS del sito
+      func: function() {
+        // 1) animazioni CSS
+        var st = document.getElementById('__shot_css_pause');
+        if (!st) {
+          st = document.createElement('style');
+          st.id = '__shot_css_pause';
+          st.textContent = '*,*::before,*::after{animation-play-state:paused !important;}';
+          (document.head || document.documentElement).appendChild(st);
+        }
+        // 2) video
+        window.__shotPausedVideos = [];
+        document.querySelectorAll('video').forEach(function(v) {
+          if (!v.paused) { try { v.pause(); window.__shotPausedVideos.push(v); } catch (e) {} }
+        });
+        // 3) elementi con transform inline (ticker/caroselli JS): congela il
+        // transform con un MutationObserver. NON si tocca la proprietà nativa:
+        // si SORVEGLIA l'elemento e ogni volta che il loop del sito riscrive il
+        // transform lo si rimette al valore congelato. Allo "stop" si disconnette
+        // l'observer e il loop del sito riprende a muovere l'elemento da solo.
+        // Questo metodo è reversibile a ogni scatto (niente residui), a differenza
+        // di defineProperty/delete che dopo il 1° giro non si ri-aggancia più.
+        window.__shotFrozen = [];
+        document.querySelectorAll('[style*="transform"]').forEach(function(el) {
+          var cur = el.style.transform;
+          if (!cur || cur === 'none') return;
+          try {
+            var frozenVal = cur;            // valore a cui inchiodare l'elemento
+            var obs = new MutationObserver(function() {
+              // ogni tentativo del sito di muoverlo viene annullato.
+              if (el.style.transform !== frozenVal) el.style.transform = frozenVal;
+            });
+            obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+            window.__shotFrozen.push({ el: el, obs: obs });
+          } catch (e) {}
+        });
+      }
+    });
+  } catch (e) {}
+}
+
+async function resumeCssAnims(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      world: 'MAIN',  // stesso mondo del freeze, per ritrovare lo stato e ripristinare
+      func: function() {
+        // 1) animazioni CSS
+        var st = document.getElementById('__shot_css_pause');
+        if (st) st.remove();
+        // 2) video
+        if (window.__shotPausedVideos) {
+          window.__shotPausedVideos.forEach(function(v) { try { v.play(); } catch (e) {} });
+          window.__shotPausedVideos = null;
+        }
+        // 3) sblocca il transform: DISCONNETTE l'observer che sorvegliava
+        // l'elemento. Da quel momento il loop del sito torna libero di riscrivere
+        // il transform → il ticker riparte. Nessun residuo: al prossimo screenshot
+        // si installa un observer nuovo e tutto ricongela come la prima volta.
+        if (window.__shotFrozen) {
+          window.__shotFrozen.forEach(function(rec) {
+            try { rec.obs.disconnect(); } catch (e) {}
+          });
+          window.__shotFrozen = null;
+        }
+      }
+    });
+  } catch (e) {}
 }
 
 // === COPIA NEGLI APPUNTI (dalla pagina attiva) ===
@@ -352,10 +438,12 @@ async function doFullCapture(tabId) {
       args: [d.sy, d.hasCustomScroll]
     });
 
+    await resumeCssAnims(tabId);
     sendSuccess();
 
   } catch (err) {
     console.error('Screenshot error:', err);
+    await resumeCssAnims(tabId);
     sendError(err.message);
   }
 }
@@ -406,10 +494,12 @@ async function doVisibleCapture(tabId) {
       saveAs: false
     });
     await copyToClipboard(dataUrl, tabId);
+    await resumeCssAnims(tabId);
     sendSuccess();
     await showBollino(tabId, true);
   } catch (err) {
     console.error('Screenshot error:', err);
+    await resumeCssAnims(tabId);
     sendError(err.message);
     await showBollino(tabId, false, err.message);
   }
@@ -680,11 +770,11 @@ async function doAreaCapture(tabId) {
         }
       });
       var val = result[0].result;
-      if (val === 'cancelled') { return; }
+      if (val === 'cancelled') { await resumeCssAnims(tabId); return; }
       if (val) { area = val; break; }
     }
 
-    if (!area) { return; }
+    if (!area) { await resumeCssAnims(tabId); return; }
 
     // === Step 3: multi-slice capture ===
 
@@ -828,6 +918,12 @@ async function doAreaCapture(tabId) {
       var realScroll = scrollResult[0].result;
       deltas.push(wantedScroll - realScroll);
       realScrolls.push(realScroll);  // posizione assoluta reale di questa slice
+
+      // LOG DIAGNOSTICO problema "selezione corta in fondo cattura piu in alto":
+      console.log('[AREA slice ' + i + '/' + (numSlices-1) + '] wantedScroll=' + wantedScroll +
+        ' realScroll=' + realScroll + ' DELTA(voluto-reale)=' + (wantedScroll - realScroll) +
+        ' | area.y_doc=' + area.y_doc + ' offsetY=' + meta.offsetY +
+        ' sliceH=' + sliceH + ' h_doc=' + area.h_doc);
 
       await sleep(350);
 
@@ -1022,11 +1118,13 @@ async function doAreaCapture(tabId) {
       args: [meta.sy, area.hasCustomScroll]
     });
 
+    await resumeCssAnims(tabId);
     sendSuccess();
     await showBollino(tabId, true);
 
   } catch (err) {
     console.error('Area screenshot error:', err);
+    await resumeCssAnims(tabId);
     sendError(err.message);
     await showBollino(tabId, false, err.message);
   }
