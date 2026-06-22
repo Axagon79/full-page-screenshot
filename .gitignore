@@ -1,0 +1,6 @@
+# Pacchetti zip generati per il caricamento sul Chrome Web Store.
+# Lo zip si rigenera dal codice quando serve: resta sul disco ma non va versionato.
+*.zip
+
+# Backup temporanei di immagini
+*_original_*.png

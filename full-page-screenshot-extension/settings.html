@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Capture Mode</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      background: #1a1a2e;
+      color: #eee;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      width: 300px;
+    }
+    h2 {
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      text-align: center;
+      color: #00d4ff;
+    }
+    .option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      margin: 8px 0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border: 2px solid transparent;
+    }
+    .option:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .option.active {
+      background: rgba(0,212,255,0.1);
+      border-color: #00d4ff;
+    }
+    .dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #555;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .option.active .dot {
+      border-color: #00d4ff;
+      background: #00d4ff;
+      box-shadow: 0 0 8px rgba(0,212,255,0.4);
+    }
+    .option.active .dot::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #1a1a2e;
+    }
+    .label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .desc {
+      font-size: 11px;
+      color: #888;
+      margin-top: 3px;
+    }
+    .btn-save {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #10b981;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-save:hover {
+      opacity: 0.85;
+    }
+    .saved {
+      text-align: center;
+      margin-top: 10px;
+      color: #10b981;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .saved.show {
+      opacity: 1;
+    }
+
+    /* Riga switch "Copia negli appunti": NON e' una voce del menu, e' un
+       interruttore on/off. Testo a sinistra, levetta a destra, e una linea
+       divisoria sotto per staccarla dal gruppo delle modalita'. */
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      margin: 0 0 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 18px;
+    }
+    .switch-text .label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .switch-text .desc {
+      font-size: 11px;
+      color: #888;
+      margin-top: 3px;
+    }
+    /* La levetta vera e propria */
+    .switch {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .switch .track {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #555;
+      border-radius: 13px;
+      transition: background 0.2s;
+    }
+    .switch .knob {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      background: #fff;
+      border-radius: 50%;
+      transition: left 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .switch.on .track {
+      background: #10b981;
+    }
+    .switch.on .knob {
+      left: 23px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>&#128247; Capture Mode</h2>
+
+    <div class="switch-row">
+      <div class="switch-text">
+        <div class="label">&#128203; Copia negli appunti</div>
+        <div class="desc">Copia ogni cattura negli appunti (incolla con Ctrl+V)</div>
+      </div>
+      <div class="switch" id="toggleClipboard">
+        <div class="track"></div>
+        <div class="knob"></div>
+      </div>
+    </div>
+
+    <div class="option active" data-mode="full">
+      <div class="dot"></div>
+      <div>
+        <div class="label">&#128196; Full Page</div>
+        <div class="desc">Scroll e cattura tutta la pagina</div>
+      </div>
+    </div>
+
+    <div class="option" data-mode="visible">
+      <div class="dot"></div>
+      <div>
+        <div class="label">&#128065; Visible Only</div>
+        <div class="desc">Screenshot di quello che vedi</div>
+      </div>
+    </div>
+
+    <div class="option" data-mode="area">
+      <div class="dot"></div>
+      <div>
+        <div class="label">&#9986; Select Area</div>
+        <div class="desc">Scegli un rettangolo</div>
+      </div>
+    </div>
+
+    <button class="btn-save" id="btnSave">Salva</button>
+    <div class="saved" id="saved">Salvato!</div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

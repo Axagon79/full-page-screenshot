@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body {
+    margin: 0;
+    padding: 8px;
+    background: transparent !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+  @keyframes wave1 {
+    0% { transform: translateX(0) translateY(0); }
+    50% { transform: translateX(-25%) translateY(2px); }
+    100% { transform: translateX(-50%) translateY(0); }
+  }
+  @keyframes wave2 {
+    0% { transform: translateX(0) translateY(0); }
+    50% { transform: translateX(25%) translateY(-2px); }
+    100% { transform: translateX(50%) translateY(0); }
+  }
+  .circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid #1e3a5f;
+    position: relative;
+    overflow: hidden;
+    background: rgba(255,255,255,0.95);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  .water {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0%;
+    transition: height 0.5s ease-out;
+    overflow: hidden;
+    border-radius: 0 0 50% 50%;
+  }
+  .wave1 {
+    position: absolute;
+    top: -8px;
+    left: -50%;
+    width: 200%;
+    height: 20px;
+    background: radial-gradient(ellipse at 25% 50%, rgba(59,130,246,0.6) 0%, transparent 50%),
+                radial-gradient(ellipse at 75% 50%, rgba(59,130,246,0.6) 0%, transparent 50%);
+    border-radius: 40%;
+    animation: wave1 2s ease-in-out infinite;
+  }
+  .wave2 {
+    position: absolute;
+    top: -4px;
+    left: -50%;
+    width: 200%;
+    height: 16px;
+    background: radial-gradient(ellipse at 30% 50%, rgba(37,99,235,0.4) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 50%, rgba(37,99,235,0.4) 0%, transparent 50%);
+    border-radius: 40%;
+    animation: wave2 2.5s ease-in-out infinite;
+  }
+  .water-body {
+    position: absolute;
+    top: 12px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, #3b82f6 0%, #1e3a8a 100%);
+  }
+  .pct {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    font-weight: 800;
+    color: #1e3a5f;
+    z-index: 2;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+  }
+  .text {
+    font-size: 11px;
+    font-weight: 600;
+    color: #1e3a5f;
+    background: rgba(255,255,255,0.9);
+    padding: 4px 12px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+  /* Successo */
+  body.success .circle { border-color: #10b981; }
+  body.success .water { height: 100% !important; }
+  body.success .water-body { background: linear-gradient(180deg, #10b981 0%, #065f46 100%); }
+  body.success .pct { color: white; font-size: 28px; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  body.success .text { color: #10b981; }
+</style>
+</head>
+<body>
+  <div class="circle">
+    <div class="water" id="water">
+      <div class="wave1"></div>
+      <div class="wave2"></div>
+      <div class="water-body"></div>
+    </div>
+    <div class="pct" id="pct">0%</div>
+  </div>
+  <div class="text" id="text">Preparazione...</div>
+
+  <script>
+    // Ascolta messaggi dal service worker
+    chrome.runtime.onMessage.addListener(function(msg) {
+      if (msg.type === 'progress') {
+        var water = document.getElementById('water');
+        var pct = document.getElementById('pct');
+        var text = document.getElementById('text');
+        water.style.height = Math.min(msg.percent, 100) + '%';
+        pct.textContent = Math.round(msg.percent) + '%';
+        if (msg.percent > 50) {
+          pct.style.color = 'white';
+          pct.style.textShadow = '0 1px 3px rgba(0,0,0,0.3)';
+        } else {
+          pct.style.color = '#1e3a5f';
+          pct.style.textShadow = '0 1px 2px rgba(255,255,255,0.5)';
+        }
+        text.textContent = msg.text;
+      } else if (msg.type === 'success') {
+        document.getElementById('pct').textContent = '\u2713';
+        document.getElementById('text').textContent = 'Screenshot salvato!';
+        document.body.classList.add('success');
+      } else if (msg.type === 'error') {
+        document.getElementById('pct').textContent = '\u2717';
+        document.getElementById('pct').style.color = '#ef4444';
+        document.getElementById('text').textContent = 'Errore: ' + msg.message;
+        document.querySelector('.circle').style.borderColor = '#ef4444';
+        document.getElementById('water').style.height = '0%';
+      }
+    });
+  </script>
+</body>
+</html>
