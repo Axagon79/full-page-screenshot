@@ -444,6 +444,8 @@ async function doFullCapture(tabId) {
   } catch (err) {
     console.error('Screenshot error:', err);
     await resumeCssAnims(tabId);
+    // FALLBACK: su pagine non iniettabili (chrome://, errore) catturo il visibile.
+    if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
     sendError(err.message);
   }
 }
@@ -481,6 +483,19 @@ async function showBollino(tabId, success, errorMsg) {
     },
     args: [success, errorMsg || '']
   });
+}
+
+// Riconosce gli errori delle pagine dove NON si può iniettare script (chrome://,
+// pagine di errore "sito irraggiungibile", store estensioni). Su queste Full Page
+// e Area non possono lavorare, ma captureVisibleTab sì: ripieghiamo sul visibile.
+function isPaginaNonIniettabile(err) {
+  var m = String((err && err.message) || err || '').toLowerCase();
+  return m.indexOf('cannot access') !== -1
+      || m.indexOf('cannot be scripted') !== -1
+      || m.indexOf('chrome://') !== -1
+      || m.indexOf('chrome-extension://') !== -1
+      || m.indexOf('extensions gallery') !== -1
+      || m.indexOf('showing error page') !== -1;
 }
 
 // === VISIBLE ONLY ===
@@ -1164,6 +1179,8 @@ async function doAreaCapture(tabId) {
   } catch (err) {
     console.error('Area screenshot error:', err);
     await resumeCssAnims(tabId);
+    // FALLBACK: su pagine non iniettabili (chrome://, errore) catturo il visibile.
+    if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
     sendError(err.message);
     await showBollino(tabId, false, err.message);
   }
