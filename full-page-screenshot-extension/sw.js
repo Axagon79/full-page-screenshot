@@ -970,11 +970,20 @@ async function doAreaCapture(tabId) {
 
           // Estraggo da ogni cattura SOLO la colonna selezionata (sx..sx+sw) e la
           // parte utile (da offY in giù), in un canvas per slice. Lavoro su questi.
-          var sliceCanvases = loaded.map(function(img) {
-            var hUtile = img.height - offY;
+          // COMPENSAZIONE SCROLL-CLAMP: quando lo scroll voluto supera il fondo
+          // pagina, la cattura si ferma prima (deltas[idx] > 0) e il contenuto
+          // voluto appare più IN BASSO nella schermata di quanto previsto. Per
+          // quella slice il ritaglio verticale deve partire da offY + delta, così
+          // si prende il punto giusto e non uno più in alto. (Caso tipico:
+          // selezione corta in fondo pagina = una sola slice con delta grande.)
+          var sliceCanvases = loaded.map(function(img, idx) {
+            var deltaPx = (deltas && deltas[idx] > 0) ? Math.round(deltas[idx] * realRatio) : 0;
+            var startY = offY + deltaPx;
+            if (startY > img.height - 1) startY = img.height - 1;
+            var hUtile = img.height - startY;
             var c = document.createElement('canvas');
             c.width = sw; c.height = hUtile;
-            c.getContext('2d').drawImage(img, sx, offY, sw, hUtile, 0, 0, sw, hUtile);
+            c.getContext('2d').drawImage(img, sx, startY, sw, hUtile, 0, 0, sw, hUtile);
             return c;
           });
 
