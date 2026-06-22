@@ -791,31 +791,12 @@ async function doAreaCapture(tabId) {
           offsetY = rect.top;
           containerH = rect.height;
         }
-        // ALTEZZA HEADER FISSO: misuro quanto in alto del viewport è coperto da
-        // elementi fixed/sticky incollati alla cima (es. barra menu WHO). Serve
-        // perché in modalità Area, scrollando alla coordinata della selezione,
-        // quell'header copre il contenuto e la foto esce spostata. Cerco gli
-        // elementi ancorati che partono dal top (rect.top<=2) e prendo il più
-        // basso (l'header più alto). Solo per window scroll (no container custom).
-        var fixedHeaderH = 0;
-        if (!el) {
-          var alls = document.querySelectorAll('body *');
-          for (var k = 0; k < alls.length; k++) {
-            var p = getComputedStyle(alls[k]).position;
-            if (p !== 'fixed' && p !== 'sticky') continue;
-            var r = alls[k].getBoundingClientRect();
-            if (r.top <= 2 && r.height > 0 && r.width > window.innerWidth * 0.5) {
-              if (r.bottom > fixedHeaderH) fixedHeaderH = r.bottom;
-            }
-          }
-        }
         return {
           sy: el ? el.scrollTop : window.scrollY,
           vh: window.innerHeight,
           containerH: containerH,
           offsetX: offsetX,
           offsetY: offsetY,
-          fixedHeaderH: fixedHeaderH,
           dpr: window.devicePixelRatio || 1
         };
       },
@@ -828,10 +809,16 @@ async function doAreaCapture(tabId) {
     var sliceH = meta.containerH;
     var numSlices = Math.ceil(area.h_doc / sliceH);
 
-    // L'header fisso va INCLUSO (catturato in cima) se la selezione parte da dentro
-    // l'header; va SALTATO (compensato) se la selezione inizia sotto di esso.
-    // Si decide una volta sola: dipende dal punto di partenza, non dalla slice.
-    var includeHeader = (area.y_doc - meta.offsetY) < (meta.fixedHeaderH || 0) + 4;
+    // SELEZIONE GIÀ VISIBILE: se l'intera area selezionata sta dentro la schermata
+    // attuale (non serve scrollare per vederla tutta), NON scrollo affatto: catturo
+    // ciò che è già a video e ritaglio. Niente scroll = niente "scatto" verso l'alto
+    // e niente header fisso che si sovrappone (era la causa del taglio sulla prima
+    // pagina). Lo scroll serve solo se la selezione sfora la schermata (più slice).
+    // selTopVp = dove inizia la selezione nel viewport attuale (rispetto allo scroll
+    // corrente meta.sy). Se >=0 e la selezione ci sta tutta, è "già visibile".
+    var selTopVp = (area.y_doc - meta.offsetY) - meta.sy;
+    var giaVisibile = numSlices <= 1 && selTopVp >= -1 && (selTopVp + area.h_doc) <= sliceH + 1;
+
     var captures = [];
     var deltas = [];  // di quanto lo scroll è rimasto indietro rispetto al voluto (per slice)
     var realScrolls = [];  // scroll reale (frazionario) raggiunto da ogni slice: serve
@@ -846,16 +833,9 @@ async function doAreaCapture(tabId) {
       // area.y_doc è in coordinate "viewport tab + scroll": per lo scroll del div
       // serve la coordinata interna al div, quindi sottraiamo l'offset del container.
       // Su window scroll offsetY=0, quindi invariato.
-      // COMPENSAZIONE HEADER FISSO: se la pagina ha un header fixed/sticky alto
-      // (fixedHeaderH), scrollando esattamente a y_doc quell'header coprirebbe il
-      // contenuto selezionato. Scrollo quindi di header-in-meno, così il contenuto
-      // scende sotto l'header ed è visibile; nel ritaglio compenso (offY).
-      // MA solo se la selezione INIZIA SOTTO l'header (vedi includeHeader sopra).
-      // Se la selezione parte dentro l'header (vuoi includere la top bar), non
-      // compenso: l'header va catturato com'è, in cima alla foto.
-      var headerComp = includeHeader ? 0 : (meta.fixedHeaderH || 0);
-      var wantedScroll = (area.y_doc - meta.offsetY) + i * sliceH - headerComp;
-      if (wantedScroll < 0) wantedScroll = 0;
+      // Se la selezione è già tutta visibile, lo scroll voluto è quello ATTUALE
+      // (meta.sy): non muovo la pagina, catturo dov'è.
+      var wantedScroll = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(targetScroll, hasCustomScroll, idx) {
@@ -988,7 +968,7 @@ async function doAreaCapture(tabId) {
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, fixedHeaderH) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -1015,14 +995,20 @@ async function doAreaCapture(tabId) {
           // quella slice il ritaglio verticale deve partire da offY + delta, così
           // si prende il punto giusto e non uno più in alto. (Caso tipico:
           // selezione corta in fondo pagina = una sola slice con delta grande.)
-          // px di header fisso, in pixel reali immagine: per la prima slice ho
-          // scrollato di header-in-meno, quindi il contenuto selezionato è sceso
-          // di tanto sotto l'alto della foto → il ritaglio parte da qui e non da 0.
-          var headerPx = Math.round((fixedHeaderH || 0) * realRatio);
+          // SELEZIONE GIÀ VISIBILE: se selTopVpVisibile>=0, NON abbiamo scrollato
+          // e la selezione sta a quei px dall'alto della cattura. Il ritaglio parte
+          // esattamente da lì (e prende solo l'altezza selezionata): è il punto giusto
+          // così com'è a video, senza scroll né compensazioni. Una sola slice.
+          var visStart = (typeof selTopVpVisibile === 'number' && selTopVpVisibile >= 0)
+            ? Math.round(selTopVpVisibile * realRatio) : -1;
           var sliceCanvases = loaded.map(function(img, idx) {
-            var deltaPx = (deltas && deltas[idx] > 0) ? Math.round(deltas[idx] * realRatio) : 0;
-            var headerForSlice = (idx === 0) ? headerPx : 0;  // solo la prima slice
-            var startY = offY + deltaPx + headerForSlice;
+            var startY;
+            if (visStart >= 0) {
+              startY = offY + visStart;
+            } else {
+              var deltaPx = (deltas && deltas[idx] > 0) ? Math.round(deltas[idx] * realRatio) : 0;
+              startY = offY + deltaPx;
+            }
             if (startY > img.height - 1) startY = img.height - 1;
             var hUtile = img.height - startY;
             var c = document.createElement('canvas');
@@ -1135,7 +1121,7 @@ async function doAreaCapture(tabId) {
           return out.toDataURL('image/png');
         });
       },
-      args: [captures, area.x, area.w, area.h_doc, sliceH, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (includeHeader ? 0 : (meta.fixedHeaderH || 0))]
+      args: [captures, area.x, area.w, area.h_doc, sliceH, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1)]
     });
 
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
