@@ -67,7 +67,13 @@ async function pauseCssAnims(tabId) {
         if (!st) {
           st = document.createElement('style');
           st.id = '__shot_css_pause';
-          st.textContent = '*,*::before,*::after{animation-play-state:paused !important;}';
+          st.textContent = '*,*::before,*::after{animation-play-state:paused !important;}' +
+            // Nasconde la scrollbar del contenitore interno durante la cattura
+            // Full Page: comparirebbe come colonna grigia sul bordo destro di
+            // ogni slice. (Solo Full Page: in Area nasconderla farebbe riallargare
+            // il contenuto DOPO che l'utente ha già disegnato il rettangolo.)
+            '[data-screenshot-scroll]{scrollbar-width:none !important;}' +
+            '[data-screenshot-scroll]::-webkit-scrollbar{display:none !important;}';
           (document.head || document.documentElement).appendChild(st);
         }
         // 2) video
@@ -231,7 +237,6 @@ async function doFullCapture(tabId) {
         var useWindow = !scrollEl || scrollEl === document.documentElement || scrollEl === document.body;
         var target = useWindow ? null : scrollEl;
 
-        var sh = target ? target.scrollHeight : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
         var sy = target ? target.scrollTop : window.scrollY;
 
         if (target) {
@@ -240,6 +245,11 @@ async function doFullCapture(tabId) {
         } else {
           window.scrollTo(0, 0);
         }
+
+        // Altezza misurata DOPO aver marcato il target: da quel momento il CSS
+        // di cattura nasconde la scrollbar del contenitore, il contenuto si
+        // riallarga di ~15px e l'altezza totale può cambiare leggermente.
+        var sh = target ? target.scrollHeight : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
 
         return {
           sh: sh,
@@ -267,14 +277,57 @@ async function doFullCapture(tabId) {
           // visibility originale salvata per il ripristino finale.
           if (row === 0) {
             window.__screenshotHidden = [];
+            var scrollAnc = custom ? document.querySelector('[data-screenshot-scroll]') : null;
             var allEls = document.querySelectorAll('*');
             for (var k = 0; k < allEls.length; k++) {
               var st = window.getComputedStyle(allEls[k]);
               if (st.position === 'fixed' || st.position === 'sticky') {
+                // MAI censire il contenitore che scrolliamo o un suo antenato:
+                // visibility si eredita, nasconderlo cancella TUTTO il contenuto.
+                // (Dashboard con "scocca" fixed a schermo intero e scroll interno:
+                // dalle slice 2+ restava visibile solo lo sfondo.)
+                if (scrollAnc && allEls[k].contains(scrollAnc)) continue;
+                // MAI censire un elemento grande quasi quanto lo schermo: è la
+                // scocca dell'app o uno sfondo decorativo, non una barra fissa.
+                var rc = allEls[k].getBoundingClientRect();
+                if (rc.width >= window.innerWidth * 0.9 && rc.height >= window.innerHeight * 0.9) continue;
                 window.__screenshotHidden.push({
                   el: allEls[k],
                   oldVisibility: allEls[k].style.visibility
                 });
+              }
+            }
+
+            // BARRE LATERALI/HEADER IN-FLOW FUORI DAL CONTENITORE SCROLLATO
+            // (solo scroll interno): non essendo fixed/sticky sfuggono al
+            // censimento qui sopra, ma non si muovono mai col contenuto e si
+            // ripetono identici in ogni slice (es. sidebar DeepSeek Platform).
+            // Censisco i FIGLI dei "fratelli" degli antenati del contenitore
+            // (i figli, non il fratello: così sfondo e bordo della colonna
+            // restano visibili come nella pagina vera). Sarà poi il micro-scroll
+            // di test a confermarli ancorati e nasconderli dalla slice 2 in poi.
+            // Chi si SOVRAPPONE al contenitore viene saltato: è uno sfondo
+            // decorativo dietro al contenuto, nasconderlo creerebbe buchi.
+            if (scrollAnc) {
+              var cr = scrollAnc.getBoundingClientRect();
+              var nodeUp = scrollAnc;
+              while (nodeUp && nodeUp !== document.body && nodeUp.parentElement) {
+                var par = nodeUp.parentElement;
+                for (var q = 0; q < par.children.length; q++) {
+                  var sib = par.children[q];
+                  if (sib === nodeUp || sib.contains(scrollAnc)) continue;
+                  var sr = sib.getBoundingClientRect();
+                  var iw = Math.min(sr.right, cr.right) - Math.max(sr.left, cr.left);
+                  var ih = Math.min(sr.bottom, cr.bottom) - Math.max(sr.top, cr.top);
+                  if (iw > 8 && ih > 8) continue;
+                  for (var w = 0; w < sib.children.length; w++) {
+                    window.__screenshotHidden.push({
+                      el: sib.children[w],
+                      oldVisibility: sib.children[w].style.visibility
+                    });
+                  }
+                }
+                nodeUp = par;
               }
             }
           }
@@ -321,12 +374,18 @@ async function doFullCapture(tabId) {
           }
           return new Promise(function(resolve) {
             var checks = 0;
+            var lastY = -1;
             var interval = setInterval(function() {
               var currentY = custom
                 ? document.querySelector('[data-screenshot-scroll]').scrollTop
                 : window.scrollY;
               checks++;
-              if (Math.abs(currentY - y) < 2 || checks > 30) {
+              // Fermati anche se lo scroll non si muove più (clampato al fondo):
+              // sull'ultima slice il target chiesto può superare il fondo pagina
+              // e senza questo check si aspettava sempre il timeout pieno (1.5s).
+              var fermo = (checks > 3 && Math.abs(currentY - lastY) < 1);
+              lastY = currentY;
+              if (Math.abs(currentY - y) < 2 || fermo || checks > 30) {
                 clearInterval(interval);
                 manageStickiesFP();  // nascondi gli ancorati a QUESTA slice
                 resolve(true);
@@ -866,12 +925,51 @@ async function doAreaCapture(tabId) {
           // Censimento sticky/fixed una volta sola, con visibility originale salvata.
           if (!window.__screenshotStickies) {
             window.__screenshotStickies = [];
+            var scrollAnc = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
             var allEls = document.querySelectorAll('*');
             for (var k = 0; k < allEls.length; k++) {
               if (allEls[k].id === '__screenshot_area_overlay') continue;
               var p = window.getComputedStyle(allEls[k]).position;
               if (p === 'fixed' || p === 'sticky') {
+                // Stesse esclusioni della Full Page: il contenitore scrollato (o
+                // un suo antenato) e gli elementi a schermo quasi intero non vanno
+                // mai nascosti — sono la scocca/sfondo dell'app, non barre fisse
+                // da de-duplicare (nasconderli cancella il contenuto della slice).
+                if (scrollAnc && allEls[k].contains(scrollAnc)) continue;
+                var rc = allEls[k].getBoundingClientRect();
+                if (rc.width >= window.innerWidth * 0.9 && rc.height >= window.innerHeight * 0.9) continue;
                 window.__screenshotStickies.push({ el: allEls[k], oldVis: allEls[k].style.visibility });
+              }
+            }
+
+            // Come nella Full Page: barre laterali/header IN-FLOW fuori dal
+            // contenitore scrollato non sono fixed/sticky ma restano ancorati
+            // allo schermo e si ripeterebbero in ogni slice della selezione.
+            // Censisco i FIGLI dei fratelli degli antenati del contenitore
+            // (lo sfondo della colonna resta); il micro-scroll di test poi li
+            // conferma ancorati e li nasconde dalla slice 2 in poi. Chi si
+            // sovrappone al contenitore è uno sfondo decorativo: non si tocca.
+            if (scrollAnc) {
+              var cr = scrollAnc.getBoundingClientRect();
+              var nodeUp = scrollAnc;
+              while (nodeUp && nodeUp !== document.body && nodeUp.parentElement) {
+                var par = nodeUp.parentElement;
+                for (var q = 0; q < par.children.length; q++) {
+                  var sib = par.children[q];
+                  if (sib === nodeUp || sib.contains(scrollAnc)) continue;
+                  if (sib.id === '__screenshot_area_overlay') continue;
+                  var sr = sib.getBoundingClientRect();
+                  var iw = Math.min(sr.right, cr.right) - Math.max(sr.left, cr.left);
+                  var ih = Math.min(sr.bottom, cr.bottom) - Math.max(sr.top, cr.top);
+                  if (iw > 8 && ih > 8) continue;
+                  for (var w = 0; w < sib.children.length; w++) {
+                    window.__screenshotStickies.push({
+                      el: sib.children[w],
+                      oldVis: sib.children[w].style.visibility
+                    });
+                  }
+                }
+                nodeUp = par;
               }
             }
           }
