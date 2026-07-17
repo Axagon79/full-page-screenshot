@@ -4,3 +4,6 @@
 
 # Backup temporanei di immagini
 *_original_*.png
+
+# Spazio di lavoro VS Code (impostazioni locali, non fa parte del codice)
+*.code-workspace
