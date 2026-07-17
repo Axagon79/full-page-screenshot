@@ -4,65 +4,132 @@
   <meta charset="UTF-8">
   <title>Capture Mode</title>
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 40px;
-      background: #1a1a2e;
+      padding: 48px 24px;
+      background: #16162a;
       color: #eee;
       font-family: 'Segoe UI', sans-serif;
       display: flex;
       justify-content: center;
     }
     .container {
-      width: 300px;
+      width: 320px;
     }
-    h2 {
-      margin: 0 0 20px 0;
-      font-size: 18px;
-      text-align: center;
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 0 0 22px 0;
+    }
+    .brand svg { flex-shrink: 0; }
+    .brand h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      color: #eee;
+      letter-spacing: 0.2px;
+    }
+
+    /* Card generica: stesso contenitore per tutte le sezioni, cosi' la
+       pagina respira invece di essere un elenco di righe attaccate. */
+    .card {
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 6px;
+      margin: 0 0 16px 0;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #666;
+      padding: 12px 14px 6px 14px;
+    }
+
+    /* Novita': visibile solo quando c'e' un changelog da mostrare (JS aggiunge .show) */
+    .news {
+      display: none;
+      padding: 14px 16px;
+      margin: 0 0 16px 0;
+      border-radius: 14px;
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.3);
+    }
+    .news.show { display: block; }
+    .news-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
       color: #00d4ff;
+      margin-bottom: 8px;
     }
+    .news ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12.5px;
+      color: #ccc;
+      line-height: 1.6;
+    }
+
     .option {
       display: flex;
       align-items: center;
       gap: 12px;
       padding: 12px 14px;
-      margin: 8px 0;
-      border-radius: 8px;
+      margin: 2px 0;
+      border-radius: 10px;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background 0.15s;
       border: 2px solid transparent;
     }
     .option:hover {
-      background: rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.04);
     }
     .option.active {
       background: rgba(0,212,255,0.1);
       border-color: #00d4ff;
     }
-    .dot {
+    .icon {
       width: 20px;
       height: 20px;
+      flex-shrink: 0;
+      color: #888;
+      transition: color 0.15s;
+    }
+    .option.active .icon {
+      color: #00d4ff;
+    }
+    .radio {
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       border: 2px solid #555;
       flex-shrink: 0;
-      transition: all 0.2s;
+      transition: all 0.15s;
       position: relative;
+      margin-left: auto;
     }
-    .option.active .dot {
+    .option.active .radio {
       border-color: #00d4ff;
       background: #00d4ff;
       box-shadow: 0 0 8px rgba(0,212,255,0.4);
     }
-    .option.active .dot::after {
+    .option.active .radio::after {
       content: '';
       position: absolute;
-      top: 5px;
-      left: 5px;
+      top: 4px;
+      left: 4px;
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #1a1a2e;
+      background: #16162a;
     }
     .label {
       font-size: 14px;
@@ -71,17 +138,17 @@
     .desc {
       font-size: 11px;
       color: #888;
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .btn-save {
       display: block;
       width: 100%;
-      margin-top: 20px;
-      padding: 10px;
+      margin-top: 4px;
+      padding: 11px;
       border: none;
-      border-radius: 6px;
-      background: #10b981;
-      color: white;
+      border-radius: 10px;
+      background: #00d4ff;
+      color: #0d1220;
       font-family: 'Segoe UI', sans-serif;
       font-size: 14px;
       font-weight: 700;
@@ -94,7 +161,7 @@
     .saved {
       text-align: center;
       margin-top: 10px;
-      color: #10b981;
+      color: #00d4ff;
       font-size: 13px;
       font-weight: 600;
       opacity: 0;
@@ -104,19 +171,17 @@
       opacity: 1;
     }
 
-    /* Riga switch "Copia negli appunti": NON e' una voce del menu, e' un
-       interruttore on/off. Testo a sinistra, levetta a destra, e una linea
-       divisoria sotto per staccarla dal gruppo delle modalita'. */
+    /* Riga switch "Copia negli appunti": stesso schema visivo delle opzioni,
+       ma e' un on/off (levetta), non una scelta radio. */
     .switch-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
       padding: 12px 14px;
-      margin: 0 0 8px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      padding-bottom: 18px;
+      margin: 2px 0;
     }
+    .switch-row .icon { color: #888; }
+    .switch-text { flex: 1; }
     .switch-text .label {
       font-size: 14px;
       font-weight: 600;
@@ -124,13 +189,12 @@
     .switch-text .desc {
       font-size: 11px;
       color: #888;
-      margin-top: 3px;
+      margin-top: 2px;
     }
-    /* La levetta vera e propria */
     .switch {
       position: relative;
-      width: 46px;
-      height: 26px;
+      width: 42px;
+      height: 24px;
       flex-shrink: 0;
       cursor: pointer;
     }
@@ -140,70 +204,200 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: #555;
-      border-radius: 13px;
+      background: #444;
+      border-radius: 12px;
       transition: background 0.2s;
     }
     .switch .knob {
       position: absolute;
       top: 3px;
       left: 3px;
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
       background: #fff;
       border-radius: 50%;
       transition: left 0.2s;
       box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
     .switch.on .track {
-      background: #10b981;
+      background: #00d4ff;
     }
     .switch.on .knob {
-      left: 23px;
+      left: 21px;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.07);
+      margin: 4px 14px;
+    }
+
+    /* Guida "Come funziona": righe a domanda/risposta dentro una card, stesso
+       stile delle altre sezioni cosi' non sembra un corpo estraneo. */
+    .help-item {
+      padding: 10px 14px;
+    }
+    .help-item .q {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+      margin-bottom: 3px;
+    }
+    .help-item .q .icon {
+      width: 16px;
+      height: 16px;
+      color: #00d4ff;
+    }
+    .help-item .a {
+      font-size: 12px;
+      color: #888;
+      line-height: 1.5;
+      margin-left: 24px;
+    }
+    .help-item .a kbd {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 11px;
+      font-family: inherit;
+      color: #ccc;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 11px;
+      color: #555;
+    }
+    .footer a {
+      color: #666;
+      text-decoration: none;
+    }
+    .footer a:hover {
+      color: #00d4ff;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>&#128247; Capture Mode</h2>
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <circle cx="12" cy="12" r="3.2"/>
+      </svg>
+      <h2>Capture Mode</h2>
+    </div>
 
-    <div class="switch-row">
-      <div class="switch-text">
-        <div class="label">&#128203; Copia negli appunti</div>
-        <div class="desc">Copia ogni cattura negli appunti (incolla con Ctrl+V)</div>
+    <div class="news" id="news">
+      <div class="news-head">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        <span id="newsVersion">What's new</span>
       </div>
-      <div class="switch" id="toggleClipboard">
-        <div class="track"></div>
-        <div class="knob"></div>
+      <ul id="newsList"></ul>
+    </div>
+
+    <div class="card">
+      <div class="switch-row">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
+        <div class="switch-text">
+          <div class="label">Copy to clipboard</div>
+          <div class="desc">Copy every capture (paste with Ctrl+V)</div>
+        </div>
+        <div class="switch" id="toggleClipboard">
+          <div class="track"></div>
+          <div class="knob"></div>
+        </div>
       </div>
     </div>
 
-    <div class="option active" data-mode="full">
-      <div class="dot"></div>
-      <div>
-        <div class="label">&#128196; Full Page</div>
-        <div class="desc">Scroll e cattura tutta la pagina</div>
+    <div class="card">
+      <div class="card-title">Mode</div>
+
+      <div class="option active" data-mode="full">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+        <div>
+          <div class="label">Full Page</div>
+          <div class="desc">Scroll and capture the whole page</div>
+        </div>
+        <div class="radio"></div>
+      </div>
+
+      <div class="option" data-mode="visible">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div>
+          <div class="label">Visible Only</div>
+          <div class="desc">Screenshot of what you see</div>
+        </div>
+        <div class="radio"></div>
+      </div>
+
+      <div class="option" data-mode="area">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg>
+        <div>
+          <div class="label">Select Area</div>
+          <div class="desc">Choose a rectangle</div>
+        </div>
+        <div class="radio"></div>
       </div>
     </div>
 
-    <div class="option" data-mode="visible">
-      <div class="dot"></div>
-      <div>
-        <div class="label">&#128065; Visible Only</div>
-        <div class="desc">Screenshot di quello che vedi</div>
+    <button class="btn-save" id="btnSave">Save</button>
+    <div class="saved" id="saved">Saved!</div>
+
+    <div class="card">
+      <div class="card-title">How it works</div>
+
+      <div class="help-item">
+        <div class="q">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+          Full Page
+        </div>
+        <div class="a">Click the icon: it scrolls the page for you and stitches every part into one image, top to bottom.</div>
+      </div>
+
+      <div class="help-item">
+        <div class="q">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          Visible Only
+        </div>
+        <div class="a">Click the icon: instant screenshot of exactly what's on screen right now, nothing more.</div>
+      </div>
+
+      <div class="help-item">
+        <div class="q">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg>
+          Select Area
+        </div>
+        <div class="a">Click the icon, then drag a rectangle. Drag near the top or bottom edge to auto-scroll — you can select an area taller than the screen.</div>
+      </div>
+
+      <div class="help-item">
+        <div class="q">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
+          After every capture
+        </div>
+        <div class="a">The image is saved to a "screenshots" folder inside your Downloads, and — if "Copy to clipboard" is on above — also copied, so you can just press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste it anywhere.</div>
+      </div>
+
+      <div class="help-item">
+        <div class="q">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+          Choosing a mode
+        </div>
+        <div class="a">Pick a mode above and hit Save — it becomes the one-click default. Right-click the icon any time to come back here and switch.</div>
       </div>
     </div>
 
-    <div class="option" data-mode="area">
-      <div class="dot"></div>
-      <div>
-        <div class="label">&#9986; Select Area</div>
-        <div class="desc">Scegli un rettangolo</div>
-      </div>
+    <div class="footer">
+      If I helped you, leave a
+      <a href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj/reviews" target="_blank" rel="noopener">star ⭐</a>
+      or a
+      <a href="mailto:lollotj@gmail.com?subject=Full%20Page%20Screenshot%20feedback">comment</a>
     </div>
-
-    <button class="btn-save" id="btnSave">Salva</button>
-    <div class="saved" id="saved">Salvato!</div>
   </div>
 
   <script src="settings.js"></script>

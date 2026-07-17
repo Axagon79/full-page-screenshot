@@ -1,5 +1,32 @@
+// Changelog per versione: solo le voci rivolte all'utente (niente dettagli
+// tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
+var CHANGELOG = {
+  '9.8': [
+    'Fixed: Full Page and Select Area now work correctly on pages that scroll their whole body (some sports/stats sites).',
+    'Fixed: apps with an internal scroll area no longer lose content or repeat the sidebar in Full Page and Select Area captures.'
+  ]
+};
+
 chrome.storage.local.get('captureMode', function(data) {
   setActive(data.captureMode || 'full');
+});
+
+// Mostra "What's new" solo se c'e' una versione non ancora vista con un
+// changelog scritto, poi spegne subito il badge NEW sull'icona.
+chrome.storage.local.get('newsUnread', function(data) {
+  var v = data.newsUnread;
+  var voci = v && CHANGELOG[v];
+  if (voci && voci.length) {
+    document.getElementById('newsVersion').textContent = "What's new in " + v;
+    var ul = document.getElementById('newsList');
+    voci.forEach(function(riga) {
+      var li = document.createElement('li');
+      li.textContent = riga;
+      ul.appendChild(li);
+    });
+    document.getElementById('news').classList.add('show');
+  }
+  chrome.runtime.sendMessage({ action: 'clearNewsBadge' });
 });
 
 // Interruttore "Copia negli appunti": stesso schema di captureMode ma e' un

@@ -1,5 +1,5 @@
 // Menu contestuale per Capture Mode
-chrome.runtime.onInstalled.addListener(function() {
+chrome.runtime.onInstalled.addListener(function(details) {
   chrome.contextMenus.removeAll(function() {
     chrome.contextMenus.create({
       id: 'captureMode',
@@ -7,6 +7,22 @@ chrome.runtime.onInstalled.addListener(function() {
       contexts: ['action']
     });
   });
+
+  // Changelog in-app: dopo un AGGIORNAMENTO accendi il badge NEW sull'icona e
+  // segna la versione come "da leggere". Il badge si spegne quando l'utente
+  // apre le impostazioni (che mostrano le novita'). Mai al primo install:
+  // le novita' hanno senso solo per chi gia' usava l'estensione.
+  if (details.reason === 'update') {
+    var v = chrome.runtime.getManifest().version;
+    if (details.previousVersion !== v) {
+      chrome.storage.local.set({ newsUnread: v });
+      chrome.action.setBadgeText({ text: 'NEW' });
+      chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
+      if (chrome.action.setBadgeTextColor) {
+        chrome.action.setBadgeTextColor({ color: '#1a1a2e' });
+      }
+    }
+  }
 });
 
 chrome.contextMenus.onClicked.addListener(function(info) {
@@ -17,6 +33,11 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 
 // Ricevi messaggio dal popup per avviare cattura
 chrome.runtime.onMessage.addListener(function(msg) {
+  if (msg.action === 'clearNewsBadge') {
+    chrome.action.setBadgeText({ text: '' });
+    chrome.storage.local.remove('newsUnread');
+    return;
+  }
   if (msg.action === 'startCapture') {
     // Pausa animazioni CSS + video appena clicchi (non tocca il motore JS).
     pauseCssAnims(msg.tabId).then(function() {
@@ -205,6 +226,88 @@ async function copyToClipboard(dataUrl, tabId) {
     }
   } catch (err) {
     console.warn('Copia negli appunti fallita:', err && err.message || err);
+  }
+}
+
+// === INVITO A RECENSIRE ===
+// Dopo N catture riuscite (momento di massima soddisfazione), UNA volta sola,
+// banner discreto sulla pagina. NIENTE "review gating" (vietato dalle policy
+// dello store): entrambi i link sempre visibili — stella sullo store E
+// feedback via email. Se la pagina non e' iniettabile l'invito slitta alla
+// cattura successiva (il flag si salva solo a banner mostrato davvero).
+var SOGLIA_INVITO_RECENSIONE = 15;
+var URL_RECENSIONI = 'https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj/reviews';
+var MAIL_FEEDBACK = 'mailto:lollotj@gmail.com?subject=Full%20Page%20Screenshot%20feedback';
+
+async function registraCatturaRiuscita(tabId) {
+  try {
+    var st = await chrome.storage.local.get(['captureCount', 'reviewInviteShown']);
+    var n = (st.captureCount || 0) + 1;
+    await chrome.storage.local.set({ captureCount: n });
+    if (st.reviewInviteShown || n < SOGLIA_INVITO_RECENSIONE || !tabId) return;
+
+    var res = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(urlReviews, urlMail) {
+        if (document.getElementById('__shot_review_invite')) return true;
+
+        // Tutto costruito con createElement/textContent: niente innerHTML,
+        // che sui siti con Trusted Types (GitHub ecc.) viene bloccato.
+        var box = document.createElement('div');
+        box.id = '__shot_review_invite';
+        box.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;' +
+          'background:#1a1a2e;color:#eee;font-family:Segoe UI,sans-serif;font-size:13px;' +
+          'padding:14px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,0.35);' +
+          'max-width:280px;opacity:0;transition:opacity 0.4s;border:1px solid rgba(0,212,255,0.35);';
+
+        var close = document.createElement('span');
+        close.textContent = '✕';
+        close.style.cssText = 'position:absolute;top:8px;right:10px;cursor:pointer;color:#888;font-size:12px;';
+        close.addEventListener('click', function() { box.remove(); });
+        box.appendChild(close);
+
+        var msg = document.createElement('div');
+        msg.textContent = 'If I helped you, leave a star or a comment ⭐';
+        msg.style.cssText = 'font-weight:600;margin:0 14px 10px 0;line-height:1.4;';
+        box.appendChild(msg);
+
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+        var star = document.createElement('a');
+        star.textContent = '★ Leave a star';
+        star.href = urlReviews;
+        star.target = '_blank';
+        star.rel = 'noopener';
+        star.style.cssText = 'display:block;text-align:center;background:#00d4ff;color:#0d1220;' +
+          'font-weight:700;padding:8px 10px;border-radius:8px;text-decoration:none;font-size:13px;';
+        row.appendChild(star);
+
+        var fb = document.createElement('a');
+        fb.textContent = 'Tell me what to improve';
+        fb.href = urlMail;
+        fb.style.cssText = 'display:block;text-align:center;color:#00d4ff;font-weight:600;' +
+          'padding:6px 10px;border-radius:8px;text-decoration:none;font-size:12px;' +
+          'border:1px solid rgba(0,212,255,0.4);';
+        row.appendChild(fb);
+
+        box.appendChild(row);
+        document.body.appendChild(box);
+        requestAnimationFrame(function() { box.style.opacity = '1'; });
+        setTimeout(function() {
+          box.style.opacity = '0';
+          setTimeout(function() { box.remove(); }, 400);
+        }, 30000);
+        return true;
+      },
+      args: [URL_RECENSIONI, MAIL_FEEDBACK]
+    });
+
+    if (res && res[0] && res[0].result === true) {
+      await chrome.storage.local.set({ reviewInviteShown: true });
+    }
+  } catch (e) {
+    // pagina non iniettabile (chrome:// ecc.): l'invito riprovera' piu' avanti
   }
 }
 
@@ -510,6 +613,7 @@ async function doFullCapture(tabId) {
 
     await resumeCssAnims(tabId);
     sendSuccess();
+    await registraCatturaRiuscita(tabId);
 
   } catch (err) {
     console.error('Screenshot error:', err);
@@ -582,6 +686,7 @@ async function doVisibleCapture(tabId) {
     await resumeCssAnims(tabId);
     sendSuccess();
     await showBollino(tabId, true);
+    await registraCatturaRiuscita(tabId);
   } catch (err) {
     console.error('Screenshot error:', err);
     await resumeCssAnims(tabId);
@@ -1290,6 +1395,7 @@ async function doAreaCapture(tabId) {
     await resumeCssAnims(tabId);
     sendSuccess();
     await showBollino(tabId, true);
+    await registraCatturaRiuscita(tabId);
 
   } catch (err) {
     console.error('Area screenshot error:', err);
