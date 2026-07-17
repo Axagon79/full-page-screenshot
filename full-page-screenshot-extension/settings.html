@@ -17,17 +17,54 @@
     .container {
       width: 320px;
     }
+
+    /* Su schermi larghi (la pagina aperta come scheda vera, non il popup
+       stretto dell'estensione) si passa a due colonne: a sinistra i controlli,
+       a destra la guida. Stesso identico contenuto, solo il layout cambia,
+       cosi' l'intera pagina sta senza scroll invece di allungarsi in verticale. */
+    @media (min-width: 780px) {
+      body { padding: 56px 40px; }
+      .container {
+        width: 100%;
+        max-width: 980px;
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        column-gap: 48px;
+        align-items: start;
+      }
+      .brand, .footer {
+        grid-column: 1 / -1;
+      }
+      .col-right {
+        grid-column: 2;
+        grid-row: 2 / span 4;
+        /* Linea verticale che separa i controlli dalla guida, invece del
+           semplice spazio vuoto: rende esplicito che sono due sezioni diverse
+           (impostazioni a sinistra, spiegazione a destra), non due colonne
+           casuali. */
+        border-left: 1px solid rgba(255,255,255,0.09);
+        padding-left: 48px;
+      }
+      /* Le voci di "How it works" a due per riga invece che impilate: c'e'
+         spazio orizzontale, meglio usarlo che allungare la card in verticale.
+         L'ultima voce (numero dispari) resta da sola sull'ultima riga. */
+      #howItWorksList {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 20px;
+      }
+    }
     .brand {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      margin: 0 0 22px 0;
+      gap: 12px;
+      margin: 0 0 28px 0;
     }
-    .brand svg { flex-shrink: 0; }
+    .brand svg { flex-shrink: 0; width: 26px; height: 26px; }
     .brand h2 {
       margin: 0;
-      font-size: 17px;
+      font-size: 22px;
       font-weight: 700;
       color: #eee;
       letter-spacing: 0.2px;
@@ -348,47 +385,51 @@
     <button class="btn-save" id="btnSave">Save</button>
     <div class="saved" id="saved">Saved!</div>
 
-    <div class="card">
-      <div class="card-title">How it works</div>
+    <div class="col-right">
+      <div class="card">
+        <div class="card-title">How it works</div>
 
-      <div class="help-item">
-        <div class="q">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
-          Full Page
+        <div id="howItWorksList">
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+            Full Page
+          </div>
+          <div class="a">Click the icon: it scrolls the page for you and stitches every part into one image, top to bottom.</div>
         </div>
-        <div class="a">Click the icon: it scrolls the page for you and stitches every part into one image, top to bottom.</div>
-      </div>
 
-      <div class="help-item">
-        <div class="q">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-          Visible Only
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            Visible Only
+          </div>
+          <div class="a">Click the icon: instant screenshot of exactly what's on screen right now, nothing more.</div>
         </div>
-        <div class="a">Click the icon: instant screenshot of exactly what's on screen right now, nothing more.</div>
-      </div>
 
-      <div class="help-item">
-        <div class="q">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg>
-          Select Area
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg>
+            Select Area
+          </div>
+          <div class="a">Click the icon, then drag a rectangle. Drag near the top or bottom edge to auto-scroll — you can select an area taller than the screen.</div>
         </div>
-        <div class="a">Click the icon, then drag a rectangle. Drag near the top or bottom edge to auto-scroll — you can select an area taller than the screen.</div>
-      </div>
 
-      <div class="help-item">
-        <div class="q">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
-          After every capture
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
+            After every capture
+          </div>
+          <div class="a">The image is saved to a "screenshots" folder inside your Downloads, and — if "Copy to clipboard" is on above — also copied, so you can just press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste it anywhere.</div>
         </div>
-        <div class="a">The image is saved to a "screenshots" folder inside your Downloads, and — if "Copy to clipboard" is on above — also copied, so you can just press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste it anywhere.</div>
-      </div>
 
-      <div class="help-item">
-        <div class="q">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-          Choosing a mode
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+            Choosing a mode
+          </div>
+          <div class="a">Pick a mode above and hit Save — it becomes the one-click default. Right-click the icon any time to come back here and switch.</div>
         </div>
-        <div class="a">Pick a mode above and hit Save — it becomes the one-click default. Right-click the icon any time to come back here and switch.</div>
+        </div>
       </div>
     </div>
 
