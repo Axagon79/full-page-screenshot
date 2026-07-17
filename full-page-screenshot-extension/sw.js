@@ -217,8 +217,16 @@ async function doFullCapture(tabId) {
       target: { tabId: tabId },
       func: function() {
         var scrollEl = null;
-        var pageScroll = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var windowScrolls = pageScroll > window.innerHeight + 10;
+        // PROVA PRATICA invece del confronto di altezze: su alcuni siti (es.
+        // betexplorer) scrolla il BODY con overflow proprio, non la finestra —
+        // il documento risulta alto ma window.scrollTo non muove nulla. Quindi:
+        // scrollo di 1px e guardo se la finestra si è mossa DAVVERO. behavior
+        // 'instant' per non farsi ingannare da CSS scroll-behavior:smooth
+        // (renderebbe il movimento asincrono e la lettura darebbe falso fermo).
+        var y0 = window.scrollY;
+        window.scrollTo({ top: (y0 > 0 ? y0 - 1 : y0 + 1), left: window.scrollX, behavior: 'instant' });
+        var windowScrolls = window.scrollY !== y0;
+        window.scrollTo({ top: y0, left: window.scrollX, behavior: 'instant' });
 
         if (!windowScrolls) {
           var all = document.querySelectorAll('*');
@@ -234,7 +242,10 @@ async function doFullCapture(tabId) {
           }
         }
 
-        var useWindow = !scrollEl || scrollEl === document.documentElement || scrollEl === document.body;
+        // Il BODY è un target VALIDO (siti col body-scroller: si muove via
+        // body.scrollTop come qualunque contenitore custom). Solo l'html resta
+        // equivalente alla finestra.
+        var useWindow = !scrollEl || scrollEl === document.documentElement;
         var target = useWindow ? null : scrollEl;
 
         var sy = target ? target.scrollTop : window.scrollY;
@@ -627,9 +638,15 @@ async function doAreaCapture(tabId) {
         function resolveScrollTarget(mx, my) {
           if (scrollTargetResolved) return;
           scrollTargetResolved = true;
-          // Se la finestra scrolla, usa window (caso pagine normali tipo Cornell Law)
-          var pageScroll = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-          if (pageScroll > window.innerHeight + 10) {
+          // Se la finestra scrolla DAVVERO, usa window (pagine normali). Prova
+          // pratica invece del confronto di altezze: sui siti col BODY-scroller
+          // (es. betexplorer) il documento è alto ma window è inchiodata — lì
+          // il target giusto è il body/contenitore, non la finestra.
+          var y0 = window.scrollY;
+          window.scrollTo({ top: (y0 > 0 ? y0 - 1 : y0 + 1), left: window.scrollX, behavior: 'instant' });
+          var winMoved = window.scrollY !== y0;
+          window.scrollTo({ top: y0, left: window.scrollX, behavior: 'instant' });
+          if (winMoved) {
             scrollTarget = null;
             return;
           }
