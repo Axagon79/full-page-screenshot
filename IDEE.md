@@ -2,7 +2,8 @@
 
 Repo: github.com/Axagon79/full-page-screenshot
 Cartella: C:\Progetti\full-page-screenshot\full-page-screenshot-extension\
-Ultimo aggiornamento: 17 luglio 2026
+Ultimo aggiornamento: 17 luglio 2026 (sera)
+Versione corrente nel manifest: 9.8 (pubblicata sullo store)
 
 ---
 
@@ -10,12 +11,19 @@ Ultimo aggiornamento: 17 luglio 2026
 
 - Versioni 9.7 e 9.8 pubblicate sullo store: fix Full/Area su app con scroll
   interno (scocca fixed non più cancellata, sidebar non più ripetuta) e fix
-  siti col body-scroller (es. betexplorer: lo scroll ora parte).
-- Oggi in lavorazione le tre feature veloci: **#5 changelog**, **#7 restyling
-  settings**, **#6 invito a recensire**.
+  siti col body-scroller (es. betexplorer: lo scroll ora parte). **9.8 è la
+  versione corrente** — nessun bump di versione/pacchetto per le feature qui
+  sotto: restano nel codice in attesa del prossimo giro di pubblicazione.
+- Fatte oggi, nel codice ma non ancora impacchettate: **#5 changelog**,
+  **#7 restyling settings**, **#6 invito a recensire**, più una voce non
+  presente in questa lista originaria — una sezione "How it works" nelle
+  impostazioni che spiega a parole semplici le tre modalità, dove finisce il
+  file (cartella "screenshots" dentro Download) e come cambiare modalità.
 - **#6 corretta**: il meccanismo "4-5 stelle → store, 1-3 → form interno" è
   *review gating* e viola le policy del Chrome Web Store. Versione adottata:
   banner con ENTRAMBI i link sempre visibili (stella + feedback).
+- Prossimo lavoro vero: **#1 Multi-snip stessa pagina** (deciso 17/07, non
+  ancora iniziato).
 
 ---
 
@@ -42,24 +50,23 @@ Nota tecnica 17/07: il pacchetto cresce di ~15MB (WASM + dati lingua inglese inc
 ### 4. Editor avanzato
 Annotazioni, frecce, blur sopra lo screenshot. Era voce roadmap Pro, mai dettagliata. Il più grosso dei quattro (canvas, strumenti, undo).
 
-### 5. Changelog / what's-new dentro l'estensione — IN LAVORAZIONE 17/07
+### 5. Changelog / what's-new dentro l'estensione — FATTO 17/07 (nel codice, non ancora pubblicato)
 Avviso novità dopo un update, così le feature non escono in silenzio.
-Meccanica: `chrome.runtime.onInstalled` con `reason: "update"` → badge "NEW" sull'icona + avviso nelle impostazioni (NON nel popup a sorpresa: il popup parte subito con la cattura). **Una volta sola** (salvare in storage la versione già vista).
-Da fare presto: è infrastruttura riusabile per ogni feature futura.
+Meccanica implementata: `chrome.runtime.onInstalled` con `reason: "update"` → badge "NEW" sull'icona + avviso nelle impostazioni (NON nel popup a sorpresa: il popup parte subito con la cattura). Si spegne aprendo Capture Mode. Changelog per versione scritto in `settings.js` (oggetto `CHANGELOG`), da aggiornare a ogni versione con novità visibili.
 
-### 6. Invito a recensire — IN LAVORAZIONE 17/07
+### 6. Invito a recensire — FATTO 17/07 (nel codice, non ancora pubblicato)
 Slogan scelto: **"Se ti ho aiutato, lascia una stella o un commento"** (in inglese: *"If I helped you, leave a star or a comment"*).
 Prima persona — l'estensione parla, si vede che dietro c'è una persona. Niente lagna tipo "aiutami, sono piccolo".
-Meccanica: dopo N catture riuscite (momento di massima soddisfazione), banner discreto, una volta sola, link diretto a `.../reviews`.
-~~Se l'utente dà 4-5 stelle → store; se 1-3 → form interno di feedback.~~ **NO: è review gating, vietato dalle policy CWS.** Entrambi i link sempre visibili: "lascia una stella" + "dimmi cosa migliorare".
+Implementato in `sw.js`: dopo 15 catture riuscite (soglia `SOGLIA_INVITO_RECENSIONE`), banner sulla pagina, una volta sola, con ENTRAMBI i link sempre visibili — "★ Leave a star" (allo store) e "Tell me what to improve" (mailto). Stesso invito ripetuto in fondo a `settings.html`.
+~~Se l'utente dà 4-5 stelle → store; se 1-3 → form interno di feedback.~~ **NO: è review gating, vietato dalle policy CWS.**
 Nota: "stella o commento" perché "recensione" spaventa, la stella no.
 
-### 7. Restyling settings.html — IN LAVORAZIONE 17/07
-È "un giocattolo". Tre cose da sistemare:
-- Via le emoji (📷📄👁️✂️) → SVG monocrome, stesso stile
-- Un solo colore d'accento (ora: toggle verde + radio blu + Salva verde = look casuale)
-- Card contenitore, spaziature coerenti, respiro
-Riferimento di stile: la grafica promozionale "Copy to Clipboard" (quella sì è di livello).
+### 7. Restyling settings.html — FATTO 17/07 (nel codice, non ancora pubblicato)
+Era "un giocattolo". Sistemato:
+- Via le emoji (📷📄👁️✂️) → SVG monocrome a contorno, stesso stile per tutte le icone
+- Un solo colore d'accento, il ciano `#00d4ff` (prima: toggle verde + radio blu + Salva verde = look casuale)
+- Card contenitore per ogni sezione, spaziature coerenti, respiro
+- Aggiunta non prevista in origine: sezione "How it works" in fondo alla pagina — spiega a parole semplici le tre modalità, dove finisce il file salvato (cartella "screenshots" dentro Download, non Download direttamente — verificato nel codice `sw.js` dopo una correzione), e come cambiare modalità.
 
 ### 8. Descrizione store in elenco puntato
 Rifare la descrizione con elenco chiaro **di quello che l'estensione fa davvero** (niente feature copiate dai concorrenti).
