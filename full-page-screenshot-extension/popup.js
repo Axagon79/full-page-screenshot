@@ -35,16 +35,40 @@ chrome.storage.local.get('captureMode', function(data) {
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (tabs[0]) {
       if (mode === 'multi') {
-        // Multi Snip: si apre l'editor con la scelta del primo pezzo
         pct.textContent = '▦';
         pct.style.fontSize = '28px';
         text.textContent = 'Multi Snip...';
-        chrome.runtime.sendMessage({
-          action: 'startCapture',
-          tabId: tabs[0].id,
-          mode: mode
+        var avviaMulti = function() {
+          chrome.runtime.sendMessage({
+            action: 'startCapture',
+            tabId: tabs[0].id,
+            mode: mode
+          });
+          setTimeout(function() { window.close(); }, 600);
+        };
+        // Se manca il permesso "segui tra le schede", si chiede QUI: il
+        // click nel popup è un gesto valido per permissions.request (dalle
+        // impostazioni la richiesta parte solo ri-cliccando l'opzione, e
+        // chi aveva già Multi Snip selezionato non la vedeva mai).
+        chrome.permissions.contains({ origins: ['<all_urls>'] }, function(ok) {
+          if (ok) { avviaMulti(); return; }
+          text.textContent = 'Multi Snip';
+          document.getElementById('permessoMulti').style.display = 'flex';
+          document.getElementById('pOk').addEventListener('click', function() {
+            // La sessione parte comunque: se il prompt di Chrome chiude il
+            // popup, il permesso concesso resta e il widget è già in pagina.
+            chrome.runtime.sendMessage({
+              action: 'startCapture',
+              tabId: tabs[0].id,
+              mode: mode
+            });
+            chrome.permissions.request({ origins: ['<all_urls>'] }, function() {
+              void chrome.runtime.lastError;
+              window.close();
+            });
+          });
+          document.getElementById('pNo').addEventListener('click', avviaMulti);
         });
-        setTimeout(function() { window.close(); }, 600);
       } else if (mode === 'area') {
         // Mostra messaggio e chiudi
         pct.textContent = '\u2702';

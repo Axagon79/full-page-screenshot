@@ -103,6 +103,16 @@
     body.error .water { height: 0% !important; }
     body.error .pct { color: #ef4444; font-size: 28px; }
     body.error .text { color: #ef4444; }
+    /* Richiesta permesso "segui tra le schede" (solo Multi Snip) */
+    #permessoMulti { display: none; flex-direction: column; gap: 6px; width: 100%; }
+    #permessoMulti .spiega { font-size: 10px; color: #aab; text-align: center; line-height: 1.4; }
+    .pbtn {
+      font-family: inherit; font-size: 11px; font-weight: 600; padding: 6px;
+      border-radius: 6px; border: 1px solid rgba(0,212,255,0.4);
+      background: transparent; color: #00d4ff; cursor: pointer;
+    }
+    .pbtn.primario { background: #00d4ff; color: #0d1220; border-color: #00d4ff; }
+    .pbtn:hover { filter: brightness(1.15); }
   </style>
 </head>
 <body>
@@ -115,6 +125,11 @@
     <div class="pct" id="pct">0%</div>
   </div>
   <div class="text" id="text">Avvio...</div>
+  <div id="permessoMulti">
+    <div class="spiega">Let the Multi Snip panel follow you across tabs?</div>
+    <button id="pOk" class="pbtn primario">Yes, enable</button>
+    <button id="pNo" class="pbtn">Not now</button>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>
