@@ -4,6 +4,7 @@
   "version": "9.8",
   "description": "Full page screenshots, scrolling capture & scroll selection. Auto-copies to clipboard. No account, no tracking — 100% on-device.",
   "permissions": ["activeTab", "scripting", "downloads", "storage", "contextMenus"],
+  "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "sw.js"
   },

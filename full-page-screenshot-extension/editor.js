@@ -5,8 +5,8 @@
 // la tela (sovrapposizioni permesse, calamita sui bordi) e si ridimensiona
 // da tutti e 4 gli angoli (proporzionale) e dai 4 lati (stira quel lato).
 
-var blocchi = [];    // { img, natW, natH, sx, sy, x, y } — ordine = sovrapposizione
-var caricati = 0;
+var blocchi = [];    // { pid, img, natW, natH, sx, sy, x, y } — ordine = sovrapposizione
+var importati = new Set();  // id dei pezzi di sessione già portati in tela
 var selezionato = -1;
 
 var GAP = 14;        // respiro usato dalla calamita
@@ -49,12 +49,36 @@ function clampBlocco(b) {
 
 // ---- IMPORT DEI PEZZI DALLA SESSIONE ----
 
-async function importaNuoviPezzi() {
+// Le esecuzioni sono SERIALIZZATE: due eventi storage ravvicinati non
+// devono intrecciare gli import (pezzi doppi in tela).
+var codaImport = Promise.resolve();
+function importaNuoviPezzi() {
+  codaImport = codaImport.then(sincronizzaConSessione).catch(function(e) {
+    console.warn('Sync pezzi fallita:', e);
+  });
+  return codaImport;
+}
+
+// La tela si allinea alla sessione PER IDENTITÀ (ogni pezzo ha un id), non
+// per conteggio: un undo dal widget toglie il blocco anche dalla tela, un
+// redo lo riporta; un blocco eliminato a mano qui dentro non risorge.
+async function sincronizzaConSessione() {
   var st = await chrome.storage.session.get('multi');
   var m = st.multi;
   if (!m || !m.pieces) { render(); return; }
-  for (var i = caricati; i < m.pieces.length; i++) {
+  var vivi = new Set();
+  m.pieces.forEach(function(p) { if (p.id != null) vivi.add(p.id); });
+  for (var k = blocchi.length - 1; k >= 0; k--) {
+    if (blocchi[k].pid != null && !vivi.has(blocchi[k].pid)) {
+      blocchi.splice(k, 1);
+      selezionato = -1;
+    }
+  }
+  importati.forEach(function(id) { if (!vivi.has(id)) importati.delete(id); });
+  for (var i = 0; i < m.pieces.length; i++) {
     var p = m.pieces[i];
+    if (p.id != null && importati.has(p.id)) continue;
+    if (p.id != null) importati.add(p.id);  // prima dell'await: mai doppioni
     try {
       var im = await caricaImmagine(p.img);
       var w = im.naturalWidth, h = im.naturalHeight;
@@ -63,7 +87,7 @@ async function importaNuoviPezzi() {
         // grande se il pezzo da solo la supera — mai su misura del pezzo.
         canvasW = Math.max(DEFAULT_W, w + MARGINE * 2);
         canvasH = Math.max(DEFAULT_H, h + MARGINE * 2);
-        blocchi.push({ img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
+        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
       } else {
         // pezzi successivi: sotto la pila; la tela cresce SOLO se non ci stanno
         var fondo = 0;
@@ -71,14 +95,14 @@ async function importaNuoviPezzi() {
         var y = fondo + GAP;
         if (w + MARGINE * 2 > canvasW) canvasW = w + MARGINE * 2;
         if (y + h + MARGINE > canvasH) canvasH = y + h + MARGINE;
-        blocchi.push({ img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: y });
+        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: y });
       }
       selezionato = blocchi.length - 1;
     } catch (e) {
+      if (p.id != null) importati.delete(p.id);
       console.warn('Pezzo illeggibile, saltato:', e);
     }
   }
-  caricati = Math.max(caricati, m.pieces.length);
   render();
   // Editor aperto e vuoto: si apre da solo il pannello di scelta.
   if (!blocchi.length && !pannelloAutoAperto) {
@@ -259,20 +283,6 @@ function creaBlocco(i) {
 
   var ctr = document.createElement('div');
   ctr.className = 'controlli';
-  ctr.appendChild(bottone('⬆', 'Bring forward (overlap on top)', function() {
-    if (i < blocchi.length - 1) {
-      var t = blocchi[i]; blocchi[i] = blocchi[i + 1]; blocchi[i + 1] = t;
-      selezionato = i + 1;
-      render();
-    }
-  }));
-  ctr.appendChild(bottone('⬇', 'Send backward (overlap below)', function() {
-    if (i > 0) {
-      var t = blocchi[i]; blocchi[i] = blocchi[i - 1]; blocchi[i - 1] = t;
-      selezionato = i - 1;
-      render();
-    }
-  }));
   ctr.appendChild(bottone('\u{1F5D1}', 'Remove', function() {
     blocchi.splice(i, 1);
     selezionato = -1;
@@ -295,9 +305,11 @@ function creaBlocco(i) {
   });
 
   // LA MANINA: trascinamento libero con calamita, dentro la tela.
+  // Il click porta il pezzo SOPRA gli altri (come nei collage veri).
   wrap.addEventListener('mousedown', function(e) {
     if (e.target.closest('.controlli') || e.target.classList.contains('man')) return;
     e.preventDefault();
+    i = portaSopra(i);
     selezionato = i;
     var startX = e.clientX, startY = e.clientY;
     var origX = b.x, origY = b.y;
@@ -322,9 +334,19 @@ function creaBlocco(i) {
   return wrap;
 }
 
+// Porta il blocco in cima alla pila (ordine array = sovrapposizione) e
+// restituisce il suo nuovo indice: è il "click-to-front" dell'editor.
+function portaSopra(i) {
+  if (i >= blocchi.length - 1) return i;
+  var b = blocchi.splice(i, 1)[0];
+  blocchi.push(b);
+  return blocchi.length - 1;
+}
+
 function iniziaResize(e, i, hnd) {
   e.preventDefault();
   e.stopPropagation();
+  i = portaSopra(i);
   selezionato = i;
   var b = blocchi[i];
   var startX = e.clientX, startY = e.clientY;

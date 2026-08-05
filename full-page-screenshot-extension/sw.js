@@ -57,10 +57,10 @@ chrome.runtime.onMessage.addListener(function(msg, sender) {
       }
     });
   }
-  // L'editor chiede un altro pezzo: si torna sulla scheda della pagina,
-  // si cattura col tipo richiesto, e il pezzo arriva in sessione.
+  // L'editor (o il widget su una scheda qualsiasi) chiede un altro pezzo:
+  // si cattura col tipo richiesto e il pezzo arriva in sessione.
   if (msg.action === 'multiAdd') {
-    multiAggiungiDaEditor(msg.kind);
+    multiAggiungiDaEditor(msg.kind, sender && sender.tab ? sender.tab.id : null);
     return;
   }
   // Il widget sulla pagina chiede di comporre: si apre l'editor.
@@ -69,21 +69,39 @@ chrome.runtime.onMessage.addListener(function(msg, sender) {
     return;
   }
   // Il widget chiede di buttare fuori l'ultimo pezzo (cattura sbagliata):
-  // via dal mucchio, e il widget si ridisegna col conteggio aggiornato.
+  // finisce nel cestino della sessione, da cui il redo può ripescarlo.
   if (msg.action === 'multiUndo') {
-    (async function() {
+    conSessione(async function() {
       var m = await multiSessione();
       if (!m || !m.pieces.length) return;
-      m.pieces.pop();
+      m.trash = m.trash || [];
+      m.trash.push(m.pieces.pop());
       await chrome.storage.session.set({ multi: m });
+      await multiAggiornaBadge();
       var tid = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : m.sourceTabId;
       await multiMostraWidget(tid);
-    })();
+    });
+    return;
+  }
+  // Redo: l'ultimo pezzo tolto per sbaglio torna nel mucchio.
+  if (msg.action === 'multiRedo') {
+    conSessione(async function() {
+      var m = await multiSessione();
+      if (!m || !m.trash || !m.trash.length) return;
+      m.pieces.push(m.trash.pop());
+      await chrome.storage.session.set({ multi: m });
+      await multiAggiornaBadge();
+      var tid = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : m.sourceTabId;
+      await multiMostraWidget(tid);
+    });
     return;
   }
   // L'editor ha salvato (o annullato): la sessione si chiude.
   if (msg.action === 'multiDone') {
-    chrome.storage.session.remove('multi');
+    chrome.storage.session.remove('multi').then(function() {
+      multiAggiornaBadge();
+      multiRimuoviWidgetOvunque();
+    });
     return;
   }
 });
@@ -100,15 +118,45 @@ async function multiSessione() {
   return st.multi || null;
 }
 
-async function multiApriSessione(tabId) {
-  var m = (await multiSessione()) || { active: true, sourceTabId: tabId, editorTabId: null, pieces: [] };
-  m.active = true;
-  // Se l'icona viene cliccata sulla scheda dell'EDITOR, la sorgente resta
-  // quella vecchia: non ha senso catturare l'editor stesso.
-  if (m.editorTabId == null || tabId !== m.editorTabId) {
-    m.sourceTabId = tabId;
+// Le MODIFICHE alla sessione passano tutte da qui, in coda (una alla volta):
+// due click ravvicinati su undo/redo — o un click mentre arriva una cattura —
+// non devono leggere lo stesso stato e sovrascriversi a vicenda.
+var codaMulti = Promise.resolve();
+function conSessione(fn) {
+  var p = codaMulti.then(function() { return fn(); });
+  codaMulti = p.catch(function() {});  // un errore non blocca la coda
+  return p;
+}
+
+// Badge sull'icona: durante la sessione mostra il conteggio pezzi (così la
+// sessione resta visibile anche cambiando scheda); a sessione chiusa torna
+// il badge "NEW" delle novità, se ancora da leggere, o niente.
+async function multiAggiornaBadge() {
+  var m = await multiSessione();
+  if (m && m.active) {
+    chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
+    if (chrome.action.setBadgeTextColor) {
+      chrome.action.setBadgeTextColor({ color: '#1a1a2e' });
+    }
+    chrome.action.setBadgeText({ text: String(m.pieces.length) });
+  } else {
+    var st = await chrome.storage.local.get('newsUnread');
+    chrome.action.setBadgeText({ text: st.newsUnread ? 'NEW' : '' });
   }
-  await chrome.storage.session.set({ multi: m });
+}
+
+async function multiApriSessione(tabId) {
+  return conSessione(async function() {
+    var m = (await multiSessione()) || { active: true, sourceTabId: tabId, editorTabId: null, pieces: [], trash: [] };
+    m.active = true;
+    // Se l'icona viene cliccata sulla scheda dell'EDITOR, la sorgente resta
+    // quella vecchia: non ha senso catturare l'editor stesso.
+    if (m.editorTabId == null || tabId !== m.editorTabId) {
+      m.sourceTabId = tabId;
+    }
+    await chrome.storage.session.set({ multi: m });
+    await multiAggiornaBadge();
+  });
 }
 
 // Mostra l'editor: riattiva la scheda se esiste, altrimenti la crea.
@@ -129,9 +177,15 @@ async function multiMostraEditor() {
 }
 
 async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
+  return conSessione(async function() {
   var m = await multiSessione();
   if (!m) return false;
-  m.pieces.push({ img: dataUrl, tipo: tipo });
+  // Una nuova cattura azzera il redo (semantica classica) e libera quota —
+  // ma SOLO se l'aggiunta riesce: su fallimento il cestino torna com'era.
+  var cestinoPrima = m.trash || [];
+  m.trash = [];
+  m.nextId = (m.nextId || 0) + 1;
+  m.pieces.push({ img: dataUrl, tipo: tipo, id: m.nextId });
   m.sourceTabId = tabId;
   try {
     await chrome.storage.session.set({ multi: m });
@@ -143,11 +197,16 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
       m.pieces[m.pieces.length - 1].img = ridotto;
       await chrome.storage.session.set({ multi: m });
     } catch (e2) {
+      // Il pezzo proprio non ci sta: si scarta, il cestino si ripristina e
+      // il widget ricompare (si era tolto da solo prima della cattura).
       m.pieces.pop();
+      m.trash = cestinoPrima;
       await chrome.storage.session.set({ multi: m });
+      await multiMostraWidget(tabId);
       return false;
     }
   }
+  await multiAggiornaBadge();
   // Se l'editor è GIÀ aperto si torna lì (fase di composizione); altrimenti
   // si resta sulla pagina e si riaggiorna il widget di raccolta col nuovo
   // conteggio — niente ping-pong con l'editor mentre si raccolgono i pezzi.
@@ -167,6 +226,7 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
     await multiMostraWidget(tabId);
   }
   return true;
+  });
 }
 
 // Widget di raccolta SULLA pagina: scegli il tipo di cattura, vedi quanti
@@ -177,10 +237,23 @@ async function multiMostraWidget(tabId) {
   if (!m) return;
   try {
     var ultimo = m.pieces.length ? m.pieces[m.pieces.length - 1].tipo : null;
+    var ripristinabile = (m.trash && m.trash.length) ? m.trash[m.trash.length - 1].tipo : null;
+    // Capienza: il magazzino di sessione ha un tetto (~10MB) — la barra sul
+    // widget mostra quanto è pieno il recipiente e quanti MB restano.
+    var QUOTA = chrome.storage.session.QUOTA_BYTES || 10485760;
+    var usati = 0;
+    try {
+      usati = await chrome.storage.session.getBytesInUse(null);
+    } catch (senzaMisura) {
+      m.pieces.forEach(function(p) { usati += p.img.length; });
+      (m.trash || []).forEach(function(p) { usati += p.img.length; });
+    }
+    var pctPieno = Math.min(100, Math.round(usati / QUOTA * 100));
+    var mbTesto = (usati / 1048576).toFixed(1) + ' / ' + Math.round(QUOTA / 1048576) + ' MB';
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      args: [m.pieces.length, ultimo],
-      func: function(quanti, ultimoTipo) {
+      args: [m.pieces.length, ultimo, ripristinabile, pctPieno, mbTesto],
+      func: function(quanti, ultimoTipo, redoTipo, pctPieno, mbTesto) {
         var old = document.getElementById('__shot_multi_widget');
         if (old) old.remove();
         var w = document.createElement('div');
@@ -213,19 +286,54 @@ async function multiMostraWidget(tabId) {
           chrome.runtime.sendMessage({ action: 'multiDone' });
         });
         testa.appendChild(tit);
-        if (quanti > 0) {
-          var nomi = { area: 'Area', visible: 'Screen', full: 'Page' };
-          var undo = document.createElement('span');
-          undo.textContent = '↶';
-          undo.title = 'Undo — remove last piece' + (nomi[ultimoTipo] ? ' (' + nomi[ultimoTipo] + ')' : '');
-          undo.style.cssText = 'cursor:pointer;color:#00d4ff;font-size:15px;line-height:1;padding:2px 4px;';
-          undo.addEventListener('click', function() {
-            chrome.runtime.sendMessage({ action: 'multiUndo' });
-          });
-          testa.appendChild(undo);
+        // Frecce undo/redo sempre visibili; spente (grigie) quando non
+        // c'è nulla da annullare o ripristinare.
+        var nomi = { area: 'Area', visible: 'Screen', full: 'Page' };
+        function freccia(ch, attiva, tip, azione) {
+          var s = document.createElement('span');
+          s.textContent = ch;
+          s.title = tip;
+          s.style.cssText = 'font-size:15px;line-height:1;padding:2px 4px;' +
+            (attiva ? 'cursor:pointer;color:#00d4ff;' : 'cursor:default;color:#4a5262;');
+          if (attiva) {
+            s.addEventListener('click', function() {
+              chrome.runtime.sendMessage({ action: azione });
+            });
+          }
+          return s;
         }
+        testa.appendChild(freccia('↶', quanti > 0,
+          quanti > 0
+            ? 'Undo — remove last piece' + (nomi[ultimoTipo] ? ' (' + nomi[ultimoTipo] + ')' : '')
+            : 'Nothing to undo',
+          'multiUndo'));
+        testa.appendChild(freccia('↷', !!redoTipo,
+          redoTipo
+            ? 'Redo — restore removed piece' + (nomi[redoTipo] ? ' (' + nomi[redoTipo] + ')' : '')
+            : 'Nothing to redo',
+          'multiRedo'));
         testa.appendChild(chiudi);
         w.appendChild(testa);
+
+        // Recipiente che si riempie: quota di sessione usata dai pezzi.
+        var serb = document.createElement('div');
+        serb.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        serb.title = 'Session space used by your pieces (' + pctPieno + '%)';
+        var barra = document.createElement('div');
+        barra.style.cssText = 'flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,0.12);overflow:hidden;';
+        var pieno = document.createElement('div');
+        var colore = pctPieno >= 90 ? '#ff5c5c' : (pctPieno >= 70 ? '#ffb020' : '#00d4ff');
+        pieno.style.cssText = 'height:100%;width:0;border-radius:4px;background:' + colore + ';transition:width 0.6s ease;';
+        barra.appendChild(pieno);
+        var eti = document.createElement('div');
+        eti.textContent = mbTesto;
+        eti.style.cssText = 'font-size:9px;color:#8a93a6;white-space:nowrap;';
+        serb.appendChild(barra);
+        serb.appendChild(eti);
+        w.appendChild(serb);
+        requestAnimationFrame(function() {
+          pieno.style.width = (quanti ? Math.max(pctPieno, 2) : pctPieno) + '%';
+        });
 
         var riga = document.createElement('div');
         riga.style.cssText = 'display:flex;gap:5px;';
@@ -237,7 +345,7 @@ async function multiMostraWidget(tabId) {
         });
         w.appendChild(riga);
 
-        var comp = bott('✓ Compose (' + quanti + ')',
+        var comp = bott('✓ Save & Compose (' + quanti + ')',
           'background:#00d4ff;color:#0d1220;font-weight:700;border-color:#00d4ff;', function() {
           w.remove();
           chrome.runtime.sendMessage({ action: 'multiCompose' });
@@ -273,9 +381,15 @@ async function comprimiInJpeg(dataUrl) {
   });
 }
 
-async function multiAggiungiDaEditor(kind) {
+async function multiAggiungiDaEditor(kind, daTabId) {
   var m = await multiSessione();
   if (!m) return;
+  // Se il click arriva dal widget su una scheda qualunque (pannellino che
+  // segue tra le tab), è QUELLA la pagina da catturare.
+  if (daTabId != null && daTabId !== m.editorTabId && daTabId !== m.sourceTabId) {
+    m.sourceTabId = daTabId;
+    await chrome.storage.session.set({ multi: m });
+  }
   try {
     var tab = await chrome.tabs.get(m.sourceTabId);
     await chrome.tabs.update(m.sourceTabId, { active: true });
@@ -301,8 +415,66 @@ async function multiAggiungiDaEditor(kind) {
 chrome.tabs.onRemoved.addListener(function(tabId) {
   chrome.storage.session.get('multi').then(function(st) {
     if (st.multi && st.multi.editorTabId === tabId) {
-      chrome.storage.session.remove('multi');
+      chrome.storage.session.remove('multi').then(function() {
+        multiAggiornaBadge();
+        multiRimuoviWidgetOvunque();
+      });
     }
+  });
+});
+
+// A sessione chiusa il pannellino va tolto da TUTTE le schede dove era
+// comparso (col permesso multi-tab può essere ovunque). Sulle schede non
+// accessibili fallisce in silenzio.
+function multiRimuoviWidgetOvunque() {
+  chrome.tabs.query({}, function(tabs) {
+    (tabs || []).forEach(function(t) {
+      chrome.scripting.executeScript({
+        target: { tabId: t.id },
+        func: function() {
+          var el = document.getElementById('__shot_multi_widget');
+          if (el) el.remove();
+        }
+      }).catch(function() {});
+    });
+  });
+}
+
+// Il pannellino SEGUE l'utente tra le schede solo se ha concesso l'accesso
+// ai siti (permesso opzionale, richiesto dalle impostazioni quando si
+// sceglie Multi Snip). Senza permesso resta il giro classico: click
+// sull'icona sulla scheda nuova.
+function multiPuoSeguire() {
+  return new Promise(function(res) {
+    try {
+      chrome.permissions.contains({ origins: ['<all_urls>'] }, function(ok) {
+        void chrome.runtime.lastError;
+        res(!!ok);
+      });
+    } catch (e) { res(false); }
+  });
+}
+
+// Cambio scheda: sessione attiva + permesso concesso = il pannellino
+// compare da solo sulla scheda nuova (pagine protette: fallisce zitto).
+chrome.tabs.onActivated.addListener(function(info) {
+  multiSessione().then(function(m) {
+    if (!m || !m.active || info.tabId === m.editorTabId) return;
+    multiPuoSeguire().then(function(ok) {
+      if (ok) multiMostraWidget(info.tabId);
+    });
+  });
+});
+
+// Fine caricamento pagina: il widget non sopravvive alle navigazioni,
+// quindi sulla scheda attiva lo si ripianta.
+chrome.tabs.onUpdated.addListener(function(tabId, change, tab) {
+  if (change.status !== 'complete' || !tab || !tab.active) return;
+  multiSessione().then(function(m) {
+    if (!m || !m.active || tabId === m.editorTabId) return;
+    multiPuoSeguire().then(function(ok) {
+      if (ok) multiMostraWidget(tabId);
+    });
   });
 });
 

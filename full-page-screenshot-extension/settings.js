@@ -42,6 +42,15 @@ document.querySelectorAll('.option[data-mode]').forEach(function(opt) {
     var mode = this.getAttribute('data-mode');
     chrome.storage.local.set({ captureMode: mode });
     setActive(mode);
+    // Multi Snip: chiede UNA volta per sempre l'accesso ai siti, così il
+    // pannellino di raccolta segue l'utente quando cambia scheda. Se già
+    // concesso Chrome non mostra nulla; se rifiutato tutto funziona lo
+    // stesso, col click sull'icona scheda per scheda.
+    if (mode === 'multi' && chrome.permissions && chrome.permissions.request) {
+      chrome.permissions.request({ origins: ['<all_urls>'] }, function() {
+        void chrome.runtime.lastError;  // rifiuto: nessun problema
+      });
+    }
   });
 });
 
