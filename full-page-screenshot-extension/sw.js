@@ -135,6 +135,11 @@ function conSessione(fn) {
 // pezzo. Sulle altre schede il pannellino continua a seguire l'utente.
 var multiCatturaTab = null;
 
+// True solo se l'ultima cattura è stata chiesta DALL'editor (+ Add piece):
+// in quel caso, a pezzo salvato, si torna all'editor. Se invece è partita
+// dal pannellino su una pagina, si resta lì a raccogliere.
+var multiTornaAllEditor = false;
+
 // Badge sull'icona: durante la sessione mostra il conteggio pezzi (così la
 // sessione resta visibile anche cambiando scheda); a sessione chiusa torna
 // il badge "NEW" delle novità, se ancora da leggere, o niente.
@@ -232,11 +237,15 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
       await chrome.storage.session.set({ multi: m });
     }
   }
-  if (editorVivo) {
+  if (editorVivo && multiTornaAllEditor) {
+    // La cattura era stata chiesta dall'editor: si torna lì.
     try { await chrome.tabs.update(m.editorTabId, { active: true }); } catch (e) {}
   } else {
+    // Cattura dal pannellino: si resta sulla pagina a raccogliere; l'editor
+    // (anche aperto in background) riceve comunque il pezzo via storage.
     await multiMostraWidget(tabId);
   }
+  multiTornaAllEditor = false;
   return true;
   });
 }
@@ -420,6 +429,7 @@ async function multiAggiungiDaEditor(kind, daTabId) {
     return mm;
   });
   if (!m) return;
+  multiTornaAllEditor = (daTabId != null && m.editorTabId != null && daTabId === m.editorTabId);
   try {
     var tab = await chrome.tabs.get(m.sourceTabId);
     await chrome.tabs.update(m.sourceTabId, { active: true });
