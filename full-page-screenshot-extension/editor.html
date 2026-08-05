@@ -203,6 +203,22 @@
     .tman-s { bottom: -7px; left: 50%; margin-left: -14px; width: 28px; height: 12px; cursor: ns-resize; }
     .tman-se { right: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nwse-resize; }
 
+    /* Numeretto dei pixel che segue il mouse durante i ridimensionamenti
+       (stesso stile dell'etichetta live della selezione Area) */
+    .pix-badge {
+      position: fixed;
+      z-index: 30;
+      background: #00d4ff;
+      color: #0d1220;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+
     /* Pannello di scelta del tipo di cattura */
     #scelta {
       position: fixed;

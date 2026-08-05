@@ -183,6 +183,20 @@ function render() {
   palco.appendChild(cornice);
 }
 
+// Numeretto dei pixel che segue il mouse durante i ridimensionamenti
+// (come l'etichetta live della selezione Area).
+function creaBadgePixel() {
+  var b = document.createElement('div');
+  b.className = 'pix-badge';
+  document.body.appendChild(b);
+  return b;
+}
+function muoviBadgePixel(b, ev, testo) {
+  b.textContent = testo;
+  b.style.left = (ev.clientX + 14) + 'px';
+  b.style.top = (ev.clientY + 14) + 'px';
+}
+
 // La tela non può mai stringersi sotto il contenuto.
 function minimiTela() {
   var mw = 200, mh = 150;
@@ -199,6 +213,8 @@ function iniziaResizeTela(e, hnd) {
   var startX = e.clientX, startY = e.clientY;
   var w0 = canvasW, h0 = canvasH;
   var k0 = viewK;   // scala congelata: niente feedback mentre si trascina
+  var badge = creaBadgePixel();
+  muoviBadgePixel(badge, e, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   function onMove(ev) {
     var dx = (ev.clientX - startX) / k0;
     var dy = (ev.clientY - startY) / k0;
@@ -206,10 +222,12 @@ function iniziaResizeTela(e, hnd) {
     if (hnd === 'e' || hnd === 'se') canvasW = Math.min(32000, Math.max(min.w, Math.round(w0 + dx)));
     if (hnd === 's' || hnd === 'se') canvasH = Math.min(32000, Math.max(min.h, Math.round(h0 + dy)));
     render();
+    muoviBadgePixel(badge, ev, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
+    badge.remove();
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
@@ -312,6 +330,8 @@ function iniziaResize(e, i, hnd) {
   var startX = e.clientX, startY = e.clientY;
   var x0 = b.x, y0 = b.y;
   var w0 = larghezza(b), h0 = altezza(b);
+  var badge = creaBadgePixel();
+  muoviBadgePixel(badge, e, Math.round(w0) + ' × ' + Math.round(h0) + ' px');
   function onMove(ev) {
     var dx = (ev.clientX - startX) / viewK;
     var dy = (ev.clientY - startY) / viewK;
@@ -344,10 +364,12 @@ function iniziaResize(e, i, hnd) {
     if (hnd === 'n' || hnd === 'nw' || hnd === 'ne') b.y = y0 + (h0 - h);
     clampBlocco(b);
     render();
+    muoviBadgePixel(badge, ev, Math.round(larghezza(b)) + ' × ' + Math.round(altezza(b)) + ' px');
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
+    badge.remove();
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
