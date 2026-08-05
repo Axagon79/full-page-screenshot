@@ -233,14 +233,22 @@ async function salva() {
 
 // ---- BARRA AZIONI ----
 
-$('btnArea').addEventListener('click', function() {
-  chrome.runtime.sendMessage({ action: 'multiAdd', kind: 'area' }).catch(function() {});
+// "+ Add piece" apre il pannello di scelta (replica del menu Capture Mode);
+// la scelta parte la cattura sulla pagina d'origine.
+$('btnAggiungi').addEventListener('click', function() {
+  $('scelta').style.display = 'flex';
 });
-$('btnSchermo').addEventListener('click', function() {
-  chrome.runtime.sendMessage({ action: 'multiAdd', kind: 'visible' }).catch(function() {});
+$('scelta').addEventListener('click', function(e) {
+  if (e.target === $('scelta')) $('scelta').style.display = 'none';
 });
-$('btnPagina').addEventListener('click', function() {
-  chrome.runtime.sendMessage({ action: 'multiAdd', kind: 'full' }).catch(function() {});
+document.querySelectorAll('.opzione').forEach(function(op) {
+  op.addEventListener('click', function() {
+    $('scelta').style.display = 'none';
+    chrome.runtime.sendMessage({ action: 'multiAdd', kind: op.getAttribute('data-kind') }).catch(function() {});
+  });
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') $('scelta').style.display = 'none';
 });
 $('btnAnnulla').addEventListener('click', function() {
   chrome.runtime.sendMessage({ action: 'multiDone' }).catch(function() {});

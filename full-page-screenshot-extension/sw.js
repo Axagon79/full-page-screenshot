@@ -908,9 +908,14 @@ async function doVisibleCapture(tabId) {
 async function doAreaCapture(tabId) {
   try {
     // (le animazioni JS sono già congelate dal listener startCapture)
+    // In sessione Multi Snip l'overlay mostra un testo dedicato, così si
+    // capisce che il pezzo finirà nell'editor e non nel download.
+    var sessioneMulti = await multiSessione();
+    var inMulti = !!(sessioneMulti && sessioneMulti.active);
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function() {
+      args: [inMulti],
+      func: function(inMulti) {
         var old = document.getElementById('__screenshot_area_overlay');
         if (old) old.remove();
         var oldNoSel = document.getElementById('__screenshot_noselect');
@@ -932,7 +937,9 @@ async function doAreaCapture(tabId) {
 
         var info = document.createElement('div');
         info.style.cssText = 'position:fixed;top:8px;right:8px;font-family:Segoe UI,sans-serif;font-size:12px;font-weight:600;color:white;background:rgba(0,0,0,0.7);padding:8px 14px;border-radius:8px;pointer-events:none;';
-        info.textContent = 'Trascina per selezionare l\'area';
+        info.textContent = inMulti
+          ? 'Multi Snip: drag to select a piece — it will be added to the editor'
+          : 'Trascina per selezionare l\'area';
         overlay.appendChild(info);
 
         var startX = 0, startY_doc = 0, dragging = false;
