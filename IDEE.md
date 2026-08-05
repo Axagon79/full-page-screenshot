@@ -29,6 +29,19 @@ Versione corrente nel manifest: 9.8 (pubblicata sullo store)
 
 ## FEATURE IN CODA
 
+### VALIDAZIONE MULTI-SNIP 05/08/2026 (ricerca 4 angoli, 31 candidati)
+**Nessuna estensione Chrome ha il flusso completo**: selezioni multiple
+illimitate → accumulo "+ aggiungi" (anche cross-pagina) → cucitura
+automatica verticale in immagine unica / documento con fonti. I più vicini:
+SelectorsHub "Dual Select" (solo 2 aree, stessa pagina, affiancate),
+FireShot Pro (pagamento + app desktop, concatena solo tab intere), ShareX
+(desktop, regioni da un singolo fermo-schermo). **La domanda esiste ed è
+documentata**: thread Microsoft Q&A senza soluzione, richieste inevase sul
+forum FireShot ("time-consuming" farlo a mano), un intero ecosistema di
+app "stitcher" nato per unire screenshot a mano. Concorrente diretto Handy
+Screenshot (30k utenti, 4,84★): editor+export forte, ma niente multi-snip
+né scroll selection. → Il multi-snip non è una feature: è il posizionamento.
+
 ### 1. Multi-snip stessa pagina
 Selezioni più frammenti d'area sulla stessa pagina → "+ Aggiungi" → "✓ Salva".
 Output a scelta: immagine unica verticale / file separati / testo unico (richiede OCR).
