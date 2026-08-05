@@ -373,8 +373,19 @@ async function doFullCapture(tabId) {
         var ch = window.innerHeight, ot = 0;
         if (target) {
           var rTgt = target.getBoundingClientRect();
-          ot = Math.max(0, Math.round(rTgt.top));
-          ch = target.clientHeight;
+          // clientTop: il bordo superiore dell'elemento non fa parte
+          // dell'area di contenuto che scorre.
+          ot = Math.max(0, Math.round(rTgt.top + (target.clientTop || 0)));
+          // Solo la parte DENTRO lo schermo: clientHeight può sporgere sotto
+          // il viewport (body con margini, scroller alto 100vh sotto una
+          // barra) e senza questo clamp ogni giuntura perderebbe una striscia
+          // di contenuto lasciando una banda trasparente al suo posto.
+          ch = Math.min(target.clientHeight, window.innerHeight - ot);
+          // Contenitore collassato o quasi fuori schermo: il passo di scroll
+          // sarebbe inutilizzabile (con 0 addirittura rows=Infinity = cattura
+          // che non termina MAI). Ripiego sul passo-viewport: cattura
+          // degradata ma sempre finita.
+          if (!(ch >= 50)) { ch = window.innerHeight; ot = 0; }
         }
 
         return {
@@ -581,6 +592,12 @@ async function doFullCapture(tabId) {
             var bandTop = Math.round(ot * k);
             var bandH = Math.round(ch * k);
             var firstH = bandTop + Math.round(Math.min(ph, ch) * k);
+            // Cintura di sicurezza sugli arrotondamenti: mai leggere oltre il
+            // fondo del frame — drawImage clipperebbe la sorgente ma il
+            // cursore avanzerebbe comunque, lasciando una riga trasparente
+            // per giuntura.
+            if (bandTop + bandH > loaded[0].height) bandH = loaded[0].height - bandTop;
+            if (firstH > loaded[0].height) firstH = loaded[0].height;
             var lastRem = ph - (total - 1) * ch;       // contenuto nuovo dell'ultima slice (CSS)
             var lastH = Math.round(lastRem * k);
             if (lastH < 0) lastH = 0;
@@ -1056,8 +1073,18 @@ async function doAreaCapture(tabId) {
         if (el) {
           var rect = el.getBoundingClientRect();
           offsetX = rect.left;
-          offsetY = rect.top;
-          containerH = rect.height;
+          // clientTop: il bordo superiore dell'elemento non fa parte
+          // dell'area di contenuto che scorre.
+          offsetY = Math.max(0, rect.top + (el.clientTop || 0));
+          // Altezza VISIBILE del contenitore: clientHeight (esclude bordi e
+          // scrollbar orizzontale) e comunque non oltre il fondo dello
+          // schermo. rect.height (border-box, non clampato) faceva avanzare
+          // lo scroll più di quanto ogni cattura mostrava: strisce di
+          // contenuto saltate a ogni giuntura.
+          containerH = Math.min(el.clientHeight, window.innerHeight - offsetY);
+          // Contenitore collassato o quasi fuori schermo: passo inutilizzabile,
+          // ripiego sul viewport (cattura degradata ma sempre finita).
+          if (!(containerH >= 50)) { containerH = window.innerHeight; offsetY = 0; }
         }
         return {
           sy: el ? el.scrollTop : window.scrollY,
@@ -1275,7 +1302,7 @@ async function doAreaCapture(tabId) {
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -1317,7 +1344,13 @@ async function doAreaCapture(tabId) {
               startY = offY + deltaPx;
             }
             if (startY > img.height - 1) startY = img.height - 1;
-            var hUtile = img.height - startY;
+            // FONDO UTILE: il contenitore finisce a offY + contH (px reali).
+            // Quello che sta SOTTO (margini, footer fuori dal contenitore)
+            // non scrolla mai: se lasciato nelle slice, all'ultima giuntura
+            // veniva incollato nel composito al posto del contenuto vero.
+            var fondo = Math.min(img.height, offY + Math.round(contH * realRatio));
+            if (fondo <= startY) fondo = img.height;
+            var hUtile = fondo - startY;
             var c = document.createElement('canvas');
             c.width = sw; c.height = hUtile;
             c.getContext('2d').drawImage(img, sx, startY, sw, hUtile, 0, 0, sw, hUtile);
@@ -1433,7 +1466,7 @@ async function doAreaCapture(tabId) {
       // perché la cattura è alta quanto la finestra. Con un contenitore più
       // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
       // e il ritaglio usciva spostato rispetto alla selezione.
-      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1)]
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH]
     });
 
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
