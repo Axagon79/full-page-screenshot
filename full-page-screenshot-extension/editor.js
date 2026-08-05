@@ -158,12 +158,18 @@ function calamita(i, x, y) {
   blocchi.forEach(function(o, j) {
     if (j === i) return;
     var ow = larghezza(o), oh = altezza(o);
+    // Prima il CONTATTO esatto (0px, bordo contro bordo), poi l'affiancato
+    // col respiro (GAP), poi gli allineamenti di bordo e centro.
     if (Math.abs(x - o.x) < S) { bx = o.x; gv = o.x; }
     else if (Math.abs((x + w) - (o.x + ow)) < S) { bx = o.x + ow - w; gv = o.x + ow; }
     else if (Math.abs((x + w / 2) - (o.x + ow / 2)) < S) { bx = o.x + ow / 2 - w / 2; gv = o.x + ow / 2; }
+    else if (Math.abs(x - (o.x + ow)) < S) { bx = o.x + ow; gv = bx; }
+    else if (Math.abs((x + w) - o.x) < S) { bx = o.x - w; gv = o.x; }
     else if (Math.abs(x - (o.x + ow + GAP)) < S) { bx = o.x + ow + GAP; gv = bx; }
     else if (Math.abs((x + w + GAP) - o.x) < S) { bx = o.x - GAP - w; gv = bx + w; }
-    if (Math.abs(y - (o.y + oh + GAP)) < S) { by = o.y + oh + GAP; gh = by; }
+    if (Math.abs(y - (o.y + oh)) < S) { by = o.y + oh; gh = by; }
+    else if (Math.abs((y + h) - o.y) < S) { by = o.y - h; gh = o.y; }
+    else if (Math.abs(y - (o.y + oh + GAP)) < S) { by = o.y + oh + GAP; gh = by; }
     else if (Math.abs((y + h + GAP) - o.y) < S) { by = o.y - GAP - h; gh = by + h; }
     else if (Math.abs(y - o.y) < S) { by = o.y; gh = o.y; }
     else if (Math.abs((y + h) - (o.y + oh)) < S) { by = o.y + oh - h; gh = o.y + oh; }
