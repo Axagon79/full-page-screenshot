@@ -81,6 +81,25 @@ Era "un giocattolo". Sistemato:
 - Card contenitore per ogni sezione, spaziature coerenti, respiro
 - Aggiunta non prevista in origine: sezione "How it works" in fondo alla pagina — spiega a parole semplici le tre modalità, dove finisce il file salvato (cartella "screenshots" dentro Download, non Download direttamente — verificato nel codice `sw.js` dopo una correzione), e come cambiare modalità.
 
+### 10. Modalità "High quality 2×" (aggiunta 05/08/2026, parcheggiata)
+Catture a risoluzione doppia, così lo zoom sgrana al 200% invece che al
+100%. Punto chiave: la pipeline attuale è GIÀ lossless (PNG a risoluzione
+schermo, composizione 1:1) — lo sgranamento è il limite fisico dei pixel
+renderizzati, non una perdita nostra. Per avere più pixel serve
+renderizzare la pagina in grande. Due strade, entrambe con un prezzo:
+- **A. `chrome.tabs.setZoom(2)`** prima della cattura, ripristino dopo:
+  zero permessi nuovi, MA il viewport CSS si dimezza e i siti responsive
+  cambiano layout (rischi di catturare la versione tablet).
+- **B. `chrome.debugger` + `Emulation.setDeviceMetricsOverride`**
+  (deviceScaleFactor 2, la strada di DevTools): layout identico, vera 2×,
+  MA permesso `debugger` = barra gialla "ha avviato il debug" a ogni
+  cattura + revisione store dura + contraddice il posizionamento
+  "permessi minimi" della descrizione nuova.
+Vincoli comuni: limiti canvas Chrome (~16.384px di lato, ~268Mpx di
+area) — sulle pagine lunghe il 2× va cappato o rifiutato con messaggio.
+Candidata naturale come **feature Pro** quando si riapre la
+monetizzazione (Handy vende rifiniture simili nel suo PRO one-time).
+
 ### 8. Descrizione store in elenco puntato
 Rifare la descrizione con elenco chiaro **di quello che l'estensione fa davvero** (niente feature copiate dai concorrenti).
 Includere una sezione onesta "cosa NON fa" (limiti): gestisce le aspettative e aumenta la fiducia.
