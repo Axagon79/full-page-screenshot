@@ -533,6 +533,42 @@ function iniziaResize(e, i, hnd) {
       nw = w0 * f;
       nh = h0 * f;
     }
+    // CALAMITA anche sul ridimensionamento: il bordo che stai tirando si
+    // aggancia ai bordi degli altri pezzi (con linea guida), così porti due
+    // foto alla stessa altezza o larghezza senza andare a occhio.
+    var S = 8 / viewK;
+    var gv = null, gh = null;
+    function aggancioX(edge) {
+      var t = null;
+      blocchi.forEach(function(o, j) {
+        if (j === i) return;
+        var ow = larghezza(o);
+        if (Math.abs(edge - o.x) < S) t = o.x;
+        else if (Math.abs(edge - (o.x + ow)) < S) t = o.x + ow;
+      });
+      return t;
+    }
+    function aggancioY(edge) {
+      var t = null;
+      blocchi.forEach(function(o, j) {
+        if (j === i) return;
+        var oh = altezza(o);
+        if (Math.abs(edge - o.y) < S) t = o.y;
+        else if (Math.abs(edge - (o.y + oh)) < S) t = o.y + oh;
+      });
+      return t;
+    }
+    var tx = null, ty = null;
+    if (hnd.indexOf('e') !== -1) { tx = aggancioX(x0 + nw); if (tx != null) { nw = tx - x0; gv = tx; } }
+    else if (hnd.indexOf('w') !== -1) { tx = aggancioX(x0 + w0 - nw); if (tx != null) { nw = x0 + w0 - tx; gv = tx; } }
+    if (hnd.indexOf('s') !== -1) { ty = aggancioY(y0 + nh); if (ty != null) { nh = ty - y0; gh = ty; } }
+    else if (hnd.indexOf('n') !== -1) { ty = aggancioY(y0 + h0 - nh); if (ty != null) { nh = y0 + h0 - ty; gh = ty; } }
+    if (hnd.length === 2) {
+      // angolo proporzionale: comanda l'asse agganciato (x ha precedenza),
+      // l'altro segue in proporzione.
+      if (tx != null) { nh = h0 * (nw / w0); gh = null; }
+      else if (ty != null) { nw = w0 * (nh / h0); }
+    }
     nw = Math.min(Math.max(30, nw), canvasW);
     nh = Math.min(Math.max(30, nh), canvasH);
     if (hnd.length === 2) {           // angolo: entrambe le scale
@@ -548,6 +584,8 @@ function iniziaResize(e, i, hnd) {
     if (hnd === 'w' || hnd === 'nw' || hnd === 'sw') b.x = x0 + (w0 - w);
     if (hnd === 'n' || hnd === 'nw' || hnd === 'ne') b.y = y0 + (h0 - h);
     clampBlocco(b);
+    guidaV = gv;
+    guidaH = gh;
     render();
     muoviBadgePixel(badge, ev, Math.round(larghezza(b)) + ' × ' + Math.round(altezza(b)) + ' px');
   }
@@ -555,6 +593,11 @@ function iniziaResize(e, i, hnd) {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     badge.remove();
+    if (guidaV != null || guidaH != null) {
+      guidaV = null;
+      guidaH = null;
+      render();
+    }
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);

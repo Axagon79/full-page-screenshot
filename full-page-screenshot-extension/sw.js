@@ -130,9 +130,10 @@ function conSessione(fn) {
   return p;
 }
 
-// True mentre una cattura multi è in volo: i listener che re-iniettano il
-// pannellino stanno fermi, sennò finisce fotografato dentro il pezzo.
-var multiCatturaInCorso = false;
+// Scheda sotto cattura multi (null = nessuna): SOLO su quella scheda il
+// pannellino non va re-iniettato, sennò finisce fotografato dentro il
+// pezzo. Sulle altre schede il pannellino continua a seguire l'utente.
+var multiCatturaTab = null;
 
 // Badge sull'icona: durante la sessione mostra il conteggio pezzi (così la
 // sessione resta visibile anche cambiando scheda); a sessione chiusa torna
@@ -429,8 +430,8 @@ async function multiAggiungiDaEditor(kind, daTabId) {
     return; // la pagina di origine non esiste più: niente da catturare
   }
   // Il pannellino NON deve finire dentro lo screenshot: via dalla pagina
-  // prima dello scatto (i listener di auto-iniezione sono in pausa sotto).
-  multiCatturaInCorso = true;
+  // prima dello scatto (e niente re-iniezioni su QUESTA scheda intanto).
+  multiCatturaTab = m.sourceTabId;
   try {
     await chrome.scripting.executeScript({
       target: { tabId: m.sourceTabId },
@@ -451,7 +452,7 @@ async function multiAggiungiDaEditor(kind, daTabId) {
       await doAreaCapture(m.sourceTabId);
     }
   } finally {
-    multiCatturaInCorso = false;
+    multiCatturaTab = null;
   }
 }
 
@@ -504,11 +505,11 @@ function multiPuoSeguire() {
 // compare da solo sulla scheda nuova (pagine protette: fallisce zitto).
 // Fermo durante le catture: non deve finire dentro lo screenshot.
 chrome.tabs.onActivated.addListener(function(info) {
-  if (multiCatturaInCorso) return;
+  if (info.tabId === multiCatturaTab) return;
   multiSessione().then(function(m) {
     if (!m || !m.active || info.tabId === m.editorTabId) return;
     multiPuoSeguire().then(function(ok) {
-      if (ok && !multiCatturaInCorso) multiMostraWidget(info.tabId);
+      if (ok && info.tabId !== multiCatturaTab) multiMostraWidget(info.tabId);
     });
   });
 });
@@ -517,11 +518,11 @@ chrome.tabs.onActivated.addListener(function(info) {
 // quindi sulla scheda attiva lo si ripianta (mai durante una cattura).
 chrome.tabs.onUpdated.addListener(function(tabId, change, tab) {
   if (change.status !== 'complete' || !tab || !tab.active) return;
-  if (multiCatturaInCorso) return;
+  if (tabId === multiCatturaTab) return;
   multiSessione().then(function(m) {
     if (!m || !m.active || tabId === m.editorTabId) return;
     multiPuoSeguire().then(function(ok) {
-      if (ok && !multiCatturaInCorso) multiMostraWidget(tabId);
+      if (ok && tabId !== multiCatturaTab) multiMostraWidget(tabId);
     });
   });
 });
