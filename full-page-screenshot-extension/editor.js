@@ -98,6 +98,12 @@ async function sincronizzaConSessione() {
         if (y + h + MARGINE > canvasH) canvasH = y + h + MARGINE;
         blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: y });
       }
+      // La tela non può superare il limite dell'export (32000px per lato):
+      // un pezzo fuori misura (full page enorme su schermo retina) viene
+      // adattato dentro da clampBlocco invece di sfondare il foglio.
+      if (canvasW > 32000) canvasW = 32000;
+      if (canvasH > 32000) canvasH = 32000;
+      clampBlocco(blocchi[blocchi.length - 1]);
       selezionato = blocchi.length - 1;
     } catch (e) {
       if (p.id != null) importati.delete(p.id);
@@ -253,13 +259,20 @@ function iniziaResizeTela(e, hnd) {
   var w0 = canvasW, h0 = canvasH;
   var k0 = viewK;
   viewKBloccata = k0;  // il bordo segue il mouse 1:1, refit al rilascio
-  var orig = blocchi.map(function(b) { return { x: b.x, y: b.y }; });
+  // Posizioni di partenza agganciate ALL'OGGETTO, non all'indice: un pezzo
+  // che arriva (o sparisce) a metà trascinamento non deve scombinare gli
+  // altri né mandare le coordinate a NaN.
+  var orig = new Map();
+  blocchi.forEach(function(b) { orig.set(b, { x: b.x, y: b.y }); });
   var minX0 = Infinity, minY0 = Infinity;
   blocchi.forEach(function(b) {
     minX0 = Math.min(minX0, b.x);
     minY0 = Math.min(minY0, b.y);
   });
   if (!isFinite(minX0)) { minX0 = w0; minY0 = h0; }
+  // Tetto: 32000, ma una tela nata più grande (full page enorme) non deve
+  // scattare di colpo al primo tick — può solo restare com'è o stringersi.
+  var capW = Math.max(32000, w0), capH = Math.max(32000, h0);
   var badge = creaBadgePixel();
   muoviBadgePixel(badge, e, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   function onMove(ev) {
@@ -268,19 +281,25 @@ function iniziaResizeTela(e, hnd) {
     var min = minimiTela();
     // Est/sud stirano il bordo; ovest/nord aggiungono (o tolgono) spazio da
     // quel lato, e i pezzi scivolano per restare fermi rispetto all'altro.
-    if (hnd.indexOf('e') !== -1) canvasW = Math.min(32000, Math.max(min.w, Math.round(w0 + dx)));
-    if (hnd.indexOf('s') !== -1) canvasH = Math.min(32000, Math.max(min.h, Math.round(h0 + dy)));
+    if (hnd.indexOf('e') !== -1) canvasW = Math.min(capW, Math.max(min.w, Math.round(w0 + dx)));
+    if (hnd.indexOf('s') !== -1) canvasH = Math.min(capH, Math.max(min.h, Math.round(h0 + dy)));
     if (hnd.indexOf('w') !== -1) {
-      var nw = Math.min(32000, Math.max(Math.max(200, w0 - minX0), Math.round(w0 - dx)));
+      var nw = Math.min(capW, Math.max(Math.max(200, w0 - minX0), Math.round(w0 - dx)));
       var delta = nw - w0;
       canvasW = nw;
-      blocchi.forEach(function(b, j) { b.x = orig[j].x + delta; });
+      blocchi.forEach(function(b) {
+        var o = orig.get(b);
+        if (o) b.x = o.x + delta;
+      });
     }
     if (hnd.indexOf('n') !== -1) {
-      var nh = Math.min(32000, Math.max(Math.max(150, h0 - minY0), Math.round(h0 - dy)));
+      var nh = Math.min(capH, Math.max(Math.max(150, h0 - minY0), Math.round(h0 - dy)));
       var deltaY = nh - h0;
       canvasH = nh;
-      blocchi.forEach(function(b, j) { b.y = orig[j].y + deltaY; });
+      blocchi.forEach(function(b) {
+        var o = orig.get(b);
+        if (o) b.y = o.y + deltaY;
+      });
     }
     render();
     muoviBadgePixel(badge, ev, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
@@ -405,6 +424,10 @@ function iniziaResize(e, i, hnd) {
   e.stopPropagation();
   i = portaSopra(i);
   selezionato = i;
+  // Render SUBITO: portaSopra ha riordinato l'array, e un click secco senza
+  // trascinamento lascerebbe il DOM con le closure sugli indici vecchi
+  // (il cestino di un pezzo finirebbe per eliminarne un altro).
+  render();
   var b = blocchi[i];
   var startX = e.clientX, startY = e.clientY;
   var x0 = b.x, y0 = b.y;

@@ -96,10 +96,12 @@ chrome.runtime.onMessage.addListener(function(msg, sender) {
     });
     return;
   }
-  // L'editor ha salvato (o annullato): la sessione si chiude.
+  // L'editor ha salvato (o annullato): la sessione si chiude. In coda,
+  // così una cattura in smaltimento non può risuscitarla riscrivendola.
   if (msg.action === 'multiDone') {
-    chrome.storage.session.remove('multi').then(function() {
-      multiAggiornaBadge();
+    conSessione(async function() {
+      await chrome.storage.session.remove('multi');
+      await multiAggiornaBadge();
       multiRimuoviWidgetOvunque();
     });
     return;
@@ -127,6 +129,10 @@ function conSessione(fn) {
   codaMulti = p.catch(function() {});  // un errore non blocca la coda
   return p;
 }
+
+// True mentre una cattura multi è in volo: i listener che re-iniettano il
+// pannellino stanno fermi, sennò finisce fotografato dentro il pezzo.
+var multiCatturaInCorso = false;
 
 // Badge sull'icona: durante la sessione mostra il conteggio pezzi (così la
 // sessione resta visibile anche cambiando scheda); a sessione chiusa torna
@@ -160,20 +166,25 @@ async function multiApriSessione(tabId) {
 }
 
 // Mostra l'editor: riattiva la scheda se esiste, altrimenti la crea.
+// Tutto in coda: la riscrittura di editorTabId non deve mai clobberare un
+// pezzo salvato (o un undo) avvenuto tra la lettura e la scrittura.
 async function multiMostraEditor() {
-  var m = await multiSessione();
-  if (!m) return;
-  if (m.editorTabId != null) {
-    try {
-      await chrome.tabs.update(m.editorTabId, { active: true });
-      return;
-    } catch (schedaSparita) {
-      m.editorTabId = null;
+  return conSessione(async function() {
+    var m = await multiSessione();
+    if (!m) return;
+    if (m.editorTabId != null) {
+      try {
+        await chrome.tabs.update(m.editorTabId, { active: true });
+        return;
+      } catch (schedaSparita) {
+        m.editorTabId = null;
+      }
     }
-  }
-  var tab = await chrome.tabs.create({ url: 'editor.html' });
-  m.editorTabId = tab.id;
-  await chrome.storage.session.set({ multi: m });
+    var tab = await chrome.tabs.create({ url: 'editor.html' });
+    m = (await multiSessione()) || m;  // rileggi: la coda ha solo noi, ma tabs.create è lento
+    m.editorTabId = tab.id;
+    await chrome.storage.session.set({ multi: m });
+  });
 }
 
 async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
@@ -394,14 +405,20 @@ async function comprimiInJpeg(dataUrl) {
 }
 
 async function multiAggiungiDaEditor(kind, daTabId) {
-  var m = await multiSessione();
+  // La parte che TOCCA la sessione passa dalla coda (niente clobber di
+  // pezzi/cestino concorrenti); la cattura vera resta fuori dalla coda.
+  var m = await conSessione(async function() {
+    var mm = await multiSessione();
+    if (!mm) return null;
+    // Se il click arriva dal widget su una scheda qualunque (pannellino che
+    // segue tra le tab), è QUELLA la pagina da catturare.
+    if (daTabId != null && daTabId !== mm.editorTabId && daTabId !== mm.sourceTabId) {
+      mm.sourceTabId = daTabId;
+      await chrome.storage.session.set({ multi: mm });
+    }
+    return mm;
+  });
   if (!m) return;
-  // Se il click arriva dal widget su una scheda qualunque (pannellino che
-  // segue tra le tab), è QUELLA la pagina da catturare.
-  if (daTabId != null && daTabId !== m.editorTabId && daTabId !== m.sourceTabId) {
-    m.sourceTabId = daTabId;
-    await chrome.storage.session.set({ multi: m });
-  }
   try {
     var tab = await chrome.tabs.get(m.sourceTabId);
     await chrome.tabs.update(m.sourceTabId, { active: true });
@@ -411,26 +428,42 @@ async function multiAggiungiDaEditor(kind, daTabId) {
   } catch (tabSparita) {
     return; // la pagina di origine non esiste più: niente da catturare
   }
+  // Il pannellino NON deve finire dentro lo screenshot: via dalla pagina
+  // prima dello scatto (i listener di auto-iniezione sono in pausa sotto).
+  multiCatturaInCorso = true;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: m.sourceTabId },
+      func: function() {
+        var el = document.getElementById('__shot_multi_widget');
+        if (el) el.remove();
+      }
+    });
+  } catch (nonIniettabile) {}
   await sleep(300);  // lascia alla scheda il tempo di tornare a fuoco
   await pauseCssAnims(m.sourceTabId);
-  if (kind === 'full') {
-    doFullCapture(m.sourceTabId);
-  } else if (kind === 'visible') {
-    doVisibleCapture(m.sourceTabId);
-  } else {
-    doAreaCapture(m.sourceTabId);
+  try {
+    if (kind === 'full') {
+      await doFullCapture(m.sourceTabId);
+    } else if (kind === 'visible') {
+      await doVisibleCapture(m.sourceTabId);
+    } else {
+      await doAreaCapture(m.sourceTabId);
+    }
+  } finally {
+    multiCatturaInCorso = false;
   }
 }
 
 // Se l'utente chiude la scheda dell'editor, la sessione muore con lei:
 // le catture successive tornano al normale scarica+copia.
 chrome.tabs.onRemoved.addListener(function(tabId) {
-  chrome.storage.session.get('multi').then(function(st) {
-    if (st.multi && st.multi.editorTabId === tabId) {
-      chrome.storage.session.remove('multi').then(function() {
-        multiAggiornaBadge();
-        multiRimuoviWidgetOvunque();
-      });
+  conSessione(async function() {
+    var m = await multiSessione();
+    if (m && m.editorTabId === tabId) {
+      await chrome.storage.session.remove('multi');
+      await multiAggiornaBadge();
+      multiRimuoviWidgetOvunque();
     }
   });
 });
@@ -469,23 +502,26 @@ function multiPuoSeguire() {
 
 // Cambio scheda: sessione attiva + permesso concesso = il pannellino
 // compare da solo sulla scheda nuova (pagine protette: fallisce zitto).
+// Fermo durante le catture: non deve finire dentro lo screenshot.
 chrome.tabs.onActivated.addListener(function(info) {
+  if (multiCatturaInCorso) return;
   multiSessione().then(function(m) {
     if (!m || !m.active || info.tabId === m.editorTabId) return;
     multiPuoSeguire().then(function(ok) {
-      if (ok) multiMostraWidget(info.tabId);
+      if (ok && !multiCatturaInCorso) multiMostraWidget(info.tabId);
     });
   });
 });
 
 // Fine caricamento pagina: il widget non sopravvive alle navigazioni,
-// quindi sulla scheda attiva lo si ripianta.
+// quindi sulla scheda attiva lo si ripianta (mai durante una cattura).
 chrome.tabs.onUpdated.addListener(function(tabId, change, tab) {
   if (change.status !== 'complete' || !tab || !tab.active) return;
+  if (multiCatturaInCorso) return;
   multiSessione().then(function(m) {
     if (!m || !m.active || tabId === m.editorTabId) return;
     multiPuoSeguire().then(function(ok) {
-      if (ok) multiMostraWidget(tabId);
+      if (ok && !multiCatturaInCorso) multiMostraWidget(tabId);
     });
   });
 });
@@ -1094,8 +1130,12 @@ async function doFullCapture(tabId) {
 
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
     var multiF = await multiSessione();
+    var pezzoScartatoF = false;
     if (multiF && multiF.active) {
-      await multiAggiungiPezzo(compResult[0].result, tabId, 'full');
+      var okF = await multiAggiungiPezzo(compResult[0].result, tabId, 'full');
+      // Pezzo respinto per quota: si prosegue coi RIPRISTINI della pagina
+      // (scroll, elementi nascosti) e si segnala errore alla fine.
+      pezzoScartatoF = (okF === false);
     } else {
       var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       chrome.downloads.download({
@@ -1128,7 +1168,11 @@ async function doFullCapture(tabId) {
     });
 
     await resumeCssAnims(tabId);
-    sendSuccess();
+    if (pezzoScartatoF) {
+      sendError('Piece too large for the session (10 MB limit)');
+    } else {
+      sendSuccess();
+    }
     if (!(multiF && multiF.active)) {
       await registraCatturaRiuscita(tabId);
     }
@@ -1197,9 +1241,13 @@ async function doVisibleCapture(tabId) {
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
     var multiV = await multiSessione();
     if (multiV && multiV.active) {
-      await multiAggiungiPezzo(dataUrl, tabId, 'visible');
+      var okV = await multiAggiungiPezzo(dataUrl, tabId, 'visible');
       await resumeCssAnims(tabId);
-      sendSuccess();
+      if (okV === false) {
+        sendError('Piece too large for the session (10 MB limit)');
+      } else {
+        sendSuccess();
+      }
       return;
     }
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -2003,8 +2051,12 @@ async function doAreaCapture(tabId) {
 
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
     var multiA = await multiSessione();
+    var pezzoScartatoA = false;
     if (multiA && multiA.active) {
-      await multiAggiungiPezzo(compResult[0].result, tabId, 'area');
+      var okA = await multiAggiungiPezzo(compResult[0].result, tabId, 'area');
+      // Pezzo respinto per quota: si prosegue coi RIPRISTINI della pagina
+      // e si segnala errore alla fine.
+      pezzoScartatoA = (okA === false);
     } else {
       var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       chrome.downloads.download({
@@ -2044,7 +2096,11 @@ async function doAreaCapture(tabId) {
     });
 
     await resumeCssAnims(tabId);
-    sendSuccess();
+    if (pezzoScartatoA) {
+      sendError('Piece too large for the session (10 MB limit)');
+    } else {
+      sendSuccess();
+    }
     if (!(multiA && multiA.active)) {
       await showBollino(tabId, true);
       await registraCatturaRiuscita(tabId);
