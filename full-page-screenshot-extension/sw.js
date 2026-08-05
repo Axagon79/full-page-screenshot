@@ -32,7 +32,7 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 });
 
 // Ricevi messaggio dal popup per avviare cattura
-chrome.runtime.onMessage.addListener(function(msg) {
+chrome.runtime.onMessage.addListener(function(msg, sender) {
   if (msg.action === 'clearNewsBadge') {
     chrome.action.setBadgeText({ text: '' });
     chrome.storage.local.remove('newsUnread');
@@ -66,6 +66,19 @@ chrome.runtime.onMessage.addListener(function(msg) {
   // Il widget sulla pagina chiede di comporre: si apre l'editor.
   if (msg.action === 'multiCompose') {
     multiMostraEditor();
+    return;
+  }
+  // Il widget chiede di buttare fuori l'ultimo pezzo (cattura sbagliata):
+  // via dal mucchio, e il widget si ridisegna col conteggio aggiornato.
+  if (msg.action === 'multiUndo') {
+    (async function() {
+      var m = await multiSessione();
+      if (!m || !m.pieces.length) return;
+      m.pieces.pop();
+      await chrome.storage.session.set({ multi: m });
+      var tid = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : m.sourceTabId;
+      await multiMostraWidget(tid);
+    })();
     return;
   }
   // L'editor ha salvato (o annullato): la sessione si chiude.
@@ -163,10 +176,11 @@ async function multiMostraWidget(tabId) {
   var m = await multiSessione();
   if (!m) return;
   try {
+    var ultimo = m.pieces.length ? m.pieces[m.pieces.length - 1].tipo : null;
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      args: [m.pieces.length],
-      func: function(quanti) {
+      args: [m.pieces.length, ultimo],
+      func: function(quanti, ultimoTipo) {
         var old = document.getElementById('__shot_multi_widget');
         if (old) old.remove();
         var w = document.createElement('div');
@@ -186,10 +200,10 @@ async function multiMostraWidget(tabId) {
         }
 
         var testa = document.createElement('div');
-        testa.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+        testa.style.cssText = 'display:flex;align-items:center;gap:4px;';
         var tit = document.createElement('div');
         tit.textContent = 'Multi Snip · ' + quanti + (quanti === 1 ? ' piece' : ' pieces');
-        tit.style.cssText = 'font-size:12px;font-weight:700;';
+        tit.style.cssText = 'font-size:12px;font-weight:700;flex:1;';
         var chiudi = document.createElement('span');
         chiudi.textContent = '✕';
         chiudi.title = 'End session';
@@ -199,6 +213,17 @@ async function multiMostraWidget(tabId) {
           chrome.runtime.sendMessage({ action: 'multiDone' });
         });
         testa.appendChild(tit);
+        if (quanti > 0) {
+          var nomi = { area: 'Area', visible: 'Screen', full: 'Page' };
+          var undo = document.createElement('span');
+          undo.textContent = '↶';
+          undo.title = 'Undo — remove last piece' + (nomi[ultimoTipo] ? ' (' + nomi[ultimoTipo] + ')' : '');
+          undo.style.cssText = 'cursor:pointer;color:#00d4ff;font-size:15px;line-height:1;padding:2px 4px;';
+          undo.addEventListener('click', function() {
+            chrome.runtime.sendMessage({ action: 'multiUndo' });
+          });
+          testa.appendChild(undo);
+        }
         testa.appendChild(chiudi);
         w.appendChild(testa);
 
