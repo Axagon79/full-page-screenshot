@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Full Page Screenshot - Scroll, Area & Full Capture",
   "version": "9.8",
-  "description": "Capture full pages, areas, or scrolling selections — and copy every shot to your clipboard to paste with Ctrl+V.",
+  "description": "Full page screenshots, scrolling capture & scroll selection. Auto-copies to clipboard. No account, no tracking — 100% on-device.",
   "permissions": ["activeTab", "scripting", "downloads", "storage", "contextMenus"],
   "background": {
     "service_worker": "sw.js"
