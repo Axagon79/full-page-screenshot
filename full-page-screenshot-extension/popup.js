@@ -34,7 +34,7 @@ chrome.storage.local.get('captureMode', function(data) {
   var mode = data.captureMode || 'full';
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (tabs[0]) {
-      if (mode === 'area') {
+      if (mode === 'area' || mode === 'multi') {
         // Mostra messaggio e chiudi
         pct.textContent = '\u2702';
         pct.style.fontSize = '28px';

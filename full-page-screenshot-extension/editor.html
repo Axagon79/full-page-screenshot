@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Multi Snip — Compose</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #16162a;
+      color: #eee;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Barra azioni in alto, fissa */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      background: rgba(22,22,42,0.95);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(4px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      margin-right: 6px;
+    }
+    .brand svg { flex-shrink: 0; }
+    #contatore {
+      font-size: 12px;
+      color: #8b8ba3;
+      font-weight: 600;
+    }
+    .spacer { flex: 1; }
+    .btn {
+      border: 1px solid rgba(0,212,255,0.4);
+      background: transparent;
+      color: #00d4ff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { background: rgba(0,212,255,0.1); }
+    .btn.primario {
+      background: #00d4ff;
+      color: #0d1220;
+      border-color: #00d4ff;
+      font-weight: 700;
+    }
+    .btn.primario:hover { filter: brightness(1.1); background: #00d4ff; }
+    .btn.spento {
+      border-color: rgba(255,255,255,0.15);
+      color: #8b8ba3;
+    }
+    .btn.spento:hover { background: rgba(255,255,255,0.05); }
+    .sep {
+      width: 1px;
+      height: 24px;
+      background: rgba(255,255,255,0.12);
+      margin: 0 4px;
+    }
+
+    /* Palco centrale */
+    #palco {
+      max-width: 1000px;
+      margin: 26px auto 80px;
+      padding: 0 20px;
+    }
+    #vuoto {
+      text-align: center;
+      color: #8b8ba3;
+      font-size: 14px;
+      margin-top: 80px;
+      line-height: 1.8;
+    }
+
+    .riga {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .blocco {
+      position: relative;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      overflow: visible;
+      background: #20203c;
+      flex-shrink: 0;
+    }
+    .blocco:hover { border-color: rgba(0,212,255,0.6); }
+    .blocco img {
+      display: block;
+      border-radius: 6px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* Controlli del blocco: compaiono al passaggio del mouse */
+    .controlli {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: none;
+      gap: 4px;
+      z-index: 5;
+    }
+    .blocco:hover .controlli { display: flex; }
+    .controlli button {
+      width: 30px;
+      height: 30px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(13,18,32,0.85);
+      color: #eee;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .controlli button:hover { background: #00d4ff; color: #0d1220; }
+    .controlli button.attivo { background: #00d4ff; color: #0d1220; }
+
+    /* Etichetta scala + maniglia di ridimensionamento */
+    .scala {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      display: none;
+      font-size: 11px;
+      font-weight: 700;
+      color: #0d1220;
+      background: #00d4ff;
+      padding: 2px 7px;
+      border-radius: 5px;
+      pointer-events: none;
+    }
+    .blocco:hover .scala { display: block; }
+    .maniglia {
+      position: absolute;
+      right: -7px;
+      bottom: -7px;
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      background: #00d4ff;
+      cursor: nwse-resize;
+      display: none;
+      z-index: 6;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    .blocco:hover .maniglia { display: block; }
+
+    #salvato {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #10b981;
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 10px 22px;
+      border-radius: 10px;
+      display: none;
+      z-index: 20;
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 14px;
+      left: 16px;
+      font-size: 11px;
+      color: #55556b;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><path d="M9 21h10a2 2 0 0 0 2-2V9"/></svg>
+      Multi Snip
+    </div>
+    <span id="contatore">0 pieces</span>
+    <div class="spacer"></div>
+    <button class="btn" id="btnArea">+ Area</button>
+    <button class="btn" id="btnSchermo">+ Screen</button>
+    <button class="btn" id="btnPagina">+ Full page</button>
+    <div class="sep"></div>
+    <button class="btn spento" id="btnAnnulla">Cancel</button>
+    <button class="btn primario" id="btnSalva">✓ Save</button>
+  </div>
+
+  <div id="palco">
+    <div id="vuoto">
+      No pieces yet.<br>
+      Use <b>+ Area</b>, <b>+ Screen</b> or <b>+ Full page</b> to capture from the page.
+    </div>
+  </div>
+
+  <div id="salvato">✓ Saved &amp; copied to clipboard</div>
+  <div class="hint">↑ ↓ reorder · ⇄ place side by side · drag the corner to resize · 🗑 remove</div>
+
+  <script src="editor.js"></script>
+</body>
+</html>

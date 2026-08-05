@@ -47,9 +47,130 @@ chrome.runtime.onMessage.addListener(function(msg) {
         doVisibleCapture(msg.tabId);
       } else if (msg.mode === 'area') {
         doAreaCapture(msg.tabId);
+      } else if (msg.mode === 'multi') {
+        // MULTI SNIP: apre (o riprende) la sessione di accumulo, poi parte
+        // con una normale selezione area — sarà l'intercettazione a fine
+        // cattura a mandare il pezzo all'editor invece che al download.
+        multiApriSessione(msg.tabId).then(function() {
+          doAreaCapture(msg.tabId);
+        });
       }
     });
   }
+  // L'editor chiede un altro pezzo: si torna sulla scheda della pagina,
+  // si cattura col tipo richiesto, e il pezzo arriva in sessione.
+  if (msg.action === 'multiAdd') {
+    multiAggiungiDaEditor(msg.kind);
+    return;
+  }
+  // L'editor ha salvato (o annullato): la sessione si chiude.
+  if (msg.action === 'multiDone') {
+    chrome.storage.session.remove('multi');
+    return;
+  }
+});
+
+// === SESSIONE MULTI SNIP ===
+// La sessione vive in chrome.storage.session (muore alla chiusura del
+// browser): { active, sourceTabId, editorTabId, pieces: [{img, tipo}] }.
+// Finché è attiva, OGNI cattura completata viene dirottata all'editor
+// invece che scaricata: è ciò che permette di mischiare Area / Schermo /
+// Pagina intera nello stesso collage.
+
+async function multiSessione() {
+  var st = await chrome.storage.session.get('multi');
+  return st.multi || null;
+}
+
+async function multiApriSessione(tabId) {
+  var m = (await multiSessione()) || { active: true, sourceTabId: tabId, editorTabId: null, pieces: [] };
+  m.active = true;
+  m.sourceTabId = tabId;
+  await chrome.storage.session.set({ multi: m });
+}
+
+async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
+  var m = await multiSessione();
+  if (!m) return false;
+  m.pieces.push({ img: dataUrl, tipo: tipo });
+  m.sourceTabId = tabId;
+  try {
+    await chrome.storage.session.set({ multi: m });
+  } catch (quotaErr) {
+    // storage.session ha un tetto di ~10MB: se il pezzo non ci sta (pagine
+    // intere enormi), lo si converte in JPEG di qualità alta e si riprova.
+    try {
+      var ridotto = await comprimiInJpeg(dataUrl);
+      m.pieces[m.pieces.length - 1].img = ridotto;
+      await chrome.storage.session.set({ multi: m });
+    } catch (e2) {
+      m.pieces.pop();
+      await chrome.storage.session.set({ multi: m });
+      return false;
+    }
+  }
+  // Apri l'editor la prima volta, oppure riportalo davanti.
+  if (m.editorTabId != null) {
+    try {
+      await chrome.tabs.update(m.editorTabId, { active: true });
+      return true;
+    } catch (spariito) {
+      m.editorTabId = null;
+    }
+  }
+  var tab = await chrome.tabs.create({ url: 'editor.html' });
+  m.editorTabId = tab.id;
+  await chrome.storage.session.set({ multi: m });
+  return true;
+}
+
+// Ricompressione di emergenza in JPEG via OffscreenCanvas (il service worker
+// non ha document/Image: si passa da fetch -> blob -> createImageBitmap).
+async function comprimiInJpeg(dataUrl) {
+  var blob = await (await fetch(dataUrl)).blob();
+  var bmp = await createImageBitmap(blob);
+  var canvas = new OffscreenCanvas(bmp.width, bmp.height);
+  canvas.getContext('2d').drawImage(bmp, 0, 0);
+  var out = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+  return await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result); };
+    r.onerror = rej;
+    r.readAsDataURL(out);
+  });
+}
+
+async function multiAggiungiDaEditor(kind) {
+  var m = await multiSessione();
+  if (!m) return;
+  try {
+    var tab = await chrome.tabs.get(m.sourceTabId);
+    await chrome.tabs.update(m.sourceTabId, { active: true });
+    if (tab.windowId !== undefined) {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+  } catch (tabSparita) {
+    return; // la pagina di origine non esiste più: niente da catturare
+  }
+  await sleep(300);  // lascia alla scheda il tempo di tornare a fuoco
+  await pauseCssAnims(m.sourceTabId);
+  if (kind === 'full') {
+    doFullCapture(m.sourceTabId);
+  } else if (kind === 'visible') {
+    doVisibleCapture(m.sourceTabId);
+  } else {
+    doAreaCapture(m.sourceTabId);
+  }
+}
+
+// Se l'utente chiude la scheda dell'editor, la sessione muore con lei:
+// le catture successive tornano al normale scarica+copia.
+chrome.tabs.onRemoved.addListener(function(tabId) {
+  chrome.storage.session.get('multi').then(function(st) {
+    if (st.multi && st.multi.editorTabId === tabId) {
+      chrome.storage.session.remove('multi');
+    }
+  });
 });
 
 function sleep(ms) {
@@ -654,14 +775,20 @@ async function doFullCapture(tabId) {
       args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot]
     });
 
-    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    chrome.downloads.download({
-      url: compResult[0].result,
-      filename: 'screenshots/screenshot_' + ts + '.png',
-      saveAs: false
-    });
+    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
+    var multiF = await multiSessione();
+    if (multiF && multiF.active) {
+      await multiAggiungiPezzo(compResult[0].result, tabId, 'full');
+    } else {
+      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      chrome.downloads.download({
+        url: compResult[0].result,
+        filename: 'screenshots/screenshot_' + ts + '.png',
+        saveAs: false
+      });
 
-    await copyToClipboard(compResult[0].result, tabId);
+      await copyToClipboard(compResult[0].result, tabId);
+    }
 
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -685,7 +812,9 @@ async function doFullCapture(tabId) {
 
     await resumeCssAnims(tabId);
     sendSuccess();
-    await registraCatturaRiuscita(tabId);
+    if (!(multiF && multiF.active)) {
+      await registraCatturaRiuscita(tabId);
+    }
 
   } catch (err) {
     console.error('Screenshot error:', err);
@@ -748,6 +877,14 @@ function isPaginaNonIniettabile(err) {
 async function doVisibleCapture(tabId) {
   try {
     var dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
+    var multiV = await multiSessione();
+    if (multiV && multiV.active) {
+      await multiAggiungiPezzo(dataUrl, tabId, 'visible');
+      await resumeCssAnims(tabId);
+      sendSuccess();
+      return;
+    }
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     chrome.downloads.download({
       url: dataUrl,
@@ -1532,14 +1669,20 @@ async function doAreaCapture(tabId) {
       args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH]
     });
 
-    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    chrome.downloads.download({
-      url: compResult[0].result,
-      filename: 'screenshots/screenshot_' + ts + '.png',
-      saveAs: false
-    });
+    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
+    var multiA = await multiSessione();
+    if (multiA && multiA.active) {
+      await multiAggiungiPezzo(compResult[0].result, tabId, 'area');
+    } else {
+      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      chrome.downloads.download({
+        url: compResult[0].result,
+        filename: 'screenshots/screenshot_' + ts + '.png',
+        saveAs: false
+      });
 
-    await copyToClipboard(compResult[0].result, tabId);
+      await copyToClipboard(compResult[0].result, tabId);
+    }
 
     // Ripristino: visibility dei fixed/sticky + pagina riportata IN CIMA.
     // (Richiesta esplicita: a fine cattura Area si torna in alto come nella
@@ -1570,8 +1713,10 @@ async function doAreaCapture(tabId) {
 
     await resumeCssAnims(tabId);
     sendSuccess();
-    await showBollino(tabId, true);
-    await registraCatturaRiuscita(tabId);
+    if (!(multiA && multiA.active)) {
+      await showBollino(tabId, true);
+      await registraCatturaRiuscita(tabId);
+    }
 
   } catch (err) {
     console.error('Area screenshot error:', err);
