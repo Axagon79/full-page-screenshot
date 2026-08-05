@@ -203,6 +203,31 @@
     .tman-s { bottom: -7px; left: 50%; margin-left: -14px; width: 28px; height: 12px; cursor: ns-resize; }
     .tman-se { right: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nwse-resize; }
 
+    /* Anteprima pulita dell'immagine finale */
+    #anteprima {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 25;
+      cursor: zoom-out;
+    }
+    #anteprima img {
+      max-width: 92vw;
+      max-height: 86vh;
+      border-radius: 4px;
+      background: #f4f4f6;
+      box-shadow: 0 10px 50px rgba(0,0,0,0.6);
+    }
+    #anteprima .anteprima-hint {
+      color: #8b8ba3;
+      font-size: 12px;
+    }
+
     /* Numeretto dei pixel che segue il mouse durante i ridimensionamenti
        (stesso stile dell'etichetta live della selezione Area) */
     .pix-badge {
@@ -309,6 +334,7 @@
     <div class="spacer"></div>
     <button class="btn" id="btnAggiungi">+ Add piece</button>
     <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
+    <button class="btn spento" id="btnAnteprima" title="See the final image, clean">👁 Preview</button>
     <div class="sep"></div>
     <button class="btn spento" id="btnAnnulla">Cancel</button>
     <button class="btn primario" id="btnSalva">✓ Save</button>
@@ -356,6 +382,12 @@
         the extension icon — that capture will be added here too.
       </div>
     </div>
+  </div>
+
+  <!-- Anteprima pulita: la STESSA composizione del Save, a schermo pieno -->
+  <div id="anteprima">
+    <img id="anteprimaImg" alt="Preview">
+    <div class="anteprima-hint">Click anywhere or press Esc to close</div>
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>

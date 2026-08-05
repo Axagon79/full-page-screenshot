@@ -378,7 +378,11 @@ function iniziaResize(e, i, hnd) {
 // ---- TASTIERA: frecce = spostamento di precisione, Canc = elimina ----
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { $('scelta').style.display = 'none'; return; }
+  if (e.key === 'Escape') {
+    $('scelta').style.display = 'none';
+    $('anteprima').style.display = 'none';
+    return;
+  }
   if (selezionato < 0 || selezionato >= blocchi.length) return;
   if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
   var b = blocchi[selezionato];
@@ -457,6 +461,17 @@ $('btnAggiungi').addEventListener('click', function() {
   $('scelta').style.display = 'flex';
 });
 $('btnFit').addEventListener('click', adattaTela);
+// Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
+$('btnAnteprima').addEventListener('click', async function() {
+  if (!blocchi.length) return;
+  var canvas = await componi();
+  if (!canvas) return;
+  $('anteprimaImg').src = canvas.toDataURL('image/png');
+  $('anteprima').style.display = 'flex';
+});
+$('anteprima').addEventListener('click', function() {
+  $('anteprima').style.display = 'none';
+});
 $('scelta').addEventListener('click', function(e) {
   if (e.target === $('scelta')) $('scelta').style.display = 'none';
 });
