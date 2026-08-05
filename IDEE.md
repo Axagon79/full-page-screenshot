@@ -91,6 +91,34 @@ Il multi-snip cross-page giustificherebbe un prezzo più alto ($5-10/mese): è u
 
 ---
 
+## ANALISI DATI STORE 05/08/2026 (mese 5 lug – 3 ago)
+
+Funnel del mese: ~286 impressioni → 86 visite scheda (~30% di click) →
+69 installazioni (**~80% di conversione visita→install, eccezionale**).
+Disinstallazioni 23 (concentrate a inizio luglio, pre-fix). Utenti
+settimanali da 10 a 26 (+160%); 18-20 giornalieri su 26 settimanali =
+uso quasi quotidiano. **La scheda converte benissimo: il collo di
+bottiglia sono le impressioni (~10/giorno, piatte da giugno).**
+
+Geografia CAMBIATA rispetto a giugno: USA fermi a 2-4 settimanali,
+**India da 0 a 5 ed è la regione che cresce di più**, base sparsa su ~19
+paesi. La narrativa "USA + scuole ChromeOS" non regge più. Inglese resta
+la lingua giusta (India tech = inglese), #9 resta bassa priorità.
+
+Canale emergente: 2 visite da **chatgpt.com** — le AI consigliano
+estensioni leggendo la descrizione dello store. La #8 serve a tre
+pubblici: algoritmo di ricerca, umani, AI.
+
+Riflessione da seconda analisi (altro modello, riconciliata coi numeri):
+il ~30% di click impressione→visita è già buono, MA il click è un
+segnale di ranking (più click = più impressioni), quindi curare la
+"carta" nei risultati di ricerca paga due volte. La carta è: icona +
+titolo + **descrizione breve (132 caratteri)** + **stelle**. Punto
+critico: **zero recensioni = zero stelle nei risultati**, probabile
+freno principale al click — la leva è l'invito a recensire della 9.9.
+
+---
+
 ## SCOPRIBILITÀ (lezione dai dati, giugno 2026)
 Il collo di bottiglia della crescita **non è il prodotto** (zero disinstallazioni, chi installa tiene) ma la **visibilità**.
 Il cambio titolo della 9.5 ("Full Page Screenshot - Scroll, Area & Full Capture") ha funzionato: impressioni da 1-2/giorno a 9-14/giorno. **Insistere su questa strada**: titolo, descrizione con keyword, recensioni.
