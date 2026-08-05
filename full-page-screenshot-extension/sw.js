@@ -776,6 +776,8 @@ async function doAreaCapture(tabId) {
       func: function() {
         var old = document.getElementById('__screenshot_area_overlay');
         if (old) old.remove();
+        var oldNoSel = document.getElementById('__screenshot_noselect');
+        if (oldNoSel) oldNoSel.remove();
 
         var overlay = document.createElement('div');
         overlay.id = '__screenshot_area_overlay';
@@ -933,6 +935,10 @@ async function doAreaCapture(tabId) {
         }
 
         overlay.addEventListener('mousedown', function(e) {
+          // Impedisce alla trascinata di avviare la selezione NATIVA del testo
+          // (evidenziatura blu sotto l'overlay quando il mouse corre più
+          // veloce dell'auto-scroll o esce dalla finestra del browser).
+          e.preventDefault();
           resolveScrollTarget(e.clientX, e.clientY);
           if (scrollTarget) scrollTarget.addEventListener('scroll', onScrollDuringDrag);
           // Rileva se la selezione parte dentro un elemento sticky/fixed (es. top bar):
@@ -1011,6 +1017,9 @@ async function doAreaCapture(tabId) {
           }
 
           overlay.remove();
+          var nsFine = document.getElementById('__screenshot_noselect');
+          if (nsFine) nsFine.remove();
+          try { window.getSelection().removeAllRanges(); } catch (errSel) {}
           if (w < 10 || h_doc < 10) {
             if (scrollTarget) scrollTarget.removeAttribute('data-screenshot-area-scroll');
             return;
@@ -1029,12 +1038,22 @@ async function doAreaCapture(tabId) {
         function onKey(e) {
           if (e.key === 'Escape') {
             overlay.remove();
+            var nsEsc = document.getElementById('__screenshot_noselect');
+            if (nsEsc) nsEsc.remove();
+            try { window.getSelection().removeAllRanges(); } catch (errSel) {}
             window.removeEventListener('scroll', onScrollDuringDrag, true);
             if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
             document.removeEventListener('keydown', onKey);
           }
         }
         document.addEventListener('keydown', onKey);
+        // Cintura doppia contro la selezione del testo: per tutta la durata
+        // della selezione il testo della pagina non è selezionabile (lo stile
+        // viene rimosso alla chiusura dell'overlay, mouseup o Escape).
+        var noSel = document.createElement('style');
+        noSel.id = '__screenshot_noselect';
+        noSel.textContent = '*{-webkit-user-select:none !important;user-select:none !important;}';
+        (document.head || document.documentElement).appendChild(noSel);
         document.body.appendChild(overlay);
         // Avvia la dissolvenza graduale dello scuro (come lo Snipping Tool)
         void overlay.offsetWidth;
