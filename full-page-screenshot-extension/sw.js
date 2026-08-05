@@ -48,12 +48,11 @@ chrome.runtime.onMessage.addListener(function(msg) {
       } else if (msg.mode === 'area') {
         doAreaCapture(msg.tabId);
       } else if (msg.mode === 'multi') {
-        // MULTI SNIP: apre (o riprende) la sessione di accumulo e mostra
-        // SUBITO l'editor col pannello di scelta: è l'utente a decidere il
-        // tipo del primo pezzo (Full Page / Visible / Area), esattamente
-        // come per i pezzi successivi.
+        // MULTI SNIP: apre (o riprende) la sessione e mostra il WIDGET di
+        // raccolta direttamente SULLA pagina — si scelgono tipo e pezzi
+        // senza mai lasciare la pagina; l'editor si apre solo al "Compose".
         multiApriSessione(msg.tabId).then(function() {
-          return multiMostraEditor();
+          return multiMostraWidget(msg.tabId);
         });
       }
     });
@@ -62,6 +61,11 @@ chrome.runtime.onMessage.addListener(function(msg) {
   // si cattura col tipo richiesto, e il pezzo arriva in sessione.
   if (msg.action === 'multiAdd') {
     multiAggiungiDaEditor(msg.kind);
+    return;
+  }
+  // Il widget sulla pagina chiede di comporre: si apre l'editor.
+  if (msg.action === 'multiCompose') {
+    multiMostraEditor();
     return;
   }
   // L'editor ha salvato (o annullato): la sessione si chiude.
@@ -131,9 +135,101 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
       return false;
     }
   }
-  // Apri l'editor la prima volta, oppure riportalo davanti.
-  await multiMostraEditor();
+  // Se l'editor è GIÀ aperto si torna lì (fase di composizione); altrimenti
+  // si resta sulla pagina e si riaggiorna il widget di raccolta col nuovo
+  // conteggio — niente ping-pong con l'editor mentre si raccolgono i pezzi.
+  var editorVivo = false;
+  if (m.editorTabId != null) {
+    try {
+      await chrome.tabs.get(m.editorTabId);
+      editorVivo = true;
+    } catch (schedaChiusa) {
+      m.editorTabId = null;
+      await chrome.storage.session.set({ multi: m });
+    }
+  }
+  if (editorVivo) {
+    try { await chrome.tabs.update(m.editorTabId, { active: true }); } catch (e) {}
+  } else {
+    await multiMostraWidget(tabId);
+  }
   return true;
+}
+
+// Widget di raccolta SULLA pagina: scegli il tipo di cattura, vedi quanti
+// pezzi hai, componi quando decidi tu. Si toglie da solo al click (per non
+// finire dentro lo screenshot) e riappare aggiornato dopo ogni pezzo.
+async function multiMostraWidget(tabId) {
+  var m = await multiSessione();
+  if (!m) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      args: [m.pieces.length],
+      func: function(quanti) {
+        var old = document.getElementById('__shot_multi_widget');
+        if (old) old.remove();
+        var w = document.createElement('div');
+        w.id = '__shot_multi_widget';
+        w.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;' +
+          'background:#16162a;border:1px solid rgba(0,212,255,0.45);border-radius:12px;' +
+          'padding:10px;font-family:Segoe UI,sans-serif;color:#eee;' +
+          'box-shadow:0 6px 24px rgba(0,0,0,0.45);display:flex;flex-direction:column;gap:6px;width:200px;';
+
+        function bott(testo, css, fn) {
+          var b = document.createElement('button');
+          b.textContent = testo;
+          b.style.cssText = 'border:1px solid rgba(0,212,255,0.4);background:transparent;color:#00d4ff;' +
+            'font-family:inherit;font-size:12px;font-weight:600;padding:6px 8px;border-radius:7px;cursor:pointer;' + css;
+          b.addEventListener('click', fn);
+          return b;
+        }
+
+        var testa = document.createElement('div');
+        testa.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+        var tit = document.createElement('div');
+        tit.textContent = 'Multi Snip · ' + quanti + (quanti === 1 ? ' piece' : ' pieces');
+        tit.style.cssText = 'font-size:12px;font-weight:700;';
+        var chiudi = document.createElement('span');
+        chiudi.textContent = '✕';
+        chiudi.title = 'End session';
+        chiudi.style.cssText = 'cursor:pointer;color:#888;font-size:12px;padding:2px 4px;';
+        chiudi.addEventListener('click', function() {
+          w.remove();
+          chrome.runtime.sendMessage({ action: 'multiDone' });
+        });
+        testa.appendChild(tit);
+        testa.appendChild(chiudi);
+        w.appendChild(testa);
+
+        var riga = document.createElement('div');
+        riga.style.cssText = 'display:flex;gap:5px;';
+        [['Area', 'area'], ['Screen', 'visible'], ['Page', 'full']].forEach(function(v) {
+          riga.appendChild(bott('+ ' + v[0], 'flex:1;padding:6px 2px;', function() {
+            w.remove();
+            chrome.runtime.sendMessage({ action: 'multiAdd', kind: v[1] });
+          }));
+        });
+        w.appendChild(riga);
+
+        var comp = bott('✓ Compose (' + quanti + ')',
+          'background:#00d4ff;color:#0d1220;font-weight:700;border-color:#00d4ff;', function() {
+          w.remove();
+          chrome.runtime.sendMessage({ action: 'multiCompose' });
+        });
+        if (!quanti) {
+          comp.disabled = true;
+          comp.style.opacity = '0.4';
+          comp.style.cursor = 'default';
+        }
+        w.appendChild(comp);
+
+        document.body.appendChild(w);
+      }
+    });
+  } catch (nonIniettabile) {
+    // pagina protetta (chrome:// ecc.): il widget non si può mostrare
+  }
 }
 
 // Ricompressione di emergenza in JPEG via OffscreenCanvas (il service worker
@@ -1230,11 +1326,19 @@ async function doAreaCapture(tabId) {
         }
       });
       var val = result[0].result;
-      if (val === 'cancelled') { await resumeCssAnims(tabId); return; }
+      if (val === 'cancelled') {
+        await resumeCssAnims(tabId);
+        if (inMulti) await multiMostraWidget(tabId);  // non lasciare a piedi la sessione
+        return;
+      }
       if (val) { area = val; break; }
     }
 
-    if (!area) { await resumeCssAnims(tabId); return; }
+    if (!area) {
+      await resumeCssAnims(tabId);
+      if (inMulti) await multiMostraWidget(tabId);
+      return;
+    }
 
     // === Step 3: multi-slice capture ===
 

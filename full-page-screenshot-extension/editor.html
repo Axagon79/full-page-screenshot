@@ -168,20 +168,26 @@
       pointer-events: none;
     }
     .blocco:hover .scala { display: block; }
-    .maniglia {
+    /* 8 maniglie: 4 angoli (proporzionale) + 4 lati (stira quel lato) */
+    .man {
       position: absolute;
-      right: -7px;
-      bottom: -7px;
-      width: 16px;
-      height: 16px;
-      border-radius: 4px;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
       background: #00d4ff;
-      cursor: nwse-resize;
       display: none;
       z-index: 6;
       box-shadow: 0 1px 4px rgba(0,0,0,0.4);
     }
-    .blocco:hover .maniglia { display: block; }
+    .blocco:hover .man, .blocco.selezionato .man { display: block; }
+    .man-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+    .man-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+    .man-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+    .man-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .man-n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+    .man-s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+    .man-w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+    .man-e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
 
     /* Pannello di scelta del tipo di cattura */
     #scelta {
@@ -272,6 +278,7 @@
     <span id="contatore">0 pieces</span>
     <div class="spacer"></div>
     <button class="btn" id="btnAggiungi">+ Add piece</button>
+    <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
     <div class="sep"></div>
     <button class="btn spento" id="btnAnnulla">Cancel</button>
     <button class="btn primario" id="btnSalva">✓ Save</button>
@@ -322,7 +329,7 @@
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>
-  <div class="hint">drag to move (magnetic edges) · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · corner to resize · Del remove</div>
+  <div class="hint">drag to move (magnetic edges) · corners resize, sides stretch · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · click empty space to deselect · Del remove</div>
 
   <script src="editor.js"></script>
 </body>

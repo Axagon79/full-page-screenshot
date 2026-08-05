@@ -1,21 +1,21 @@
-// Editor Multi Snip — TELA LIBERA. Ogni pezzo è un blocco con coordinate
-// proprie (x, y in pixel "mondo" = pixel naturali per la scala scelta):
-// si trascina ovunque con la manina, si può sovrapporre ad altri, si
-// aggancia con la calamita ai bordi dei vicini, si ridimensiona con la
-// maniglia d'angolo. La cornice tratteggiata mostra i bordi dell'immagine
-// FINALE e si riadatta ai pezzi a ogni rilascio.
+// Editor Multi Snip — TELA FISSA. La tela ha una dimensione stabile (quella
+// dell'immagine finale): non "balla" mentre trascini. Cresce solo quando
+// entra un pezzo che non ci sta, e il bottone "Fit canvas" la riadatta al
+// contenuto quando lo decidi tu. Ogni pezzo si trascina liberamente dentro
+// la tela (sovrapposizioni permesse, calamita sui bordi) e si ridimensiona
+// da tutti e 4 gli angoli (proporzionale) e dai 4 lati (stira quel lato).
 
-var blocchi = [];    // { img, natW, natH, scale, x, y } — ordine array = sovrapposizione
-var caricati = 0;    // pezzi della sessione già importati
+var blocchi = [];    // { img, natW, natH, sx, sy, x, y } — ordine = sovrapposizione
+var caricati = 0;
 var selezionato = -1;
 
-var STAGE_W = 960;   // larghezza massima di visualizzazione (non di export)
-var GAP = 14;        // respiro usato dalla calamita per gli agganci
-var MARGINE = 24;    // margine dell'immagine finale attorno ai pezzi
+var STAGE_W = 960;   // larghezza massima di visualizzazione
+var GAP = 14;        // respiro usato dalla calamita
+var MARGINE = 24;    // margine iniziale attorno ai pezzi
 
-var viewK = 1;                                    // scala di visualizzazione
-var bbox = { minX: 0, minY: 0, w: 300, h: 150 };  // riquadro dei pezzi (mondo)
-var timerNudge = null;
+var canvasW = 0;     // dimensione FISSA della tela = dimensione dell'export
+var canvasH = 0;
+var viewK = 1;
 var pannelloAutoAperto = false;
 
 function $(id) { return document.getElementById(id); }
@@ -29,6 +29,18 @@ function caricaImmagine(src) {
   });
 }
 
+function larghezza(b) { return b.natW * b.sx; }
+function altezza(b) { return b.natH * b.sy; }
+
+// Il pezzo resta sempre DENTRO la tela.
+function clampBlocco(b) {
+  var w = larghezza(b), h = altezza(b);
+  if (w > canvasW) { b.sx = canvasW / b.natW; w = canvasW; }
+  if (h > canvasH) { b.sy = canvasH / b.natH; h = canvasH; }
+  b.x = Math.min(Math.max(0, b.x), canvasW - w);
+  b.y = Math.min(Math.max(0, b.y), canvasH - h);
+}
+
 // ---- IMPORT DEI PEZZI DALLA SESSIONE ----
 
 async function importaNuoviPezzi() {
@@ -39,22 +51,29 @@ async function importaNuoviPezzi() {
     var p = m.pieces[i];
     try {
       var im = await caricaImmagine(p.img);
-      // Il pezzo nuovo si accoda in fondo alla pila, allineato a sinistra.
-      var fondo = 0;
-      blocchi.forEach(function(b) { fondo = Math.max(fondo, b.y + b.natH * b.scale); });
-      if (blocchi.length) fondo += GAP;
-      blocchi.push({ img: p.img, natW: im.naturalWidth, natH: im.naturalHeight, scale: 1, x: 0, y: fondo });
+      var w = im.naturalWidth, h = im.naturalHeight;
+      if (!blocchi.length) {
+        // primo pezzo: la tela nasce su misura
+        canvasW = w + MARGINE * 2;
+        canvasH = h + MARGINE * 2;
+        blocchi.push({ img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
+      } else {
+        // pezzi successivi: sotto la pila; la tela cresce SOLO se non ci stanno
+        var fondo = 0;
+        blocchi.forEach(function(b) { fondo = Math.max(fondo, b.y + altezza(b)); });
+        var y = fondo + GAP;
+        if (w + MARGINE * 2 > canvasW) canvasW = w + MARGINE * 2;
+        if (y + h + MARGINE > canvasH) canvasH = y + h + MARGINE;
+        blocchi.push({ img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: y });
+      }
       selezionato = blocchi.length - 1;
     } catch (e) {
       console.warn('Pezzo illeggibile, saltato:', e);
     }
   }
   caricati = Math.max(caricati, m.pieces.length);
-  aggiornaBbox();
   render();
-  // Editor aperto e ancora vuoto (avvio del Multi Snip dall'icona): si apre
-  // da solo il pannello di scelta, così l'utente decide il tipo del PRIMO
-  // pezzo senza dover capire di cliccare "+ Add piece".
+  // Editor aperto e vuoto: si apre da solo il pannello di scelta.
   if (!blocchi.length && !pannelloAutoAperto) {
     pannelloAutoAperto = true;
     $('scelta').style.display = 'flex';
@@ -65,42 +84,41 @@ chrome.storage.onChanged.addListener(function(changes, area) {
   if (area === 'session' && changes.multi) importaNuoviPezzi();
 });
 
-// ---- GEOMETRIA ----
-
-// Il riquadro NON viene ricalcolato durante un trascinamento: la cornice
-// resta ferma (così si vede se si sta uscendo) e si riadatta al rilascio.
-function aggiornaBbox() {
-  if (!blocchi.length) { bbox = { minX: 0, minY: 0, w: 300, h: 150 }; return; }
+// "Fit canvas": riadatta la tela al contenuto, con margini uniformi.
+function adattaTela() {
+  if (!blocchi.length) return;
   var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   blocchi.forEach(function(b) {
-    var w = b.natW * b.scale, h = b.natH * b.scale;
     minX = Math.min(minX, b.x);
     minY = Math.min(minY, b.y);
-    maxX = Math.max(maxX, b.x + w);
-    maxY = Math.max(maxY, b.y + h);
+    maxX = Math.max(maxX, b.x + larghezza(b));
+    maxY = Math.max(maxY, b.y + altezza(b));
   });
-  bbox = { minX: minX, minY: minY, w: maxX - minX, h: maxY - minY };
+  blocchi.forEach(function(b) {
+    b.x += MARGINE - minX;
+    b.y += MARGINE - minY;
+  });
+  canvasW = Math.round(maxX - minX) + MARGINE * 2;
+  canvasH = Math.round(maxY - minY) + MARGINE * 2;
+  render();
 }
 
-// CALAMITA: se un bordo del pezzo trascinato arriva vicino a un bordo di un
-// altro pezzo (entro ~8px a schermo), si aggancia: allineato, subito sotto,
-// o affiancato. Se non ci si avvicina ai punti magnetici, il pezzo resta
-// libero — sovrapposizioni comprese.
+// CALAMITA: aggancio automatico ai bordi degli altri pezzi (entro ~8px a
+// schermo): allineato, subito sotto, affiancato. Lontano dai punti magnetici
+// il pezzo resta libero, sovrapposizioni comprese.
 function calamita(i, x, y) {
   var b = blocchi[i];
-  var w = b.natW * b.scale, h = b.natH * b.scale;
+  var w = larghezza(b), h = altezza(b);
   var S = 8 / viewK;
   var bx = x, by = y;
   blocchi.forEach(function(o, j) {
     if (j === i) return;
-    var ow = o.natW * o.scale, oh = o.natH * o.scale;
-    // allineamenti orizzontali
+    var ow = larghezza(o), oh = altezza(o);
     if (Math.abs(x - o.x) < S) bx = o.x;
     else if (Math.abs((x + w) - (o.x + ow)) < S) bx = o.x + ow - w;
     else if (Math.abs((x + w / 2) - (o.x + ow / 2)) < S) bx = o.x + ow / 2 - w / 2;
     else if (Math.abs(x - (o.x + ow + GAP)) < S) bx = o.x + ow + GAP;
     else if (Math.abs((x + w + GAP) - o.x) < S) bx = o.x - GAP - w;
-    // agganci verticali
     if (Math.abs(y - (o.y + oh + GAP)) < S) by = o.y + oh + GAP;
     else if (Math.abs((y + h + GAP) - o.y) < S) by = o.y - GAP - h;
     else if (Math.abs(y - o.y) < S) by = o.y;
@@ -120,21 +138,27 @@ function render() {
       'Use <b>+ Add piece</b> to capture from the page.</div>';
     return;
   }
-  viewK = Math.min(1, STAGE_W / (bbox.w + MARGINE * 2));
+  viewK = Math.min(1, STAGE_W / canvasW);
 
   var cornice = document.createElement('div');
   cornice.id = 'cornice';
-  cornice.style.padding = Math.round(MARGINE * viewK) + 'px';
 
   var dim = document.createElement('div');
   dim.id = 'dimensioni';
-  dim.textContent = 'Final image: ' + Math.round(bbox.w + MARGINE * 2) + ' × ' + Math.round(bbox.h + MARGINE * 2) + ' px';
+  dim.textContent = 'Final image: ' + Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px';
   cornice.appendChild(dim);
 
   var tela = document.createElement('div');
   tela.id = 'tela';
-  tela.style.width = Math.round(bbox.w * viewK) + 'px';
-  tela.style.height = Math.round(bbox.h * viewK) + 'px';
+  tela.style.width = Math.round(canvasW * viewK) + 'px';
+  tela.style.height = Math.round(canvasH * viewK) + 'px';
+  // click sul VUOTO della tela = deseleziona
+  tela.addEventListener('mousedown', function(e) {
+    if (e.target === tela) {
+      selezionato = -1;
+      render();
+    }
+  });
   blocchi.forEach(function(b, i) { tela.appendChild(creaBlocco(i)); });
   cornice.appendChild(tela);
   palco.appendChild(cornice);
@@ -148,18 +172,20 @@ function bottone(txt, titolo, fn) {
   return b;
 }
 
+var MANIGLIE = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
 function creaBlocco(i) {
   var b = blocchi[i];
-  var w = b.natW * b.scale;
   var wrap = document.createElement('div');
   wrap.className = 'blocco' + (i === selezionato ? ' selezionato' : '');
-  wrap.style.left = Math.round((b.x - bbox.minX) * viewK) + 'px';
-  wrap.style.top = Math.round((b.y - bbox.minY) * viewK) + 'px';
+  wrap.style.left = Math.round(b.x * viewK) + 'px';
+  wrap.style.top = Math.round(b.y * viewK) + 'px';
   wrap.style.zIndex = 1 + i;
 
   var im = document.createElement('img');
   im.src = b.img;
-  im.style.width = Math.max(24, Math.round(w * viewK)) + 'px';
+  im.style.width = Math.max(16, Math.round(larghezza(b) * viewK)) + 'px';
+  im.style.height = Math.max(16, Math.round(altezza(b) * viewK)) + 'px';
   wrap.appendChild(im);
 
   var ctr = document.createElement('div');
@@ -181,44 +207,27 @@ function creaBlocco(i) {
   ctr.appendChild(bottone('\u{1F5D1}', 'Remove', function() {
     blocchi.splice(i, 1);
     selezionato = -1;
-    aggiornaBbox();
     render();
   }));
   wrap.appendChild(ctr);
 
   var lab = document.createElement('div');
   lab.className = 'scala';
-  lab.textContent = Math.round(b.scale * 100) + '%';
+  lab.textContent = Math.round(larghezza(b)) + '×' + Math.round(altezza(b));
   wrap.appendChild(lab);
 
-  // Maniglia d'angolo: ridimensiona (20% - 300%), riadatta al rilascio.
-  var man = document.createElement('div');
-  man.className = 'maniglia';
-  man.addEventListener('mousedown', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    selezionato = i;
-    var startX = e.clientX;
-    var startScale = b.scale;
-    function onMove(ev) {
-      var d = ev.clientX - startX;
-      b.scale = Math.min(3, Math.max(0.2, startScale * (1 + d / 260)));
-      render();
-    }
-    function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      aggiornaBbox();
-      render();
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+  // 8 MANIGLIE: angoli = proporzionale, lati = stira solo quel lato,
+  // sempre con l'ancora sul lato/angolo opposto.
+  MANIGLIE.forEach(function(hnd) {
+    var man = document.createElement('div');
+    man.className = 'man man-' + hnd;
+    man.addEventListener('mousedown', function(e) { iniziaResize(e, i, hnd); });
+    wrap.appendChild(man);
   });
-  wrap.appendChild(man);
 
-  // LA MANINA: trascinamento libero del pezzo, con calamita.
+  // LA MANINA: trascinamento libero con calamita, dentro la tela.
   wrap.addEventListener('mousedown', function(e) {
-    if (e.target.closest('.controlli') || e.target.classList.contains('maniglia')) return;
+    if (e.target.closest('.controlli') || e.target.classList.contains('man')) return;
     e.preventDefault();
     selezionato = i;
     var startX = e.clientX, startY = e.clientY;
@@ -229,20 +238,68 @@ function creaBlocco(i) {
       var agg = calamita(i, nx, ny);
       b.x = agg.x;
       b.y = agg.y;
-      render();   // la cornice resta ferma: bbox si riadatta solo al rilascio
+      clampBlocco(b);
+      render();
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      aggiornaBbox();
-      render();
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    render();   // evidenzia subito la selezione
+    render();
   });
 
   return wrap;
+}
+
+function iniziaResize(e, i, hnd) {
+  e.preventDefault();
+  e.stopPropagation();
+  selezionato = i;
+  var b = blocchi[i];
+  var startX = e.clientX, startY = e.clientY;
+  var x0 = b.x, y0 = b.y;
+  var w0 = larghezza(b), h0 = altezza(b);
+  function onMove(ev) {
+    var dx = (ev.clientX - startX) / viewK;
+    var dy = (ev.clientY - startY) / viewK;
+    var nw = w0, nh = h0;
+    if (hnd === 'e') nw = w0 + dx;
+    else if (hnd === 'w') nw = w0 - dx;
+    else if (hnd === 's') nh = h0 + dy;
+    else if (hnd === 'n') nh = h0 - dy;
+    else {
+      // angoli: scala proporzionale guidata dalla direzione della diagonale
+      var ddx = (hnd === 'ne' || hnd === 'se') ? dx : -dx;
+      var ddy = (hnd === 'se' || hnd === 'sw') ? dy : -dy;
+      var f = Math.max((w0 + ddx) / w0, (h0 + ddy) / h0);
+      nw = w0 * f;
+      nh = h0 * f;
+    }
+    nw = Math.min(Math.max(30, nw), canvasW);
+    nh = Math.min(Math.max(30, nh), canvasH);
+    if (hnd.length === 2) {           // angolo: entrambe le scale
+      b.sx = nw / b.natW;
+      b.sy = nh / b.natH;
+    } else if (hnd === 'e' || hnd === 'w') {
+      b.sx = nw / b.natW;
+    } else {
+      b.sy = nh / b.natH;
+    }
+    // ancora sul lato opposto a quello trascinato
+    var w = larghezza(b), h = altezza(b);
+    if (hnd === 'w' || hnd === 'nw' || hnd === 'sw') b.x = x0 + (w0 - w);
+    if (hnd === 'n' || hnd === 'nw' || hnd === 'ne') b.y = y0 + (h0 - h);
+    clampBlocco(b);
+    render();
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 }
 
 // ---- TASTIERA: frecce = spostamento di precisione, Canc = elimina ----
@@ -261,7 +318,6 @@ document.addEventListener('keydown', function(e) {
   else if (e.key === 'Delete') {
     blocchi.splice(selezionato, 1);
     selezionato = -1;
-    aggiornaBbox();
     render();
     return;
   } else {
@@ -269,24 +325,19 @@ document.addEventListener('keydown', function(e) {
   }
   if (preso) {
     e.preventDefault();
+    clampBlocco(b);
     render();
-    // il riquadro si riadatta solo a raffica finita, per non far "ballare"
-    // gli altri pezzi a ogni pressione
-    clearTimeout(timerNudge);
-    timerNudge = setTimeout(function() { aggiornaBbox(); render(); }, 500);
   }
 });
 
 // ---- COMPOSIZIONE ED EXPORT ----
 
 async function componi() {
-  aggiornaBbox();
   var imgs = await Promise.all(blocchi.map(function(b) { return caricaImmagine(b.img); }));
-  var W = Math.round(bbox.w) + MARGINE * 2;
-  var H = Math.round(bbox.h) + MARGINE * 2;
+  var W = Math.round(canvasW), H = Math.round(canvasH);
   // Limiti canvas di Chrome: ~32k px per lato, ~268M px di area totale.
   if (W > 32000 || H > 32000 || W * H > 240000000) {
-    alert('The composition is too large for the browser canvas.\nShrink or remove some pieces and try again.');
+    alert('The composition is too large for the browser canvas.\nShrink the canvas (Fit) or remove some pieces and try again.');
     return null;
   }
   var canvas = document.createElement('canvas');
@@ -299,13 +350,8 @@ async function componi() {
   ctx.imageSmoothingQuality = 'high';
   // Ordine dell'array = ordine di sovrapposizione (l'ultimo sta sopra).
   blocchi.forEach(function(b, i) {
-    ctx.drawImage(
-      imgs[i],
-      Math.round(b.x - bbox.minX) + MARGINE,
-      Math.round(b.y - bbox.minY) + MARGINE,
-      Math.round(b.natW * b.scale),
-      Math.round(b.natH * b.scale)
-    );
+    ctx.drawImage(imgs[i], Math.round(b.x), Math.round(b.y),
+      Math.round(larghezza(b)), Math.round(altezza(b)));
   });
   return canvas;
 }
@@ -337,6 +383,7 @@ async function salva() {
 $('btnAggiungi').addEventListener('click', function() {
   $('scelta').style.display = 'flex';
 });
+$('btnFit').addEventListener('click', adattaTela);
 $('scelta').addEventListener('click', function(e) {
   if (e.target === $('scelta')) $('scelta').style.display = 'none';
 });
