@@ -10,6 +10,8 @@ var importati = new Set();  // id dei pezzi di sessione già portati in tela
 var selezionato = -1;
 var viewKBloccata = null;   // zoom congelato durante il resize della tela
 var ancoraTela = null;      // margini congelati: il lato opposto sta fermo
+var guidaV = null;          // linee guida della calamita durante il drag
+var guidaH = null;
 
 var GAP = 14;        // respiro usato dalla calamita
 var MARGINE = 24;    // margine iniziale attorno ai pezzi
@@ -144,26 +146,29 @@ function adattaTela() {
 
 // CALAMITA: aggancio automatico ai bordi degli altri pezzi (entro ~8px a
 // schermo): allineato, subito sotto, affiancato. Lontano dai punti magnetici
-// il pezzo resta libero, sovrapposizioni comprese.
+// il pezzo resta libero, sovrapposizioni comprese. Oltre alla posizione
+// agganciata restituisce le LINEE GUIDA (gv verticale, gh orizzontale) da
+// accendere sulla tela mentre si trascina.
 function calamita(i, x, y) {
   var b = blocchi[i];
   var w = larghezza(b), h = altezza(b);
   var S = 8 / viewK;
   var bx = x, by = y;
+  var gv = null, gh = null;
   blocchi.forEach(function(o, j) {
     if (j === i) return;
     var ow = larghezza(o), oh = altezza(o);
-    if (Math.abs(x - o.x) < S) bx = o.x;
-    else if (Math.abs((x + w) - (o.x + ow)) < S) bx = o.x + ow - w;
-    else if (Math.abs((x + w / 2) - (o.x + ow / 2)) < S) bx = o.x + ow / 2 - w / 2;
-    else if (Math.abs(x - (o.x + ow + GAP)) < S) bx = o.x + ow + GAP;
-    else if (Math.abs((x + w + GAP) - o.x) < S) bx = o.x - GAP - w;
-    if (Math.abs(y - (o.y + oh + GAP)) < S) by = o.y + oh + GAP;
-    else if (Math.abs((y + h + GAP) - o.y) < S) by = o.y - GAP - h;
-    else if (Math.abs(y - o.y) < S) by = o.y;
-    else if (Math.abs((y + h) - (o.y + oh)) < S) by = o.y + oh - h;
+    if (Math.abs(x - o.x) < S) { bx = o.x; gv = o.x; }
+    else if (Math.abs((x + w) - (o.x + ow)) < S) { bx = o.x + ow - w; gv = o.x + ow; }
+    else if (Math.abs((x + w / 2) - (o.x + ow / 2)) < S) { bx = o.x + ow / 2 - w / 2; gv = o.x + ow / 2; }
+    else if (Math.abs(x - (o.x + ow + GAP)) < S) { bx = o.x + ow + GAP; gv = bx; }
+    else if (Math.abs((x + w + GAP) - o.x) < S) { bx = o.x - GAP - w; gv = bx + w; }
+    if (Math.abs(y - (o.y + oh + GAP)) < S) { by = o.y + oh + GAP; gh = by; }
+    else if (Math.abs((y + h + GAP) - o.y) < S) { by = o.y - GAP - h; gh = by + h; }
+    else if (Math.abs(y - o.y) < S) { by = o.y; gh = o.y; }
+    else if (Math.abs((y + h) - (o.y + oh)) < S) { by = o.y + oh - h; gh = o.y + oh; }
   });
-  return { x: bx, y: by };
+  return { x: bx, y: by, gv: gv, gh: gh };
 }
 
 // ---- RENDER ----
@@ -211,6 +216,22 @@ function render() {
       'left:' + Math.round(sb.x * viewK - 2) + 'px;top:' + Math.round(sb.y * viewK - 2) + 'px;' +
       'width:' + Math.round(larghezza(sb) * viewK) + 'px;height:' + Math.round(altezza(sb) * viewK) + 'px;';
     tela.appendChild(alone);
+  }
+  // Linee guida della calamita: righe luminose che compaiono mentre
+  // trascini un pezzo quando un bordo (o il centro) si allinea a un altro.
+  if (guidaV != null) {
+    var lv = document.createElement('div');
+    lv.style.cssText = 'position:absolute;pointer-events:none;z-index:950;' +
+      'left:' + Math.round(guidaV * viewK) + 'px;top:0;width:1px;height:100%;' +
+      'background:#ff4fa3;box-shadow:0 0 4px rgba(255,79,163,0.8);';
+    tela.appendChild(lv);
+  }
+  if (guidaH != null) {
+    var lh = document.createElement('div');
+    lh.style.cssText = 'position:absolute;pointer-events:none;z-index:950;' +
+      'top:' + Math.round(guidaH * viewK) + 'px;left:0;height:1px;width:100%;' +
+      'background:#ff4fa3;box-shadow:0 0 4px rgba(255,79,163,0.8);';
+    tela.appendChild(lh);
   }
   cornice.appendChild(tela);
 
@@ -304,6 +325,19 @@ function iniziaResizeTela(e, hnd) {
   var capW = Math.max(32000, w0), capH = Math.max(32000, h0);
   var badge = creaBadgePixel();
   muoviBadgePixel(badge, e, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
+  // Offset di presa: a che distanza dal bordo è stato afferrato il mouse.
+  // Serve a tenere il bordo INCOLLATO al puntatore compensando lo scroll
+  // (su tele più alte della finestra, accorciare dal basso faceva scorrere
+  // la pagina e sembrava che si stringesse la parte alta).
+  var presaX = 0, presaY = 0;
+  var t0 = document.getElementById('tela');
+  if (t0) {
+    var r0 = t0.getBoundingClientRect();
+    if (hnd.indexOf('e') !== -1) presaX = r0.right - e.clientX;
+    if (hnd.indexOf('w') !== -1) presaX = r0.left - e.clientX;
+    if (hnd.indexOf('s') !== -1) presaY = r0.bottom - e.clientY;
+    if (hnd.indexOf('n') !== -1) presaY = r0.top - e.clientY;
+  }
   function onMove(ev) {
     var dx = (ev.clientX - startX) / k0;
     var dy = (ev.clientY - startY) / k0;
@@ -331,6 +365,18 @@ function iniziaResizeTela(e, hnd) {
       });
     }
     render();
+    // Scroll di compensazione: il bordo trascinato resta sotto il puntatore
+    // anche quando il documento dell'editor si allunga o si accorcia.
+    var t = document.getElementById('tela');
+    if (t) {
+      var r = t.getBoundingClientRect();
+      var sx = 0, sy = 0;
+      if (hnd.indexOf('e') !== -1) sx = r.right - (ev.clientX + presaX);
+      else if (hnd.indexOf('w') !== -1) sx = r.left - (ev.clientX + presaX);
+      if (hnd.indexOf('s') !== -1) sy = r.bottom - (ev.clientY + presaY);
+      else if (hnd.indexOf('n') !== -1) sy = r.top - (ev.clientY + presaY);
+      if (Math.abs(sx) > 1 || Math.abs(sy) > 1) window.scrollBy(sx, sy);
+    }
     muoviBadgePixel(badge, ev, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   }
   function onUp() {
@@ -426,11 +472,18 @@ function creaBlocco(i) {
       bb.x = agg.x;
       bb.y = agg.y;
       clampBlocco(bb);
+      guidaV = agg.gv;
+      guidaH = agg.gh;
       render();
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      if (guidaV != null || guidaH != null) {
+        guidaV = null;
+        guidaH = null;
+        render();
+      }
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
