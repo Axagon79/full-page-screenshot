@@ -472,6 +472,16 @@ $('btnAnteprima').addEventListener('click', async function() {
 $('anteprima').addEventListener('click', function() {
   $('anteprima').style.display = 'none';
 });
+// Stampa DALL'anteprima (stile Excel): sulla carta va solo l'immagine finale.
+$('btnStampa').addEventListener('click', function(e) {
+  e.stopPropagation();   // non chiudere l'anteprima
+  document.body.classList.add('stampa');
+  window.addEventListener('afterprint', function via() {
+    document.body.classList.remove('stampa');
+    window.removeEventListener('afterprint', via);
+  });
+  window.print();
+});
 $('scelta').addEventListener('click', function(e) {
   if (e.target === $('scelta')) $('scelta').style.display = 'none';
 });

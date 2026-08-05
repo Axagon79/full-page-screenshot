@@ -227,6 +227,28 @@
       color: #8b8ba3;
       font-size: 12px;
     }
+    #anteprima .anteprima-azioni {
+      cursor: auto;
+    }
+
+    /* STAMPA DALL'ANTEPRIMA (stile Excel): sulla carta va SOLO l'immagine
+       finale — niente editor, bottoni o sfondi scuri. */
+    @media print {
+      body.stampa > :not(#anteprima) { display: none !important; }
+      body.stampa #anteprima {
+        position: static;
+        display: block !important;
+        background: none;
+      }
+      body.stampa #anteprima img {
+        max-width: 100%;
+        max-height: none;
+        box-shadow: none;
+        border-radius: 0;
+      }
+      body.stampa #anteprima .anteprima-hint,
+      body.stampa #anteprima .anteprima-azioni { display: none !important; }
+    }
 
     /* Numeretto dei pixel che segue il mouse durante i ridimensionamenti
        (stesso stile dell'etichetta live della selezione Area) */
@@ -386,6 +408,9 @@
 
   <!-- Anteprima pulita: la STESSA composizione del Save, a schermo pieno -->
   <div id="anteprima">
+    <div class="anteprima-azioni">
+      <button class="btn" id="btnStampa">🖨 Print</button>
+    </div>
     <img id="anteprimaImg" alt="Preview">
     <div class="anteprima-hint">Click anywhere or press Esc to close</div>
   </div>
