@@ -141,6 +141,16 @@ area) — sulle pagine lunghe il 2× va cappato o rifiutato con messaggio.
 Candidata naturale come **feature Pro** quando si riapre la
 monetizzazione (Handy vende rifiniture simili nel suo PRO one-time).
 
+### 11. Lente di ingrandimento nella selezione area (idea 05/08 notte)
+Loupe stile PicPick/ShareX/Greenshot (o selezione testo iOS): riquadro
+vicino al mirino che mostra la zona attorno al cursore ingrandita 4-8×
+con griglia pixel e coordinate → bordi della selezione piazzati al pixel.
+Allineata alla stella polare "precisione della cattura". Tecnica: NIENTE
+ricattura live (captureVisibleTab è cappato a ~2 chiamate/sec) — una
+cattura all'apertura dell'overlay (pagina statica, animazioni già in
+pausa), la lente è un canvas che panna dentro la bitmap cachata;
+ricattura debounced solo a scroll fermo (turbo autoscroll compreso).
+
 ### 8. Descrizione store in elenco puntato
 Rifare la descrizione con elenco chiaro **di quello che l'estensione fa davvero** (niente feature copiate dai concorrenti).
 Includere una sezione onesta "cosa NON fa" (limiti): gestisce le aspettative e aumenta la fiducia.
