@@ -258,6 +258,15 @@ async function multiMostraWidget(tabId) {
         if (old) old.remove();
         var w = document.createElement('div');
         w.id = '__shot_multi_widget';
+        // Hover sugli elementi cliccabili: senza feedback non si capisce
+        // dove si sta per cliccare. (Stile scoped sull'id del widget.)
+        var stile = document.createElement('style');
+        stile.textContent =
+          '#__shot_multi_widget button,#__shot_multi_widget .mw-icn{transition:background .12s,filter .12s,color .12s;}' +
+          '#__shot_multi_widget button:not(:disabled):not(.mw-primario):hover{background:rgba(0,212,255,0.18) !important;}' +
+          '#__shot_multi_widget button.mw-primario:not(:disabled):hover{filter:brightness(1.15);}' +
+          '#__shot_multi_widget .mw-icn:hover{background:rgba(255,255,255,0.14);border-radius:5px;color:#fff !important;}';
+        w.appendChild(stile);
         w.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;' +
           'background:#16162a;border:1px solid rgba(0,212,255,0.45);border-radius:12px;' +
           'padding:10px;font-family:Segoe UI,sans-serif;color:#eee;' +
@@ -280,6 +289,7 @@ async function multiMostraWidget(tabId) {
         var chiudi = document.createElement('span');
         chiudi.textContent = '✕';
         chiudi.title = 'End session';
+        chiudi.className = 'mw-icn';
         chiudi.style.cssText = 'cursor:pointer;color:#888;font-size:12px;padding:2px 4px;';
         chiudi.addEventListener('click', function() {
           w.remove();
@@ -295,6 +305,7 @@ async function multiMostraWidget(tabId) {
           s.title = tip;
           s.style.cssText = 'font-size:15px;line-height:1;padding:2px 4px;' +
             (attiva ? 'cursor:pointer;color:#00d4ff;' : 'cursor:default;color:#4a5262;');
+          if (attiva) s.className = 'mw-icn';
           if (attiva) {
             s.addEventListener('click', function() {
               chrome.runtime.sendMessage({ action: azione });
@@ -350,6 +361,7 @@ async function multiMostraWidget(tabId) {
           w.remove();
           chrome.runtime.sendMessage({ action: 'multiCompose' });
         });
+        comp.className = 'mw-primario';
         if (!quanti) {
           comp.disabled = true;
           comp.style.opacity = '0.4';

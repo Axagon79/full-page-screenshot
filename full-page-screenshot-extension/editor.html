@@ -200,14 +200,21 @@
       box-shadow: 0 1px 4px rgba(0,0,0,0.4);
     }
     .tman-e { right: -7px; top: 50%; margin-top: -14px; width: 12px; height: 28px; cursor: ew-resize; }
+    .tman-w { left: -7px; top: 50%; margin-top: -14px; width: 12px; height: 28px; cursor: ew-resize; }
     .tman-s { bottom: -7px; left: 50%; margin-left: -14px; width: 28px; height: 12px; cursor: ns-resize; }
+    .tman-n { top: -7px; left: 50%; margin-left: -14px; width: 28px; height: 12px; cursor: ns-resize; }
     .tman-se { right: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nwse-resize; }
+    .tman-nw { left: -7px; top: -7px; width: 14px; height: 14px; cursor: nwse-resize; }
+    .tman-ne { right: -7px; top: -7px; width: 14px; height: 14px; cursor: nesw-resize; }
+    .tman-sw { left: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nesw-resize; }
+    .tman:hover { background: #6ee7ff; }
 
     /* Anteprima pulita dell'immagine finale */
     #anteprima {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.88);
+      /* quasi opaco: l'editor sotto non deve distrarre dall'anteprima */
+      background: rgba(10,11,20,0.98);
       display: none;
       flex-direction: column;
       align-items: center;
@@ -416,7 +423,7 @@
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>
-  <div class="hint">drag to move (magnetic edges) · corners resize, sides stretch · drag the frame edges to grow the canvas · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · click empty space to deselect · Del remove</div>
+  <div class="hint">drag to move (magnetic edges) · click brings a piece to front · Alt+click selects the piece underneath · corners resize, sides stretch · drag the frame edges to grow the canvas · arrow keys nudge (Shift = ×10) · click empty space to deselect · Del remove</div>
 
   <script src="editor.js"></script>
 </body>

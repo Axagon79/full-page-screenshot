@@ -8,6 +8,7 @@
 var blocchi = [];    // { pid, img, natW, natH, sx, sy, x, y } — ordine = sovrapposizione
 var importati = new Set();  // id dei pezzi di sessione già portati in tela
 var selezionato = -1;
+var viewKBloccata = null;   // zoom congelato durante il resize della tela
 
 var GAP = 14;        // respiro usato dalla calamita
 var MARGINE = 24;    // margine iniziale attorno ai pezzi
@@ -169,7 +170,9 @@ function render() {
       'Use <b>+ Add piece</b> to capture from the page.</div>';
     return;
   }
-  viewK = Math.min(1, stageW() / canvasW);
+  // Durante il resize della tela lo zoom resta CONGELATO: così il bordo
+  // segue il mouse 1:1 (il refit alla nuova misura avviene al rilascio).
+  viewK = (viewKBloccata != null) ? viewKBloccata : Math.min(1, stageW() / canvasW);
 
   var cornice = document.createElement('div');
   cornice.id = 'cornice';
@@ -191,12 +194,24 @@ function render() {
     }
   });
   blocchi.forEach(function(b, i) { tela.appendChild(creaBlocco(i)); });
+  // Alone di selezione: cornice tratteggiata SOPRA tutti i pezzi, così un
+  // pezzo selezionato con Alt+click resta visibile anche se sta sotto.
+  if (selezionato >= 0 && selezionato < blocchi.length - 1) {
+    var sb = blocchi[selezionato];
+    var alone = document.createElement('div');
+    alone.style.cssText = 'position:absolute;pointer-events:none;z-index:900;' +
+      'border:2px dashed #00d4ff;border-radius:4px;' +
+      'left:' + Math.round(sb.x * viewK - 2) + 'px;top:' + Math.round(sb.y * viewK - 2) + 'px;' +
+      'width:' + Math.round(larghezza(sb) * viewK) + 'px;height:' + Math.round(altezza(sb) * viewK) + 'px;';
+    tela.appendChild(alone);
+  }
   cornice.appendChild(tela);
 
-  // Maniglie della TELA: allarga il "foglio" a piacere (destra, basso,
-  // angolo) — utile per fare spazio, es. per affiancare pezzi piccoli.
+  // Maniglie della TELA su tutti i lati e gli angoli: allargano il
+  // "foglio" a piacere. Da sinistra/alto lo spazio si aggiunge da quel
+  // lato e i pezzi scivolano per restare ancorati al lato opposto.
   // "Fit canvas" lo ristringe al contenuto.
-  ['e', 's', 'se'].forEach(function(hnd) {
+  ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function(hnd) {
     var man = document.createElement('div');
     man.className = 'tman tman-' + hnd;
     man.title = 'Drag to grow the canvas';
@@ -236,15 +251,37 @@ function iniziaResizeTela(e, hnd) {
   e.stopPropagation();
   var startX = e.clientX, startY = e.clientY;
   var w0 = canvasW, h0 = canvasH;
-  var k0 = viewK;   // scala congelata: niente feedback mentre si trascina
+  var k0 = viewK;
+  viewKBloccata = k0;  // il bordo segue il mouse 1:1, refit al rilascio
+  var orig = blocchi.map(function(b) { return { x: b.x, y: b.y }; });
+  var minX0 = Infinity, minY0 = Infinity;
+  blocchi.forEach(function(b) {
+    minX0 = Math.min(minX0, b.x);
+    minY0 = Math.min(minY0, b.y);
+  });
+  if (!isFinite(minX0)) { minX0 = w0; minY0 = h0; }
   var badge = creaBadgePixel();
   muoviBadgePixel(badge, e, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   function onMove(ev) {
     var dx = (ev.clientX - startX) / k0;
     var dy = (ev.clientY - startY) / k0;
     var min = minimiTela();
-    if (hnd === 'e' || hnd === 'se') canvasW = Math.min(32000, Math.max(min.w, Math.round(w0 + dx)));
-    if (hnd === 's' || hnd === 'se') canvasH = Math.min(32000, Math.max(min.h, Math.round(h0 + dy)));
+    // Est/sud stirano il bordo; ovest/nord aggiungono (o tolgono) spazio da
+    // quel lato, e i pezzi scivolano per restare fermi rispetto all'altro.
+    if (hnd.indexOf('e') !== -1) canvasW = Math.min(32000, Math.max(min.w, Math.round(w0 + dx)));
+    if (hnd.indexOf('s') !== -1) canvasH = Math.min(32000, Math.max(min.h, Math.round(h0 + dy)));
+    if (hnd.indexOf('w') !== -1) {
+      var nw = Math.min(32000, Math.max(Math.max(200, w0 - minX0), Math.round(w0 - dx)));
+      var delta = nw - w0;
+      canvasW = nw;
+      blocchi.forEach(function(b, j) { b.x = orig[j].x + delta; });
+    }
+    if (hnd.indexOf('n') !== -1) {
+      var nh = Math.min(32000, Math.max(Math.max(150, h0 - minY0), Math.round(h0 - dy)));
+      var deltaY = nh - h0;
+      canvasH = nh;
+      blocchi.forEach(function(b, j) { b.y = orig[j].y + deltaY; });
+    }
     render();
     muoviBadgePixel(badge, ev, Math.round(canvasW) + ' × ' + Math.round(canvasH) + ' px');
   }
@@ -252,6 +289,8 @@ function iniziaResizeTela(e, hnd) {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     badge.remove();
+    viewKBloccata = null;   // ora la vista si riadatta alla nuova misura
+    render();
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
@@ -306,20 +345,38 @@ function creaBlocco(i) {
 
   // LA MANINA: trascinamento libero con calamita, dentro la tela.
   // Il click porta il pezzo SOPRA gli altri (come nei collage veri).
+  // Alt+click seleziona invece il pezzo SOTTO al punto cliccato — per
+  // ripescare un pezzo coperto senza spostare quello che gli sta sopra
+  // (Alt+click ripetuti scendono di un piano alla volta, poi si ricomincia).
   wrap.addEventListener('mousedown', function(e) {
     if (e.target.closest('.controlli') || e.target.classList.contains('man')) return;
     e.preventDefault();
-    i = portaSopra(i);
+    if (e.altKey) {
+      var rTela = wrap.parentElement.getBoundingClientRect();
+      var cx = (e.clientX - rTela.left) / viewK;
+      var cy = (e.clientY - rTela.top) / viewK;
+      var pila = [];
+      blocchi.forEach(function(o, j) {
+        if (cx >= o.x && cx <= o.x + larghezza(o) && cy >= o.y && cy <= o.y + altezza(o)) pila.push(j);
+      });
+      if (pila.length) {
+        var rif = pila.indexOf(selezionato) !== -1 ? pila.indexOf(selezionato) : pila.length - 1;
+        i = rif > 0 ? pila[rif - 1] : pila[pila.length - 1];
+      }
+    } else {
+      i = portaSopra(i);
+    }
     selezionato = i;
+    var bb = blocchi[i];
     var startX = e.clientX, startY = e.clientY;
-    var origX = b.x, origY = b.y;
+    var origX = bb.x, origY = bb.y;
     function onMove(ev) {
       var nx = origX + (ev.clientX - startX) / viewK;
       var ny = origY + (ev.clientY - startY) / viewK;
       var agg = calamita(i, nx, ny);
-      b.x = agg.x;
-      b.y = agg.y;
-      clampBlocco(b);
+      bb.x = agg.x;
+      bb.y = agg.y;
+      clampBlocco(bb);
       render();
     }
     function onUp() {
