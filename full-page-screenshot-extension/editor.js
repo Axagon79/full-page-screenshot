@@ -9,9 +9,15 @@ var blocchi = [];    // { img, natW, natH, sx, sy, x, y } — ordine = sovrappos
 var caricati = 0;
 var selezionato = -1;
 
-var STAGE_W = 960;   // larghezza massima di visualizzazione
 var GAP = 14;        // respiro usato dalla calamita
 var MARGINE = 24;    // margine iniziale attorno ai pezzi
+var DEFAULT_W = 1920;  // la tela e' una SCATOLA: nasce gia' grande (formato
+var DEFAULT_H = 1080;  // schermo), non su misura del primo pezzo
+
+// Larghezza del piano di lavoro: quasi tutto lo schermo dell'editor.
+function stageW() {
+  return Math.max(600, Math.min(window.innerWidth - 80, 1500));
+}
 
 var canvasW = 0;     // dimensione FISSA della tela = dimensione dell'export
 var canvasH = 0;
@@ -53,9 +59,10 @@ async function importaNuoviPezzi() {
       var im = await caricaImmagine(p.img);
       var w = im.naturalWidth, h = im.naturalHeight;
       if (!blocchi.length) {
-        // primo pezzo: la tela nasce su misura
-        canvasW = w + MARGINE * 2;
-        canvasH = h + MARGINE * 2;
+        // primo pezzo: la SCATOLA nasce gia' grande (1920x1080), o piu'
+        // grande se il pezzo da solo la supera — mai su misura del pezzo.
+        canvasW = Math.max(DEFAULT_W, w + MARGINE * 2);
+        canvasH = Math.max(DEFAULT_H, h + MARGINE * 2);
         blocchi.push({ img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
       } else {
         // pezzi successivi: sotto la pila; la tela cresce SOLO se non ci stanno
@@ -138,7 +145,7 @@ function render() {
       'Use <b>+ Add piece</b> to capture from the page.</div>';
     return;
   }
-  viewK = Math.min(1, STAGE_W / canvasW);
+  viewK = Math.min(1, stageW() / canvasW);
 
   var cornice = document.createElement('div');
   cornice.id = 'cornice';
@@ -442,5 +449,7 @@ $('btnAnnulla').addEventListener('click', function() {
   window.close();
 });
 $('btnSalva').addEventListener('click', salva);
+
+window.addEventListener('resize', function() { render(); });
 
 importaNuoviPezzi();
