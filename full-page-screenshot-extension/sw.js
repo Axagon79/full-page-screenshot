@@ -365,11 +365,25 @@ async function doFullCapture(tabId) {
         // riallarga di ~15px e l'altezza totale può cambiare leggermente.
         var sh = target ? target.scrollHeight : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
 
+        // Geometria del contenitore A SCHERMO: dove inizia (ot) e quanto è
+        // alta la sua parte visibile (ch). Sulle pagine dove il contenitore
+        // NON riempie il viewport (barra admin sopra, margini — es. console
+        // Mistral) avanzare di window.innerHeight salta contenuto, e impilare
+        // i frame interi duplica le bande fuori dal contenitore.
+        var ch = window.innerHeight, ot = 0;
+        if (target) {
+          var rTgt = target.getBoundingClientRect();
+          ot = Math.max(0, Math.round(rTgt.top));
+          ch = target.clientHeight;
+        }
+
         return {
           sh: sh,
           vh: window.innerHeight,
           vw: window.innerWidth,
           sy: sy,
+          ch: ch,
+          ot: ot,
           dpr: window.devicePixelRatio || 1,
           hasCustomScroll: !useWindow
         };
@@ -377,7 +391,10 @@ async function doFullCapture(tabId) {
     });
 
     var d = results[0].result;
-    var rows = Math.ceil(d.sh / d.vh);
+    // Passo di avanzamento: l'altezza VISIBILE del contenitore scrollato
+    // (per lo scroll di finestra coincide con l'altezza del viewport).
+    var stepH = d.hasCustomScroll ? d.ch : d.vh;
+    var rows = Math.ceil(d.sh / stepH);
     var captures = [];
 
     for (var i = 0; i < rows; i++) {
@@ -507,7 +524,7 @@ async function doFullCapture(tabId) {
             }, 50);
           });
         },
-        args: [i * d.vh, d.hasCustomScroll, i]
+        args: [i * stepH, d.hasCustomScroll, i]
       });
 
       await sleep(350);
@@ -532,7 +549,7 @@ async function doFullCapture(tabId) {
 
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, pw, ph, viewH, ratio) {
+      func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot) {
         // Carica tutte le immagini PRIMA di disegnare, così conosciamo l'altezza
         // REALE in pixel di ogni slice (img.height). A zoom non-interi (110%,
         // 150%) viewH*ratio non è intero e impilando per calcolo si perde 1 riga
@@ -551,6 +568,44 @@ async function doFullCapture(tabId) {
           var total = loaded.length;
           // Larghezza canvas = larghezza reale della cattura (tutte uguali).
           var cw = loaded[0].width;
+
+          // CONTENITORE INTERNO: ogni cattura è il viewport intero, ma il
+          // contenuto NUOVO sta solo nella fascia del contenitore a schermo
+          // (da ot a ot+ch, in px CSS). Se il contenitore non riempie il
+          // viewport (barra admin sopra, margini) impilare i frame interi
+          // taglia pezzi e duplica bande: qui si ritaglia la fascia giusta.
+          // La prima slice tiene anche ciò che sta SOPRA il contenitore
+          // (top bar della pagina), una volta sola, come per gli header fissi.
+          if (custom) {
+            var k = loaded[0].height / viewH;          // CSS -> pixel reali
+            var bandTop = Math.round(ot * k);
+            var bandH = Math.round(ch * k);
+            var firstH = bandTop + Math.round(Math.min(ph, ch) * k);
+            var lastRem = ph - (total - 1) * ch;       // contenuto nuovo dell'ultima slice (CSS)
+            var lastH = Math.round(lastRem * k);
+            if (lastH < 0) lastH = 0;
+            if (lastH > bandH) lastH = bandH;
+
+            var totalH = firstH;
+            for (var q = 1; q < total; q++) totalH += (q === total - 1) ? lastH : bandH;
+            var canvasC = document.createElement('canvas');
+            canvasC.width = cw;
+            canvasC.height = totalH;
+            var ctxC = canvasC.getContext('2d');
+
+            var yC = 0;
+            for (var j = 0; j < total; j++) {
+              var imC = loaded[j];
+              var srcY, srcH;
+              if (j === 0) { srcY = 0; srcH = firstH; }
+              else if (j === total - 1) { srcH = lastH; srcY = bandTop + bandH - lastH; }
+              else { srcY = bandTop; srcH = bandH; }
+              if (srcH <= 0) continue;
+              ctxC.drawImage(imC, 0, srcY, imC.width, srcH, 0, yC, imC.width, srcH);
+              yC += srcH;
+            }
+            return canvasC.toDataURL('image/png');
+          }
           // Altezza totale = somma delle altezze reali da disegnare per ogni slice.
           // L'ultima slice usa solo la parte rimanente (rem), in pixel reali.
           var lastRemCss = ph - (total - 1) * viewH;   // residuo CSS ultima slice
@@ -579,7 +634,7 @@ async function doFullCapture(tabId) {
           return canvas.toDataURL('image/png');
         });
       },
-      args: [captures, d.vw, d.sh, d.vh, d.dpr]
+      args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot]
     });
 
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -824,19 +879,36 @@ async function doAreaCapture(tabId) {
           if (lastMouseY >= SCROLL_TRIGGER_ZONE) leftTopZone = true;
           if (lastMouseY <= vh - SCROLL_TRIGGER_ZONE) leftBottomZone = true;
           var speed = 0;
+          // TURBO: nell'ultima fascia vicino al bordo (30px) si corre forte;
+          // nel resto della zona la velocita' resta dolce come prima, per
+          // mirare con precisione. 10px erano troppo pochi: nella pratica il
+          // mouse non ci stava mai dentro e il turbo non partiva.
+          var TURBO_ZONE = 30;
+          var TURBO_SPEED = 50;
           if (leftBottomZone && lastMouseY > vh - SCROLL_TRIGGER_ZONE) {
             var distFromBottom = vh - lastMouseY;
-            var ratio = 1 - (distFromBottom / SCROLL_TRIGGER_ZONE);
-            speed = SCROLL_SPEED_MIN + ratio * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN);
+            if (distFromBottom <= TURBO_ZONE) {
+              speed = TURBO_SPEED;
+            } else {
+              var ratio = 1 - (distFromBottom / SCROLL_TRIGGER_ZONE);
+              speed = SCROLL_SPEED_MIN + ratio * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN);
+            }
           } else if (leftTopZone && lastMouseY < SCROLL_TRIGGER_ZONE) {
-            var ratio2 = 1 - (lastMouseY / SCROLL_TRIGGER_ZONE);
-            speed = -(SCROLL_SPEED_MIN + ratio2 * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN));
+            if (lastMouseY <= TURBO_ZONE) {
+              speed = -TURBO_SPEED;
+            } else {
+              var ratio2 = 1 - (lastMouseY / SCROLL_TRIGGER_ZONE);
+              speed = -(SCROLL_SPEED_MIN + ratio2 * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN));
+            }
           }
           if (speed !== 0) {
+            // behavior 'instant': su siti con CSS scroll-behavior:smooth ogni
+            // scrollBy per-frame diventerebbe un'animazione che riparte da capo,
+            // strozzando la velocita' reale qualunque sia il passo richiesto.
             if (scrollTarget) {
-              scrollTarget.scrollBy(0, speed);
+              scrollTarget.scrollBy({ top: speed, left: 0, behavior: 'instant' });
             } else {
-              window.scrollBy(0, speed);
+              window.scrollBy({ top: speed, left: 0, behavior: 'instant' });
             }
             updateBox();
           }
@@ -1356,7 +1428,12 @@ async function doAreaCapture(tabId) {
           return out.toDataURL('image/png');
         });
       },
-      args: [captures, area.x, area.w, area.h_doc, sliceH, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1)]
+      // NB: come viewH si passa l'altezza del VIEWPORT (meta.vh), non sliceH:
+      // il rapporto CSS->pixel reali va calcolato sull'altezza della finestra,
+      // perché la cattura è alta quanto la finestra. Con un contenitore più
+      // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
+      // e il ritaglio usciva spostato rispetto alla selezione.
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1)]
     });
 
     var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -1368,10 +1445,13 @@ async function doAreaCapture(tabId) {
 
     await copyToClipboard(compResult[0].result, tabId);
 
-    // Ripristino: scroll iniziale + visibility dei fixed/sticky
+    // Ripristino: visibility dei fixed/sticky + pagina riportata IN CIMA.
+    // (Richiesta esplicita: a fine cattura Area si torna in alto come nella
+    // Full Page, invece di restare in fondo dove il drag con auto-scroll
+    // aveva lasciato la pagina.)
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(sy, hasCustomScroll) {
+      func: function(hasCustomScroll) {
         if (window.__screenshotStickies) {
           for (var k = 0; k < window.__screenshotStickies.length; k++) {
             var item = window.__screenshotStickies[k];
@@ -1383,13 +1463,13 @@ async function doAreaCapture(tabId) {
         if (startMark) startMark.removeAttribute('data-screenshot-start-sticky');
         var el = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
         if (el) {
-          el.scrollTop = sy;
+          el.scrollTop = 0;
           el.removeAttribute('data-screenshot-area-scroll');
         } else {
-          window.scrollTo(0, sy);
+          window.scrollTo(0, 0);
         }
       },
-      args: [meta.sy, area.hasCustomScroll]
+      args: [area.hasCustomScroll]
     });
 
     await resumeCssAnims(tabId);
