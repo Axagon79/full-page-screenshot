@@ -42,6 +42,23 @@ app "stitcher" nato per unire screenshot a mano. Concorrente diretto Handy
 Screenshot (30k utenti, 4,84★): editor+export forte, ma niente multi-snip
 né scroll selection. → Il multi-snip non è una feature: è il posizionamento.
 
+**RIVERIFICA 05/08/2026 sera (a Multi Snip costruito)** — ricontrollati i
+due candidati più vicini emersi da ricerche fresche:
+- SelectorsHub "Screenshot with URL": Dual Select = SOLO 2 aree, SOLO
+  stessa pagina, fusione automatica affiancata a layout fisso; l'editor è
+  di annotazione, non di composizione; nessun accumulo cross-tab, nessun
+  mix di tipi di cattura. Split View = finestre aperte affiancate d'ufficio.
+- FramedShot: compositore a GRIGLIA DI SLOT FISSI (dichiarano loro stessi
+  "not a free canvas"), lavora su immagini già esistenti via tray; niente
+  raccolta progressiva durante la navigazione, niente cattura scroll.
+- LongScreenshot: "merge with other captures" = concatenazione verticale di
+  long-screenshot, non collage libero.
+**Il nostro combo resta unico: multi-snip + MULTI-TAB** — sessione che
+accumula catture di ogni tipo (area/visibile/full-page con scroll) da
+schede diverse col pannellino che segue, undo/redo, e composizione su tela
+LIBERA (trascina/sovrapponi/ridimensiona/calamita con guide) nell'editor
+integrato. Nessun concorrente ha nemmeno metà del flusso.
+
 ### 1. Multi-snip stessa pagina
 Selezioni più frammenti d'area sulla stessa pagina → "+ Aggiungi" → "✓ Salva".
 Output a scelta: immagine unica verticale / file separati / testo unico (richiede OCR).
