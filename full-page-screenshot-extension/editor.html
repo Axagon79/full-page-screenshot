@@ -189,6 +189,18 @@
     .man-w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
     .man-e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
 
+    /* Maniglie della TELA (sulla cornice): allargano il foglio a piacere */
+    .tman {
+      position: absolute;
+      background: #00d4ff;
+      border-radius: 3px;
+      z-index: 7;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    .tman-e { right: -7px; top: 50%; margin-top: -14px; width: 12px; height: 28px; cursor: ew-resize; }
+    .tman-s { bottom: -7px; left: 50%; margin-left: -14px; width: 28px; height: 12px; cursor: ns-resize; }
+    .tman-se { right: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nwse-resize; }
+
     /* Pannello di scelta del tipo di cattura */
     #scelta {
       position: fixed;
@@ -329,7 +341,7 @@
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>
-  <div class="hint">drag to move (magnetic edges) · corners resize, sides stretch · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · click empty space to deselect · Del remove</div>
+  <div class="hint">drag to move (magnetic edges) · corners resize, sides stretch · drag the frame edges to grow the canvas · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · click empty space to deselect · Del remove</div>
 
   <script src="editor.js"></script>
 </body>

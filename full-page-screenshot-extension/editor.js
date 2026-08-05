@@ -161,7 +161,51 @@ function render() {
   });
   blocchi.forEach(function(b, i) { tela.appendChild(creaBlocco(i)); });
   cornice.appendChild(tela);
+
+  // Maniglie della TELA: allarga il "foglio" a piacere (destra, basso,
+  // angolo) — utile per fare spazio, es. per affiancare pezzi piccoli.
+  // "Fit canvas" lo ristringe al contenuto.
+  ['e', 's', 'se'].forEach(function(hnd) {
+    var man = document.createElement('div');
+    man.className = 'tman tman-' + hnd;
+    man.title = 'Drag to grow the canvas';
+    man.addEventListener('mousedown', function(e) { iniziaResizeTela(e, hnd); });
+    cornice.appendChild(man);
+  });
+
   palco.appendChild(cornice);
+}
+
+// La tela non può mai stringersi sotto il contenuto.
+function minimiTela() {
+  var mw = 200, mh = 150;
+  blocchi.forEach(function(b) {
+    mw = Math.max(mw, b.x + larghezza(b));
+    mh = Math.max(mh, b.y + altezza(b));
+  });
+  return { w: mw, h: mh };
+}
+
+function iniziaResizeTela(e, hnd) {
+  e.preventDefault();
+  e.stopPropagation();
+  var startX = e.clientX, startY = e.clientY;
+  var w0 = canvasW, h0 = canvasH;
+  var k0 = viewK;   // scala congelata: niente feedback mentre si trascina
+  function onMove(ev) {
+    var dx = (ev.clientX - startX) / k0;
+    var dy = (ev.clientY - startY) / k0;
+    var min = minimiTela();
+    if (hnd === 'e' || hnd === 'se') canvasW = Math.min(32000, Math.max(min.w, Math.round(w0 + dx)));
+    if (hnd === 's' || hnd === 'se') canvasH = Math.min(32000, Math.max(min.h, Math.round(h0 + dy)));
+    render();
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 }
 
 function bottone(txt, titolo, fn) {
