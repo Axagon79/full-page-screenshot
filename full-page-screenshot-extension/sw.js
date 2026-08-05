@@ -48,11 +48,12 @@ chrome.runtime.onMessage.addListener(function(msg) {
       } else if (msg.mode === 'area') {
         doAreaCapture(msg.tabId);
       } else if (msg.mode === 'multi') {
-        // MULTI SNIP: apre (o riprende) la sessione di accumulo, poi parte
-        // con una normale selezione area — sarà l'intercettazione a fine
-        // cattura a mandare il pezzo all'editor invece che al download.
+        // MULTI SNIP: apre (o riprende) la sessione di accumulo e mostra
+        // SUBITO l'editor col pannello di scelta: è l'utente a decidere il
+        // tipo del primo pezzo (Full Page / Visible / Area), esattamente
+        // come per i pezzi successivi.
         multiApriSessione(msg.tabId).then(function() {
-          doAreaCapture(msg.tabId);
+          return multiMostraEditor();
         });
       }
     });
@@ -85,7 +86,28 @@ async function multiSessione() {
 async function multiApriSessione(tabId) {
   var m = (await multiSessione()) || { active: true, sourceTabId: tabId, editorTabId: null, pieces: [] };
   m.active = true;
-  m.sourceTabId = tabId;
+  // Se l'icona viene cliccata sulla scheda dell'EDITOR, la sorgente resta
+  // quella vecchia: non ha senso catturare l'editor stesso.
+  if (m.editorTabId == null || tabId !== m.editorTabId) {
+    m.sourceTabId = tabId;
+  }
+  await chrome.storage.session.set({ multi: m });
+}
+
+// Mostra l'editor: riattiva la scheda se esiste, altrimenti la crea.
+async function multiMostraEditor() {
+  var m = await multiSessione();
+  if (!m) return;
+  if (m.editorTabId != null) {
+    try {
+      await chrome.tabs.update(m.editorTabId, { active: true });
+      return;
+    } catch (schedaSparita) {
+      m.editorTabId = null;
+    }
+  }
+  var tab = await chrome.tabs.create({ url: 'editor.html' });
+  m.editorTabId = tab.id;
   await chrome.storage.session.set({ multi: m });
 }
 
@@ -110,17 +132,7 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
     }
   }
   // Apri l'editor la prima volta, oppure riportalo davanti.
-  if (m.editorTabId != null) {
-    try {
-      await chrome.tabs.update(m.editorTabId, { active: true });
-      return true;
-    } catch (spariito) {
-      m.editorTabId = null;
-    }
-  }
-  var tab = await chrome.tabs.create({ url: 'editor.html' });
-  m.editorTabId = tab.id;
-  await chrome.storage.session.set({ multi: m });
+  await multiMostraEditor();
   return true;
 }
 

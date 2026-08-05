@@ -34,7 +34,18 @@ chrome.storage.local.get('captureMode', function(data) {
   var mode = data.captureMode || 'full';
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (tabs[0]) {
-      if (mode === 'area' || mode === 'multi') {
+      if (mode === 'multi') {
+        // Multi Snip: si apre l'editor con la scelta del primo pezzo
+        pct.textContent = '▦';
+        pct.style.fontSize = '28px';
+        text.textContent = 'Multi Snip...';
+        chrome.runtime.sendMessage({
+          action: 'startCapture',
+          tabId: tabs[0].id,
+          mode: mode
+        });
+        setTimeout(function() { window.close(); }, 600);
+      } else if (mode === 'area') {
         // Mostra messaggio e chiudi
         pct.textContent = '\u2702';
         pct.style.fontSize = '28px';

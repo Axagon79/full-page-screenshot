@@ -90,26 +90,39 @@
       line-height: 1.8;
     }
 
-    .riga {
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      gap: 14px;
-      margin-bottom: 14px;
+    /* Cornice tratteggiata = i bordi dell'immagine FINALE: ferma durante il
+       trascinamento (così vedi se stai uscendo), si riadatta al rilascio. */
+    #cornice {
+      position: relative;
+      margin: 34px auto 0;
+      width: max-content;
+      border: 2px dashed rgba(0,212,255,0.45);
+      border-radius: 4px;
     }
+    #dimensioni {
+      position: absolute;
+      top: -24px;
+      right: 0;
+      font-size: 11px;
+      font-weight: 700;
+      color: #8b8ba3;
+      white-space: nowrap;
+    }
+    #tela { position: relative; }
 
     .blocco {
-      position: relative;
-      border: 2px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      overflow: visible;
+      position: absolute;
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
       background: #20203c;
-      flex-shrink: 0;
+      cursor: grab;
     }
+    .blocco:active { cursor: grabbing; }
     .blocco:hover { border-color: rgba(0,212,255,0.6); }
+    .blocco.selezionato { border-color: #00d4ff; }
     .blocco img {
       display: block;
-      border-radius: 6px;
+      border-radius: 2px;
       pointer-events: none;
       user-select: none;
     }
@@ -309,7 +322,7 @@
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>
-  <div class="hint">↑ ↓ reorder · ⇄ place side by side · drag the corner to resize · 🗑 remove</div>
+  <div class="hint">drag to move (magnetic edges) · arrow keys nudge (Shift = ×10) · ⬆⬇ layer order · corner to resize · Del remove</div>
 
   <script src="editor.js"></script>
 </body>
