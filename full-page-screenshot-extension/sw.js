@@ -1086,12 +1086,39 @@ async function doAreaCapture(tabId) {
           // ripiego sul viewport (cattura degradata ma sempre finita).
           if (!(containerH >= 50)) { containerH = window.innerHeight; offsetY = 0; }
         }
+        // Spessore della barra fissa incollata al bordo superiore dell'area
+        // di scroll (header di Facebook e simili): nella prima fetta resta
+        // visibile di proposito e coprirebbe l'inizio della selezione. Si
+        // contano solo BARRE vere (larghe almeno metà viewport, basse meno
+        // del 30%), non gli overlay a schermo intero. Se la selezione è
+        // partita DENTRO una barra fissa (data-screenshot-start-sticky)
+        // l'utente la vuole nello scatto: nessuna compensazione.
+        var topCover = 0;
+        if (!document.querySelector('[data-screenshot-start-sticky]')) {
+          var bordoTop = el ? offsetY : 0;
+          var tutti = document.querySelectorAll('*');
+          for (var k = 0; k < tutti.length; k++) {
+            var pz = window.getComputedStyle(tutti[k]);
+            if (pz.position !== 'fixed' && pz.position !== 'sticky') continue;
+            if (pz.visibility === 'hidden' || pz.display === 'none') continue;
+            var rz = tutti[k].getBoundingClientRect();
+            if (rz.top <= bordoTop + 2 && rz.bottom > bordoTop &&
+                rz.height < window.innerHeight * 0.3 &&
+                rz.width >= window.innerWidth * 0.5) {
+              var fondoBarra = rz.bottom - bordoTop;
+              if (fondoBarra > topCover) topCover = fondoBarra;
+            }
+          }
+          topCover = Math.round(topCover);
+        }
+
         return {
           sy: el ? el.scrollTop : window.scrollY,
           vh: window.innerHeight,
           containerH: containerH,
           offsetX: offsetX,
           offsetY: offsetY,
+          topCover: topCover,
           dpr: window.devicePixelRatio || 1
         };
       },
@@ -1114,6 +1141,13 @@ async function doAreaCapture(tabId) {
     var selTopVp = (area.y_doc - meta.offsetY) - meta.sy;
     var giaVisibile = numSlices <= 1 && selTopVp >= -1 && (selTopVp + area.h_doc) <= sliceH + 1;
 
+    // Scrollando ARRETRATI dello spessore della barra fissa in cima (vedi
+    // sotto), ogni giro copre topCover px in meno: può servire una fetta in
+    // più per arrivare al fondo della selezione.
+    if (!giaVisibile && meta.topCover) {
+      numSlices = Math.ceil((area.h_doc + meta.topCover) / sliceH);
+    }
+
     var captures = [];
     var deltas = [];  // di quanto lo scroll è rimasto indietro rispetto al voluto (per slice)
     var realScrolls = [];  // scroll reale (frazionario) raggiunto da ogni slice: serve
@@ -1130,7 +1164,14 @@ async function doAreaCapture(tabId) {
       // Su window scroll offsetY=0, quindi invariato.
       // Se la selezione è già tutta visibile, lo scroll voluto è quello ATTUALE
       // (meta.sy): non muovo la pagina, catturo dov'è.
-      var wantedScroll = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
+      var basePos = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
+      // BARRA FISSA IN CIMA (header Facebook e simili): si scrolla ARRETRATI
+      // del suo spessore. Prima fetta: la barra è visibile e coprirebbe
+      // l'inizio della selezione — il delta risultante fa partire il ritaglio
+      // subito SOTTO la barra. Fette successive: la barra è già nascosta dal
+      // censimento sticky, ma l'arretramento uniforme tiene le fette contigue.
+      var coverTop = giaVisibile ? 0 : (meta.topCover || 0);
+      var wantedScroll = coverTop ? Math.max(0, basePos - coverTop) : basePos;
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(targetScroll, hasCustomScroll, idx) {
@@ -1269,7 +1310,10 @@ async function doAreaCapture(tabId) {
         args: [wantedScroll, area.hasCustomScroll, i]
       });
       var realScroll = scrollResult[0].result;
-      deltas.push(wantedScroll - realScroll);
+      // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
+      // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
+      // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
+      deltas.push((i === 0 ? basePos : wantedScroll) - realScroll);
       realScrolls.push(realScroll);  // posizione assoluta reale di questa slice
 
       // LOG DIAGNOSTICO problema "selezione corta in fondo cattura piu in alto":
