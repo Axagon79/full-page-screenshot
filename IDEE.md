@@ -59,6 +59,30 @@ schede diverse col pannellino che segue, undo/redo, e composizione su tela
 LIBERA (trascina/sovrapponi/ridimensiona/calamita con guide) nell'editor
 integrato. Nessun concorrente ha nemmeno metà del flusso.
 
+**CASI D'USO DOCUMENTATI (ricerca 05/08 sera) → implicazioni di design:**
+1. *QA / bug report* (expected vs actual; le guide QA impongono screenshot
+   come allegato; SelectorsHub ha costruito Dual Select dichiaratamente
+   "for comparisons and bug reports" ma max 2 aree stessa pagina).
+   → Conferma fase 2: testo + evidenzia + oscura. Affiancato ✓ già coperto.
+2. *Confronto prodotti/prezzi su più tab* ("manually driven, very
+   time-consuming"; esiste un BREVETTO US20190317647 per aggregare
+   contenuto multi-tab a fini comparativi). → Pannellino che segue ✓,
+   allineamento con guide ✓. Etichette di testo (fase 2) per i prezzi.
+3. *Documentazione/tutorial* (utente FireShot: calvario cattura→documento→
+   incolla ripetuto). → Impilamento verticale ✓. MICRO-IDEA: strumento
+   "numeretti 1-2-3" da timbrare sui pezzi (banale da fare, oro per i tutorial).
+4. *Workflow alla ShareX* (issue #1052 CHIUSA: descrive alla lettera il
+   nostro editor — raccolta con hotkey + finestra di composizione con
+   snapping). → MICRO-IDEA: scorciatoia da tastiera "aggiungi pezzo"
+   (chrome.commands, max 4 shortcut) per catturare senza click.
+5. *Studio/ricerca/genealogia* (community che confrontano documenti da più
+   schede). → Multi-tab ✓; la citazione della fonte resta l'idea #2 (cross-page
+   clipper con link) — domanda confermata.
+6. *Chat/ricevute/thread spezzati* ("4 immagini separate non sopravvivono a
+   una chat di gruppo"). → Contatto 0px ✓, export unico ✓.
+7. *Before/after di build e progetti* (FramedShot lo usa come esempio di
+   marketing). → Affiancato ✓ + etichette testo (fase 2).
+
 ### 1. Multi-snip stessa pagina
 Selezioni più frammenti d'area sulla stessa pagina → "+ Aggiungi" → "✓ Salva".
 Output a scelta: immagine unica verticale / file separati / testo unico (richiede OCR).
