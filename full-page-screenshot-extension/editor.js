@@ -9,6 +9,7 @@ var blocchi = [];    // { pid, img, natW, natH, sx, sy, x, y } — ordine = sovr
 var importati = new Set();  // id dei pezzi di sessione già portati in tela
 var selezionato = -1;
 var viewKBloccata = null;   // zoom congelato durante il resize della tela
+var ancoraTela = null;      // margini congelati: il lato opposto sta fermo
 
 var GAP = 14;        // respiro usato dalla calamita
 var MARGINE = 24;    // margine iniziale attorno ai pezzi
@@ -225,6 +226,21 @@ function render() {
     cornice.appendChild(man);
   });
 
+  // Durante il resize della tela la centratura viene sospesa e il lato
+  // OPPOSTO alla maniglia resta ancorato: senza questo, metà della crescita
+  // andrebbe da ciascun lato e il bordo si muoverebbe a metà della velocità
+  // del mouse (la maniglia "scappava" dal puntatore).
+  if (ancoraTela) {
+    var wVis = Math.round(canvasW * viewK), hVis = Math.round(canvasH * viewK);
+    var ml = ancoraTela.ml, mt = ancoraTela.mt;
+    if (ancoraTela.hnd.indexOf('w') !== -1) ml = ancoraTela.ml - (wVis - ancoraTela.w0);
+    if (ancoraTela.hnd.indexOf('n') !== -1) mt = ancoraTela.mt - (hVis - ancoraTela.h0);
+    cornice.style.marginTop = mt + 'px';
+    cornice.style.marginLeft = ml + 'px';
+    cornice.style.marginRight = '0';
+    cornice.style.marginBottom = '0';
+  }
+
   palco.appendChild(cornice);
 }
 
@@ -259,6 +275,19 @@ function iniziaResizeTela(e, hnd) {
   var w0 = canvasW, h0 = canvasH;
   var k0 = viewK;
   viewKBloccata = k0;  // il bordo segue il mouse 1:1, refit al rilascio
+  // Congela i margini attuali (l'auto della centratura risolto in px): da
+  // qui in poi la crescita va tutta al lato trascinato.
+  var cEl = document.getElementById('cornice');
+  if (cEl) {
+    var cs = getComputedStyle(cEl);
+    ancoraTela = {
+      hnd: hnd,
+      ml: parseFloat(cs.marginLeft) || 0,
+      mt: parseFloat(cs.marginTop) || 0,
+      w0: Math.round(canvasW * k0),
+      h0: Math.round(canvasH * k0)
+    };
+  }
   // Posizioni di partenza agganciate ALL'OGGETTO, non all'indice: un pezzo
   // che arriva (o sparisce) a metà trascinamento non deve scombinare gli
   // altri né mandare le coordinate a NaN.
@@ -309,6 +338,7 @@ function iniziaResizeTela(e, hnd) {
     window.removeEventListener('mouseup', onUp);
     badge.remove();
     viewKBloccata = null;   // ora la vista si riadatta alla nuova misura
+    ancoraTela = null;      // e la tela torna centrata
     render();
   }
   window.addEventListener('mousemove', onMove);
