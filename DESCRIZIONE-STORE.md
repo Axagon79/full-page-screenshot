@@ -18,7 +18,48 @@ scroll selection, clipboard. Promessa privacy in chiusura.)
 
 ---
 
-## Descrizione lunga (dashboard → Scheda dello Store)
+## Descrizione lunga — VERSIONE DEFINITIVA 05/08 (fusione: testo esistente dell'utente + sezione onesta + differenziatori; SOLO funzioni già pubblicate nella 9.8)
+
+```
+Full Page Screenshot — capture entire web pages, precise areas, or scrolling selections with a single click. Every capture is also copied straight to your clipboard, ready to paste with Ctrl+V.
+
+THREE CAPTURE MODES
+
+✔ Full Page — automatically scrolls and stitches the entire page into one image. Works on regular sites AND on web apps that scroll inside an internal panel (dashboards, chat apps).
+✔ Visible Only — captures exactly what you see on screen, instantly.
+✔ Select Area — drag to select a custom region, with auto-scroll when you reach the viewport edge: you can select areas taller than the screen. That's scroll selection — almost no other extension does it.
+
+FEATURES
+
+- Copy to clipboard — every screenshot is instantly copied, so you can paste it anywhere with Ctrl+V (toggle it on or off in settings)
+- Saves to a "screenshots" folder inside your Downloads — no cloud, no account needed
+- Smart detection of scrollable containers (not just the main page)
+- Hides sticky headers/footers so they don't repeat in your screenshot
+- Water-fill animation shows capture progress in real time
+- Right-click the extension icon to change capture mode anytime
+
+PRIVACY FIRST
+
+Zero data collection, zero tracking, zero analytics. Everything stays on your device: your screenshots go to your Downloads folder and your clipboard, nowhere else.
+
+WHAT IT DOESN'T DO (yet — honesty matters)
+
+✘ PDF files opened in the browser: Chrome blocks extensions there, so full-page capture of PDFs isn't possible (no extension can). Visible capture works.
+✘ Browser internal pages (chrome://, the Web Store): Chrome blocks capture there by design; the extension falls back to the visible screen where allowed.
+✘ No image editor built in (annotations, arrows, blur) — on the roadmap.
+
+If a page captures wrong, report it and it gets fixed — recent updates added support for web apps with internal scrolling and sites where the body handles the scroll.
+
+If I helped you, leave a star or a comment — it's how other people find this extension.
+```
+
+DOPO la pubblicazione della 9.9, aggiungere a Select Area: "Push to the
+very edge for turbo speed; when you're done, you're taken back to the
+top." e agli update recenti: "admin consoles with fixed top bars".
+
+---
+
+## Descrizione lunga (prima bozza, superata dalla versione qui sopra)
 
 ```
 Capture any web page — the whole page, just what you see, or exactly the area you choose. Even areas taller than your screen: drag near the edge and the page scrolls with you. That's scroll selection, and almost no other extension does it.
