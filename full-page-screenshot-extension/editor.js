@@ -338,6 +338,16 @@ function iniziaResizeTela(e, hnd) {
     if (hnd.indexOf('s') !== -1) presaY = r0.bottom - e.clientY;
     if (hnd.indexOf('n') !== -1) presaY = r0.top - e.clientY;
   }
+  // SEGNAPOSTO anti-clamp: accorciando la tela il documento si accorcia e,
+  // se lo scroll è al massimo, il browser lo riclampa — il bordo resta
+  // fermo e tutto il resto scivola. Un punto invisibile di 1px alla
+  // vecchia estremità del documento tiene la corsa dello scroll intatta
+  // per tutto il gesto (via al rilascio).
+  var riserva = document.createElement('div');
+  riserva.style.cssText = 'position:absolute;width:1px;height:1px;pointer-events:none;visibility:hidden;' +
+    'left:' + (document.documentElement.scrollWidth - 1) + 'px;' +
+    'top:' + (document.documentElement.scrollHeight - 1) + 'px;';
+  document.body.appendChild(riserva);
   function onMove(ev) {
     var dx = (ev.clientX - startX) / k0;
     var dy = (ev.clientY - startY) / k0;
@@ -383,6 +393,7 @@ function iniziaResizeTela(e, hnd) {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     badge.remove();
+    riserva.remove();       // il documento può riprendere la sua misura
     viewKBloccata = null;   // ora la vista si riadatta alla nuova misura
     ancoraTela = null;      // e la tela torna centrata
     render();
