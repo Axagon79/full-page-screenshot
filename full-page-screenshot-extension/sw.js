@@ -2395,7 +2395,16 @@ async function doAreaCapture(tabId) {
           }
 
           // Altezza ESATTA richiesta dall'utente (area selezionata, in px reali).
-          var targetH = Math.round(ah_doc * realRatio);
+          // SCATTO OLTRE IL BERSAGLIO: sulle liste che agganciano lo scroll a
+          // multipli di riga, la prima fetta può fermarsi PIÙ GIÙ del punto
+          // di partenza voluto (delta negativo). Quel pezzetto iniziale è
+          // fisicamente non catturabile, e senza compensazione tutta la
+          // finestra slittava in giù: in fondo entrava la riga SOTTO la fine
+          // della selezione. L'altezza finale si accorcia dell'eccesso: mai
+          // contenuto oltre il punto dove l'utente ha chiuso la selezione.
+          var sovra0 = (deltas && deltas[0] < 0) ? Math.round(-deltas[0] * realRatio) : 0;
+          var targetH = Math.round(ah_doc * realRatio) - sovra0;
+          if (targetH < 1) targetH = 1;
 
           // CORREZIONE ACCUMULO: su pagine lunghe l'overlap stimato è un filo alto
           // per ogni giunzione, quindi cursorY risulta più corto di targetH e il
