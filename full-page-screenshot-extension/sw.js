@@ -83,6 +83,32 @@ chrome.runtime.onMessage.addListener(function(msg, sender) {
     });
     return;
   }
+  // Ctrl+V nell'editor: un'immagine dagli appunti entra in sessione come
+  // pezzo (import universale: DevTools via Win+Shift+S, altre app, ecc.).
+  if (msg.action === 'multiIncolla') {
+    conSessione(async function() {
+      var m = await multiSessione();
+      if (!m) return;
+      m.trash = [];  // e' una nuova aggiunta: azzera il redo come le catture
+      m.nextId = (m.nextId || 0) + 1;
+      m.pieces.push({ img: msg.img, tipo: 'paste', id: m.nextId });
+      try {
+        await chrome.storage.session.set({ multi: m });
+      } catch (quotaErr) {
+        try {
+          var ridotto = await comprimiInJpeg(msg.img);
+          m.pieces[m.pieces.length - 1].img = ridotto;
+          await chrome.storage.session.set({ multi: m });
+        } catch (e2) {
+          m.pieces.pop();
+          await chrome.storage.session.set({ multi: m });
+          return;
+        }
+      }
+      await multiAggiornaBadge();
+    });
+    return;
+  }
   // Redo: l'ultimo pezzo tolto per sbaglio torna nel mucchio.
   if (msg.action === 'multiRedo') {
     conSessione(async function() {

@@ -125,6 +125,27 @@ chrome.storage.onChanged.addListener(function(changes, area) {
   if (area === 'session' && changes.multi) importaNuoviPezzi();
 });
 
+// Ctrl+V: qualsiasi immagine negli appunti diventa un pezzo del collage —
+// screenshot dei DevTools fatti con Win+Shift+S, altre app, immagini
+// copiate dal web. Passa dalla sessione, così segue il flusso normale.
+document.addEventListener('paste', function(e) {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  for (var k = 0; k < items.length; k++) {
+    if (items[k].type && items[k].type.indexOf('image/') === 0) {
+      e.preventDefault();
+      var blob = items[k].getAsFile();
+      if (!blob) return;
+      var reader = new FileReader();
+      reader.onload = function() {
+        chrome.runtime.sendMessage({ action: 'multiIncolla', img: reader.result });
+      };
+      reader.readAsDataURL(blob);
+      return;
+    }
+  }
+});
+
 // "Fit canvas": riadatta la tela al contenuto, con margini uniformi.
 function adattaTela() {
   if (!blocchi.length) return;
