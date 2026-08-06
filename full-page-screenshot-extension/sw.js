@@ -1519,18 +1519,39 @@ async function doAreaCapture(tabId) {
           lente.style.display = 'none';
           if (lenteTimer) clearTimeout(lenteTimer);
           lenteTimer = setTimeout(function() {
-            // l'overlay si nasconde per un attimo: la foto deve riprendere
-            // la pagina, non la nostra velatura scura
-            var vis = overlay.style.visibility;
-            overlay.style.visibility = 'hidden';
+            // Se l'overlay non è più in pagina (selezione già chiusa),
+            // nessuno scatto: si eviterebbe pure di rubare quota alle slice.
+            if (!overlay.isConnected) return;
+            // Per lo scatto spariscono SOLO velo e cornici — l'overlay
+            // resta attivo e cliccabile. MAI visibility:hidden sull'overlay:
+            // un elemento nascosto non riceve eventi, e un mouseup in
+            // quell'attimo si perdeva — overlay appeso per sempre, attesa
+            // infinita e screenshot con il velo scuro dentro.
+            var vTr = overlay.style.transition;
+            var vBg = overlay.style.background;
+            var vBox = box.style.display;
+            var vInfo = info.style.display;
+            var vDim = dim.style.display;
+            overlay.style.transition = 'none';
+            overlay.style.background = 'transparent';
+            box.style.display = 'none';
+            info.style.display = 'none';
+            dim.style.display = 'none';
+            function ripristina() {
+              overlay.style.background = vBg;
+              box.style.display = vBox;
+              info.style.display = vInfo;
+              dim.style.display = vDim;
+              overlay.style.transition = vTr;
+            }
             try {
               chrome.runtime.sendMessage({ action: 'lenteRicattura' }, function(r) {
                 void chrome.runtime.lastError;
-                overlay.style.visibility = vis || '';
+                ripristina();
                 if (r && r.img) lenteCarica(r.img);
               });
             } catch (senzaPonte) {
-              overlay.style.visibility = vis || '';
+              ripristina();
             }
           }, 450);
         }
