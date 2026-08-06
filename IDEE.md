@@ -103,7 +103,12 @@ Frammenti da pagine diverse (Wikipedia → altra pagina → altra ancora) accumu
 Nota tecnica 17/07: `storage.session` ha limite 10MB — servirà compressione JPEG dei frammenti o permesso `unlimitedStorage` (ogni modifica ai permessi fa scattare revisione store più attenta).
 Casi d'uso: ricercatori, giornalisti, avvocati, studenti, analisti. Nessun competitor lo fa in questa forma.
 
-### 3. OCR (Tesseract.js, locale)
+### 3. OCR (Tesseract.js, locale) — RICONFERMATA 06/08, candidata TITOLO della 9.10
+Deciso col boss il 06/08: NON nella 9.9 (già carica col multi-snip) ma
+pezzo forte della release successiva, insieme alla lente #11 — una novità
+grossa per aggiornamento tiene vivo changelog/badge NEW e il flusso
+recensioni. UX prevista: pezzo selezionato nell'editor → bottone "Copia
+testo" → testo negli appunti. Zero menu, stile casa.
 Estrarre testo dalle catture. Gira nel browser, gratis, ~100 lingue.
 Serve dove il testo NON è selezionabile: immagini, PDF scansionati, pagine che bloccano il copia-incolla, canvas/Figma, codice dentro video.
 **Locale, non cloud**: l'AI vision in cloud darebbe qualità superiore ma tradirebbe il posizionamento "privacy first, everything stays on your device" — e gli utenti sono USA su Windows/ChromeOS (scuole), dove la privacy è requisito, non vezzo.
