@@ -2288,8 +2288,19 @@ async function doAreaCapture(tabId) {
             if (visStart >= 0) {
               startY = offY + visStart;
             } else {
-              var deltaPx = (deltas && deltas[idx] > 0) ? Math.round(deltas[idx] * realRatio) : 0;
+              var dRaw = (deltas && typeof deltas[idx] === 'number') ? deltas[idx] : 0;
+              // Delta NEGATIVO sulla PRIMA fetta = la selezione parte SOPRA
+              // il contenitore scrollabile (header/tab della pagina, che non
+              // scrollano ma SONO nel fotogramma): il ritaglio parte più in
+              // alto e li include. Scartarli (com'era) tagliava la testa
+              // della selezione e faceva slittare tutta la finestra in giù,
+              // con contenuto extra oltre la fine. Sulle fette successive i
+              // delta negativi restano ignorati (rumore da scroll frazionari).
+              var deltaPx = (idx === 0)
+                ? Math.round(dRaw * realRatio)
+                : ((dRaw > 0) ? Math.round(dRaw * realRatio) : 0);
               startY = offY + deltaPx;
+              if (startY < 0) startY = 0;
             }
             if (startY > img.height - 1) startY = img.height - 1;
             // FONDO UTILE: il contenitore finisce a offY + contH (px reali).
