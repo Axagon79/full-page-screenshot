@@ -5,6 +5,7 @@ Cartella: C:\Progetti\full-page-screenshot\full-page-screenshot-extension\
 Ultimo aggiornamento: 17 luglio 2026 (sera)
 Versione corrente nel manifest: 9.8 (pubblicata sullo store)
 
+
 ---
 
 ## DECISIONI 17/07/2026
