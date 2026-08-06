@@ -1378,7 +1378,10 @@ async function doAreaCapture(tabId) {
         // il movimento torna veloce, la punta si riallinea al cursore vero.
         var FRENO = 6;         // px reali per 1px di selezione: scatti duri
         var SOGLIA_LENTA = 5;
-        var GUINZAGLIO = 8;    // distacco massimo punta frenata <-> cursore
+        // Guinzaglio CORTO: il mirino può restare indietro di 3px al
+        // massimo — resta cioè sempre sotto la punta della freccia, e il
+        // freno demoltiplicato agisce solo in quel piccolo raggio di mira.
+        var GUINZAGLIO = 3;
         var virtX = 0, virtY = 0;    // punta virtuale della selezione
         var accX = 0, accY = 0;      // resti accumulati in modalità lenta
         var lastEvX = 0, lastEvY = 0;
