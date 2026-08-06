@@ -48,6 +48,14 @@ due candidati più vicini emersi da ricerche fresche:
   stessa pagina, fusione automatica affiancata a layout fisso; l'editor è
   di annotazione, non di composizione; nessun accumulo cross-tab, nessun
   mix di tipi di cattura. Split View = finestre aperte affiancate d'ufficio.
+  VERIFICA SU STORE 06/08 (dopo dubbio dell'utente — un chatbot aveva detto
+  "SelectorsHub non fa screenshot" ma parlava dell'estensione PRINCIPALE
+  XPath, questa è un prodotto separato della stessa casa): esiste, ID
+  ekobnhinclimmneheimhlokgmafjndog, 7.000 utenti, 4,9★ (35 recensioni),
+  aggiornata 28/07/2026. Ha anche "2-Page Screenshot" (DUE tab affiancate
+  d'ufficio, layout fisso — la cosa più vicina al multi-tab sul mercato,
+  ma sempre automatica, 2 tab max, zero sessione/tela libera) e cattura
+  console/network LOG testuali (non la UI dei DevTools).
 - FramedShot: compositore a GRIGLIA DI SLOT FISSI (dichiarano loro stessi
   "not a free canvas"), lavora su immagini già esistenti via tray; niente
   raccolta progressiva durante la navigazione, niente cattura scroll.
