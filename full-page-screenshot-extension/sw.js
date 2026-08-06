@@ -1376,11 +1376,13 @@ async function doAreaCapture(tabId) {
         // punta della selezione avanza a SCATTI di 1px esatto, demoltiplicata
         // (~3px reali = 1px di selezione): calamita pixel per pixel. Appena
         // il movimento torna veloce, la punta si riallinea al cursore vero.
-        var FRENO = 6;         // px reali per 1px di selezione: scatti duri
-        var SOGLIA_LENTA = 5;
-        // Guinzaglio CORTO: il mirino può restare indietro di 3px al
-        // massimo — resta cioè sempre sotto la punta della freccia, e il
-        // freno demoltiplicato agisce solo in quel piccolo raggio di mira.
+        // FRENO SPENTO (SOGLIA_LENTA = 0): la ricetta Captor è celle grandi
+        // nella lente, non il cursore rallentato — con lo zoom 16× ogni px
+        // del mouse si vede enorme e la mira viene da sola, senza mai
+        // scostamenti tra mirino e puntatore. Per riattivare il freno:
+        // SOGLIA_LENTA ~5.
+        var FRENO = 6;
+        var SOGLIA_LENTA = 0;
         var GUINZAGLIO = 3;
         var virtX = 0, virtY = 0;    // punta virtuale della selezione
         var accX = 0, accY = 0;      // resti accumulati in modalità lenta
@@ -1430,8 +1432,8 @@ async function doAreaCapture(tabId) {
         // Celle PARI: la linea di griglia centrale coincide col centro
         // geometrico del quadrato, così il mirino rosso è sia allineato
         // alla griglia sia perfettamente centrato (metà celle per lato).
-        var CELLE = 16;             // pixel inquadrati per lato
-        var CELLA = 12;             // lato di ogni pixel dentro la lente
+        var CELLE = 12;             // pixel inquadrati per lato (come Captor)
+        var CELLA = 16;             // lato di ogni pixel dentro la lente
         var LATO = CELLE * CELLA;   // 192
         var lente = document.createElement('canvas');
         lente.width = LATO;
