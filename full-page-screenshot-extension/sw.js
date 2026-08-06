@@ -613,12 +613,13 @@ async function pauseCssAnims(tabId) {
           st = document.createElement('style');
           st.id = '__shot_css_pause';
           st.textContent = '*,*::before,*::after{animation-play-state:paused !important;}' +
-            // Nasconde la scrollbar del contenitore interno durante la cattura
-            // Full Page: comparirebbe come colonna grigia sul bordo destro di
-            // ogni slice. (Solo Full Page: in Area nasconderla farebbe riallargare
-            // il contenuto DOPO che l'utente ha già disegnato il rettangolo.)
-            '[data-screenshot-scroll]{scrollbar-width:none !important;}' +
-            '[data-screenshot-scroll]::-webkit-scrollbar{display:none !important;}';
+            // Niente scrollbar nelle foto: TUTTI gli scroller (finestra,
+            // contenitore marcato E annidati — le webmail ne hanno a strati).
+            // La regola entra all'inizio della cattura, PRIMA di misure e
+            // overlay: il reflow da ~15px avviene una volta sola e poi la
+            // geometria resta coerente per tutta la sessione di cattura.
+            '*{scrollbar-width:none !important;}' +
+            '*::-webkit-scrollbar{display:none !important;width:0 !important;height:0 !important;}';
           (document.head || document.documentElement).appendChild(st);
         }
         // 2) video
@@ -931,12 +932,16 @@ async function doFullCapture(tabId) {
     var stepH = d.hasCustomScroll ? d.ch : d.vh;
     var rows = Math.ceil(d.sh / stepH);
     var captures = [];
+    // Scroll REALE raggiunto da ogni slice: le liste (webmail) scattano a
+    // multipli di riga o si agganciano al fondo prima del previsto — la
+    // composizione deve usare le posizioni vere, non quelle richieste.
+    var realScrolls = [];
 
     for (var i = 0; i < rows; i++) {
       var pct = Math.round(((i + 1) / rows) * 85) + 5;
       sendProgress('Cattura ' + (i + 1) + ' di ' + rows + '...', pct);
 
-      await chrome.scripting.executeScript({
+      var esitoSlice = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(y, custom, row) {
           // Censimento sticky/fixed una sola volta (prima slice), con la
@@ -1054,13 +1059,20 @@ async function doFullCapture(tabId) {
               if (Math.abs(currentY - y) < 2 || fermo || checks > 30) {
                 clearInterval(interval);
                 manageStickiesFP();  // nascondi gli ancorati a QUESTA slice
-                resolve(true);
+                // Il chiamante compone per POSIZIONE REALE: si riporta dove
+                // lo scroll si è davvero fermato (non dove doveva arrivare).
+                resolve(custom
+                  ? document.querySelector('[data-screenshot-scroll]').scrollTop
+                  : window.scrollY);
               }
             }, 50);
           });
         },
         args: [i * stepH, d.hasCustomScroll, i]
       });
+      realScrolls.push((esitoSlice && esitoSlice[0] && typeof esitoSlice[0].result === 'number')
+        ? esitoSlice[0].result
+        : i * stepH);
 
       await sleep(350);
 
@@ -1084,7 +1096,7 @@ async function doFullCapture(tabId) {
 
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot) {
+      func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot, reali) {
         // Carica tutte le immagini PRIMA di disegnare, così conosciamo l'altezza
         // REALE in pixel di ogni slice (img.height). A zoom non-interi (110%,
         // 150%) viewH*ratio non è intero e impilando per calcolo si perde 1 riga
@@ -1115,35 +1127,43 @@ async function doFullCapture(tabId) {
             var k = loaded[0].height / viewH;          // CSS -> pixel reali
             var bandTop = Math.round(ot * k);
             var bandH = Math.round(ch * k);
-            var firstH = bandTop + Math.round(Math.min(ph, ch) * k);
             // Cintura di sicurezza sugli arrotondamenti: mai leggere oltre il
             // fondo del frame — drawImage clipperebbe la sorgente ma il
             // cursore avanzerebbe comunque, lasciando una riga trasparente
             // per giuntura.
             if (bandTop + bandH > loaded[0].height) bandH = loaded[0].height - bandTop;
+            var firstH = bandTop + bandH;
             if (firstH > loaded[0].height) firstH = loaded[0].height;
-            var lastRem = ph - (total - 1) * ch;       // contenuto nuovo dell'ultima slice (CSS)
-            var lastH = Math.round(lastRem * k);
-            if (lastH < 0) lastH = 0;
-            if (lastH > bandH) lastH = bandH;
 
-            var totalH = firstH;
-            for (var q = 1; q < total; q++) totalH += (q === total - 1) ? lastH : bandH;
+            // COMPOSIZIONE PER POSIZIONE REALE: ogni banda va dove il
+            // contenitore era DAVVERO scrollato (reali[j]), non dove
+            // avremmo voluto mandarlo. Le liste delle webmail scattano a
+            // multipli di riga e si agganciano al fondo prima del previsto:
+            // componendo per posizione le giunture non tagliano più le
+            // righe e le bande sovrapposte si ridisegnano identiche invece
+            // di duplicare la coda.
+            var contH = Math.round(ph * k);            // contenuto totale
+            var altezza = bandTop + contH;
+            var fondoReale = 0;
+            for (var q = 0; q < total; q++) {
+              var giu = bandTop + Math.round((reali[q] || 0) * k) + bandH;
+              if (giu > fondoReale) fondoReale = giu;
+            }
+            if (fondoReale < altezza) altezza = fondoReale;
+
             var canvasC = document.createElement('canvas');
             canvasC.width = cw;
-            canvasC.height = totalH;
+            canvasC.height = altezza;
             var ctxC = canvasC.getContext('2d');
 
-            var yC = 0;
             for (var j = 0; j < total; j++) {
               var imC = loaded[j];
-              var srcY, srcH;
-              if (j === 0) { srcY = 0; srcH = firstH; }
-              else if (j === total - 1) { srcH = lastH; srcY = bandTop + bandH - lastH; }
-              else { srcY = bandTop; srcH = bandH; }
+              var posY = (j === 0) ? 0 : bandTop + Math.round((reali[j] || 0) * k);
+              var srcY = (j === 0) ? 0 : bandTop;
+              var srcH = (j === 0) ? firstH : bandH;
+              if (posY + srcH > altezza) srcH = altezza - posY;
               if (srcH <= 0) continue;
-              ctxC.drawImage(imC, 0, srcY, imC.width, srcH, 0, yC, imC.width, srcH);
-              yC += srcH;
+              ctxC.drawImage(imC, 0, srcY, imC.width, srcH, 0, posY, imC.width, srcH);
             }
             return canvasC.toDataURL('image/png');
           }
@@ -1175,7 +1195,7 @@ async function doFullCapture(tabId) {
           return canvas.toDataURL('image/png');
         });
       },
-      args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot]
+      args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot, realScrolls]
     });
 
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
