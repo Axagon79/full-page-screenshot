@@ -2209,6 +2209,59 @@ async function doAreaCapture(tabId) {
       if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
         realScroll = riletto[0].result;
       }
+      // SCATTO OLTRE IL BERSAGLIO sulla PRIMA fetta: la lista ha agganciato
+      // lo scroll più giù del punto di partenza voluto — l'inizio della
+      // selezione resterebbe fuori dalla foto. Si RIPROVA puntando più in
+      // alto (fino a 2 volte): sulle liste a righe l'aggancio precedente
+      // cade sotto o sul punto giusto, e il delta positivo che ne risulta
+      // viene già compensato dal ritaglio. Solo se la lista rifiuta ogni
+      // posizione più alta resta il taglio del pezzetto di testa.
+      if (i === 0 && !giaVisibile && realScroll > basePos) {
+        for (var tentativo = 0; tentativo < 2 && realScroll > basePos; tentativo++) {
+          var sopra = Math.max(0, basePos - (realScroll - basePos) * (tentativo + 1) - 1);
+          var esitoR = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function(targetScroll, custom) {
+              var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
+              if (el) {
+                el.scrollTo({ top: targetScroll, behavior: 'instant' });
+              } else {
+                window.scrollTo({ top: targetScroll, behavior: 'instant' });
+              }
+              return new Promise(function(res) {
+                var giri = 0, prima = -1;
+                var iv = setInterval(function() {
+                  var ora = el ? el.scrollTop : window.scrollY;
+                  giri++;
+                  if ((giri > 2 && Math.abs(ora - prima) < 1) || giri > 12) {
+                    clearInterval(iv);
+                    res(ora);
+                  }
+                  prima = ora;
+                }, 50);
+              });
+            },
+            args: [sopra, area.hasCustomScroll]
+          });
+          if (esitoR && esitoR[0] && typeof esitoR[0].result === 'number') {
+            realScroll = esitoR[0].result;
+          } else {
+            break;
+          }
+        }
+        await sleep(250);  // il contenuto si assesta dopo il ritocco
+        var riletto2 = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: function(custom) {
+            var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
+            return el ? el.scrollTop : window.scrollY;
+          },
+          args: [area.hasCustomScroll]
+        });
+        if (riletto2 && riletto2[0] && typeof riletto2[0].result === 'number') {
+          realScroll = riletto2[0].result;
+        }
+      }
       // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
       // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
       // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
