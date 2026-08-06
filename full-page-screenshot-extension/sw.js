@@ -2172,6 +2172,24 @@ async function doAreaCapture(tabId) {
         args: [wantedScroll, area.hasCustomScroll, i]
       });
       var realScroll = scrollResult[0].result;
+
+      await sleep(350);
+
+      // Rilettura NELL'ISTANTE dello scatto: certe liste (webmail) si
+      // ri-agganciano a multipli di riga DURANTE l'attesa post-assestamento
+      // — la posizione letta all'assestamento diventa bugiarda e l'overlap
+      // atteso sbagliava di una riga, tagliando le mail alle giunture.
+      var riletto = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: function(custom) {
+          var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
+          return el ? el.scrollTop : window.scrollY;
+        },
+        args: [area.hasCustomScroll]
+      });
+      if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
+        realScroll = riletto[0].result;
+      }
       // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
       // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
       // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
@@ -2183,8 +2201,6 @@ async function doAreaCapture(tabId) {
         ' realScroll=' + realScroll + ' DELTA(voluto-reale)=' + (wantedScroll - realScroll) +
         ' | area.y_doc=' + area.y_doc + ' offsetY=' + meta.offsetY +
         ' sliceH=' + sliceH + ' h_doc=' + area.h_doc);
-
-      await sleep(350);
 
       var dataUrl = null;
       for (var retry = 0; retry < 3; retry++) {
@@ -2198,6 +2214,14 @@ async function doAreaCapture(tabId) {
             throw captureErr;
           }
         }
+      }
+      // DEDUP PER CONTENUTO (stessa difesa del Full Page): foto identica
+      // alla precedente = la vista non è avanzata davvero, anche se lo
+      // scroller dichiara il contrario. Fetta e posizioni scartate.
+      if (captures.length && dataUrl === captures[captures.length - 1]) {
+        deltas.pop();
+        realScrolls.pop();
+        continue;
       }
       captures.push(dataUrl);
     }
@@ -2353,10 +2377,20 @@ async function doAreaCapture(tabId) {
           if (cursorY < targetH) {
             var lastC = sliceCanvases[total - 1];
             var manca = targetH - cursorY;
-            if (manca > lastC.height) manca = lastC.height;
-            var from = lastC.height - manca;  // dal fondo della cattura
-            ctx.drawImage(lastC, 0, from, lastC.width, manca, 0, cursorY, lastC.width, manca);
-            cursorY += manca;
+            // GUINZAGLIO sul recupero: questo meccanismo esiste per la
+            // DERIVA da arrotondamento (1-2px a giuntura), non per colmare
+            // buchi veri. Se manca più del plausibile significa che lo
+            // scroll si è fermato prima del previsto (scroller che mente,
+            // selezione oltre il fondo): ricopiare il fondo dell'ultima
+            // foto duplicherebbe un nastro di contenuto — meglio un'immagine
+            // un filo più corta ma VERA.
+            var maxRecupero = total * 4 + 8;
+            if (manca <= maxRecupero) {
+              if (manca > lastC.height) manca = lastC.height;
+              var from = lastC.height - manca;  // dal fondo della cattura
+              ctx.drawImage(lastC, 0, from, lastC.width, manca, 0, cursorY, lastC.width, manca);
+              cursorY += manca;
+            }
           }
 
           var finalH = Math.min(targetH, cursorY);
