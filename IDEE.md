@@ -151,6 +151,20 @@ cattura all'apertura dell'overlay (pagina statica, animazioni già in
 pausa), la lente è un canvas che panna dentro la bitmap cachata;
 ricattura debounced solo a scroll fermo (turbo autoscroll compreso).
 
+### 12. Cattura DevTools / import universale (idea 06/08)
+Catturare il pannello F12 direttamente è IMPOSSIBILE (devtools:// è
+superficie protetta, captureVisibleTab lo esclude anche se docked).
+Due strade:
+- **A. Incolla-da-appunti nell'editor (candidata subito, fase 2)**:
+  listener `paste` sulla pagina editor — Ctrl+V aggiunge come pezzo
+  QUALSIASI immagine negli appunti (Win+Shift+S dei DevTools, altre app,
+  immagini copiate dal web). Zero permessi nuovi, tre righe di codice,
+  apre l'import universale nel collage.
+- **B. desktopCapture (parcheggiata post-9.9)**: permesso dedicato (può
+  essere opzionale) + picker di Chrome → cattura finestra/schermo interi,
+  DevTools compresi, da frame di uno stream video. Avviso permesso
+  "cattura contenuti dello schermo" + dialog a ogni uso + review più dura.
+
 ### 8. Descrizione store in elenco puntato
 Rifare la descrizione con elenco chiaro **di quello che l'estensione fa davvero** (niente feature copiate dai concorrenti).
 Includere una sezione onesta "cosa NON fa" (limiti): gestisce le aspettative e aumenta la fiducia.
