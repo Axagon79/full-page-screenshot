@@ -1376,8 +1376,8 @@ async function doAreaCapture(tabId) {
         // punta della selezione avanza a SCATTI di 1px esatto, demoltiplicata
         // (~3px reali = 1px di selezione): calamita pixel per pixel. Appena
         // il movimento torna veloce, la punta si riallinea al cursore vero.
-        var FRENO = 3;
-        var SOGLIA_LENTA = 4;
+        var FRENO = 6;         // px reali per 1px di selezione: scatti duri
+        var SOGLIA_LENTA = 5;
         var virtX = 0, virtY = 0;    // punta virtuale della selezione
         var accX = 0, accY = 0;      // resti accumulati in modalità lenta
         var lastEvX = 0, lastEvY = 0;
@@ -1660,13 +1660,21 @@ async function doAreaCapture(tabId) {
           // (evidenziatura blu sotto l'overlay quando il mouse corre più
           // veloce dell'auto-scroll o esce dalla finestra del browser).
           e.preventDefault();
+          // Se il mouse non si è mai mosso la punta virtuale non esiste
+          // ancora: parte dal cursore vero.
+          if (!mouseVisto) {
+            virtX = e.clientX;
+            virtY = e.clientY;
+            lastEvX = e.clientX;
+            lastEvY = e.clientY;
+          }
           resolveScrollTarget(e.clientX, e.clientY);
           if (scrollTarget) scrollTarget.addEventListener('scroll', onScrollDuringDrag);
           // Rileva se la selezione parte dentro un elemento sticky/fixed (es. top bar):
           // in tal caso quell'elemento andrà incluso nella prima slice.
           var prevPE2 = overlay.style.pointerEvents;
           overlay.style.pointerEvents = 'none';
-          var elUnder = document.elementFromPoint(e.clientX, e.clientY);
+          var elUnder = document.elementFromPoint(virtX, virtY);
           overlay.style.pointerEvents = prevPE2;
           var oldStart = document.querySelector('[data-screenshot-start-sticky]');
           if (oldStart) oldStart.removeAttribute('data-screenshot-start-sticky');
@@ -1678,26 +1686,24 @@ async function doAreaCapture(tabId) {
             }
             elUnder = elUnder.parentElement;
           }
-          startX = e.clientX;
-          currentX = e.clientX;
-          currentMouseY_vp = e.clientY;
-          startY_doc = e.clientY + getScrollY();
-          virtX = e.clientX;
-          virtY = e.clientY;
-          lastEvX = e.clientX;
-          lastEvY = e.clientY;
+          // Il punto di partenza è la punta VIRTUALE frenata — quella che
+          // la lente mostrava al momento del click, non il cursore fisico.
+          startX = virtX;
+          currentX = virtX;
+          currentMouseY_vp = virtY;
+          startY_doc = virtY + getScrollY();
           accX = 0;
           accY = 0;
           mouseVisto = true;
-          ultimoMX = e.clientX;
-          ultimoMY = e.clientY;
+          ultimoMX = virtX;
+          ultimoMY = virtY;
           disegnaLente();
           dragging = true;
           overlay.style.transition = 'none';
           overlay.style.background = 'transparent';
           box.style.display = 'block';
-          box.style.left = e.clientX + 'px';
-          box.style.top = e.clientY + 'px';
+          box.style.left = virtX + 'px';
+          box.style.top = virtY + 'px';
           box.style.width = '0px';
           box.style.height = '0px';
           info.style.display = 'none';
@@ -1705,15 +1711,11 @@ async function doAreaCapture(tabId) {
 
         overlay.addEventListener('mousemove', function(e) {
           mouseVisto = true;
-          if (dragging) {
-            // la lente segue la punta VIRTUALE: mostra il pixel vero del bordo
-            aggiornaVirtuale(e);
-            ultimoMX = virtX;
-            ultimoMY = virtY;
-          } else {
-            ultimoMX = e.clientX;
-            ultimoMY = e.clientY;
-          }
+          // Il freno lavora SEMPRE, anche prima del click: si mira il punto
+          // di partenza con la lente, che segue la punta virtuale frenata.
+          aggiornaVirtuale(e);
+          ultimoMX = virtX;
+          ultimoMY = virtY;
           disegnaLente();
           if (!dragging) return;
           lastMouseY = e.clientY;   // la zona turbo legge il mouse REALE
