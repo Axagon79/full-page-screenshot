@@ -1379,9 +1379,9 @@ async function doAreaCapture(tabId) {
         // Stile "Screenshot Captor": griglia in cui OGNI cella è un pixel
         // fisico dello schermo, mirino rosso sul pixel centrale, lente a
         // sinistra e un filo sotto il puntatore.
-        var CELLE = 15;             // pixel inquadrati per lato (dispari)
-        var CELLA = 9;              // lato di ogni pixel dentro la lente
-        var LATO = CELLE * CELLA;   // 135
+        var CELLE = 17;             // pixel inquadrati per lato (dispari)
+        var CELLA = 11;             // lato di ogni pixel dentro la lente
+        var LATO = CELLE * CELLA;   // 187
         var lente = document.createElement('canvas');
         lente.width = LATO;
         lente.height = LATO;
@@ -1431,20 +1431,22 @@ async function doAreaCapture(tabId) {
             lctx.lineTo(LATO, g * CELLA + 0.5);
           }
           lctx.stroke();
-          // mirino rosso che incrocia sul pixel centrale (stile Captor)
-          lctx.strokeStyle = 'rgba(224,32,32,0.85)';
+          // Mirino rosso ALLINEATO alla griglia (stile Captor): le righe
+          // corrono sulle linee della griglia e si incrociano sull'angolo
+          // del pixel centrale — il punto esatto dove parte la selezione.
+          lctx.strokeStyle = 'rgba(224,32,32,0.9)';
           lctx.beginPath();
-          lctx.moveTo(meta * CELLA + CELLA / 2, 0);
-          lctx.lineTo(meta * CELLA + CELLA / 2, LATO);
-          lctx.moveTo(0, meta * CELLA + CELLA / 2);
-          lctx.lineTo(LATO, meta * CELLA + CELLA / 2);
+          lctx.moveTo(meta * CELLA + 0.5, 0);
+          lctx.lineTo(meta * CELLA + 0.5, LATO);
+          lctx.moveTo(0, meta * CELLA + 0.5);
+          lctx.lineTo(LATO, meta * CELLA + 0.5);
           lctx.stroke();
-          // a SINISTRA e un filo sotto il puntatore; se non c'è posto salta
-          // a destra / sopra
+          // a SINISTRA e più in basso rispetto al puntatore; se non c'è
+          // posto salta a destra / sopra
           var lx = ultimoMX - 24 - LATO;
-          var ly = ultimoMY + 14;
+          var ly = ultimoMY + 30;
           if (lx < 4) lx = ultimoMX + 24;
-          if (ly + LATO + 8 > window.innerHeight) ly = ultimoMY - 14 - LATO;
+          if (ly + LATO + 8 > window.innerHeight) ly = ultimoMY - 30 - LATO;
           lente.style.left = lx + 'px';
           lente.style.top = ly + 'px';
           lente.style.display = 'block';
