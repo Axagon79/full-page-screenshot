@@ -137,7 +137,14 @@ chrome.storage.session.get('multi', function(sm) {
     });
     return;
   }
-  chrome.storage.local.get(['captureMode', 'copyToClipboard', 'lentePixel'], function(d) {
+  chrome.storage.local.get(['captureMode', 'copyToClipboard', 'lentePixel', 'mostraPannello'], function(d) {
+    // Quick panel spento: comportamento classico, si parte subito con la
+    // modalità salvata senza mostrare il pannello di comando.
+    var pannello = (d.mostraPannello === undefined) ? true : d.mostraPannello;
+    if (!pannello) {
+      avviaCattura(d.captureMode || 'full');
+      return;
+    }
     evidenziaModo(d.captureMode || 'full');
     setSw('pClip', (d.copyToClipboard === undefined) ? true : d.copyToClipboard);
     setSw('pLente', (d.lentePixel === undefined) ? true : d.lentePixel);

@@ -77,6 +77,23 @@ function setLenteActive(enabled) {
   if (enabled) { el.classList.add('on'); } else { el.classList.remove('on'); }
 }
 
+// Interruttore "Quick panel": il click sull'icona apre il pannello delle
+// modalità (default) oppure parte subito con la modalità salvata, come una
+// volta. Il widget di raccolta Multi Snip non c'entra: resta sempre uguale.
+chrome.storage.local.get('mostraPannello', function(data) {
+  var enabled = (data.mostraPannello === undefined) ? true : data.mostraPannello;
+  setPannelloActive(enabled);
+});
+document.getElementById('togglePannello').addEventListener('click', function() {
+  var nowActive = !this.classList.contains('on');
+  chrome.storage.local.set({ mostraPannello: nowActive });
+  setPannelloActive(nowActive);
+});
+function setPannelloActive(enabled) {
+  var el = document.getElementById('togglePannello');
+  if (enabled) { el.classList.add('on'); } else { el.classList.remove('on'); }
+}
+
 document.getElementById('btnSave').addEventListener('click', function() {
   var saved = document.getElementById('saved');
   saved.classList.add('show');
