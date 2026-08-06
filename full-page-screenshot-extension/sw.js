@@ -1378,6 +1378,7 @@ async function doAreaCapture(tabId) {
         // il movimento torna veloce, la punta si riallinea al cursore vero.
         var FRENO = 6;         // px reali per 1px di selezione: scatti duri
         var SOGLIA_LENTA = 5;
+        var GUINZAGLIO = 8;    // distacco massimo punta frenata <-> cursore
         var virtX = 0, virtY = 0;    // punta virtuale della selezione
         var accX = 0, accY = 0;      // resti accumulati in modalità lenta
         var lastEvX = 0, lastEvY = 0;
@@ -1397,6 +1398,14 @@ async function doAreaCapture(tabId) {
             accY -= passiY;
             virtX += passiX;
             virtY += passiY;
+            // GUINZAGLIO: la punta frenata non può restare più lontana di
+            // pochi px dal cursore vero — oltre, viene trascinata dietro.
+            // Senza questo il distacco cresceva senza limite alle velocità
+            // medie e il mirino finiva lontanissimo dal puntatore.
+            var gx = e.clientX - virtX;
+            var gy = e.clientY - virtY;
+            if (Math.abs(gx) > GUINZAGLIO) virtX = e.clientX - Math.sign(gx) * GUINZAGLIO;
+            if (Math.abs(gy) > GUINZAGLIO) virtY = e.clientY - Math.sign(gy) * GUINZAGLIO;
           } else {
             virtX = e.clientX;
             virtY = e.clientY;
