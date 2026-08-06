@@ -1379,9 +1379,12 @@ async function doAreaCapture(tabId) {
         // Stile "Screenshot Captor": griglia in cui OGNI cella è un pixel
         // fisico dello schermo, mirino rosso sul pixel centrale, lente a
         // sinistra e un filo sotto il puntatore.
-        var CELLE = 17;             // pixel inquadrati per lato (dispari)
-        var CELLA = 11;             // lato di ogni pixel dentro la lente
-        var LATO = CELLE * CELLA;   // 187
+        // Celle PARI: la linea di griglia centrale coincide col centro
+        // geometrico del quadrato, così il mirino rosso è sia allineato
+        // alla griglia sia perfettamente centrato (metà celle per lato).
+        var CELLE = 16;             // pixel inquadrati per lato
+        var CELLA = 12;             // lato di ogni pixel dentro la lente
+        var LATO = CELLE * CELLA;   // 192
         var lente = document.createElement('canvas');
         lente.width = LATO;
         lente.height = LATO;
@@ -1410,10 +1413,11 @@ async function doAreaCapture(tabId) {
             return;
           }
           var dpr = lenteImg.width / window.innerWidth;  // scala reale della foto
-          var meta = Math.floor(CELLE / 2);
-          // pixel fisico sotto il puntatore, tenuto dentro la foto ai bordi
-          var cxDev = Math.min(Math.max(Math.round(ultimoMX * dpr), meta), lenteImg.width - meta - 1);
-          var cyDev = Math.min(Math.max(Math.round(ultimoMY * dpr), meta), lenteImg.height - meta - 1);
+          var meta = CELLE / 2;
+          // CONFINE tra pixel più vicino al puntatore (il mirino segna un
+          // bordo, non il centro di un pixel), tenuto dentro la foto.
+          var cxDev = Math.min(Math.max(Math.round(ultimoMX * dpr), meta), lenteImg.width - meta);
+          var cyDev = Math.min(Math.max(Math.round(ultimoMY * dpr), meta), lenteImg.height - meta);
           lctx.imageSmoothingEnabled = false;             // ogni pixel una cella netta
           lctx.fillStyle = '#111';
           lctx.fillRect(0, 0, LATO, LATO);
