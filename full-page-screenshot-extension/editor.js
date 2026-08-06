@@ -5,9 +5,22 @@
 // la tela (sovrapposizioni permesse, calamita sui bordi) e si ridimensiona
 // da tutti e 4 gli angoli (proporzionale) e dai 4 lati (stira quel lato).
 
-var blocchi = [];    // { pid, img, natW, natH, sx, sy, x, y } — ordine = sovrapposizione
+// Ogni blocco: { pid, img, natW, natH, cx, cy, cw, ch, sx, sy, x, y }.
+// cx/cy/cw/ch = RITAGLIO non distruttivo (rettangolo sorgente in pixel
+// naturali, default immagine intera): si può sempre riallargare.
+// Ordine dell'array = ordine di sovrapposizione.
+var blocchi = [];
 var importati = new Set();  // id dei pezzi di sessione già portati in tela
 var selezionato = -1;
+var ritaglioIdx = -1;       // blocco in modalità ritaglio (-1 = nessuno)
+
+// Annotazioni sopra il collage: oggetti leggeri, stessi gesti dei pezzi.
+// { tipo:'oscura'|'evidenzia'|'testo', x, y, w, h, colore, testo?, fs? }
+// { tipo:'linea', x1, y1, x2, y2, colore }
+var note = [];
+var selNota = -1;
+var strumento = null;       // strumento armato dalla barra (one-shot)
+var testoEdit = -1;         // indice della nota testo in modifica
 var viewKBloccata = null;   // zoom congelato durante il resize della tela
 var ancoraTela = null;      // margini congelati: il lato opposto sta fermo
 var guidaV = null;          // linee guida della calamita durante il drag
@@ -39,14 +52,17 @@ function caricaImmagine(src) {
   });
 }
 
-function larghezza(b) { return b.natW * b.sx; }
-function altezza(b) { return b.natH * b.sy; }
+// Dimensioni visibili = regione ritagliata × scala.
+function sorgW(b) { return (b.cw != null) ? b.cw : b.natW; }
+function sorgH(b) { return (b.ch != null) ? b.ch : b.natH; }
+function larghezza(b) { return sorgW(b) * b.sx; }
+function altezza(b) { return sorgH(b) * b.sy; }
 
 // Il pezzo resta sempre DENTRO la tela.
 function clampBlocco(b) {
   var w = larghezza(b), h = altezza(b);
-  if (w > canvasW) { b.sx = canvasW / b.natW; w = canvasW; }
-  if (h > canvasH) { b.sy = canvasH / b.natH; h = canvasH; }
+  if (w > canvasW) { b.sx = canvasW / sorgW(b); w = canvasW; }
+  if (h > canvasH) { b.sy = canvasH / sorgH(b); h = canvasH; }
   b.x = Math.min(Math.max(0, b.x), canvasW - w);
   b.y = Math.min(Math.max(0, b.y), canvasH - h);
 }
@@ -91,7 +107,7 @@ async function sincronizzaConSessione() {
         // grande se il pezzo da solo la supera — mai su misura del pezzo.
         canvasW = Math.max(DEFAULT_W, w + MARGINE * 2);
         canvasH = Math.max(DEFAULT_H, h + MARGINE * 2);
-        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
+        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, cx: 0, cy: 0, cw: w, ch: h, sx: 1, sy: 1, x: MARGINE, y: MARGINE });
       } else {
         // pezzi successivi: sotto la pila; la tela cresce SOLO se non ci stanno
         var fondo = 0;
@@ -99,7 +115,7 @@ async function sincronizzaConSessione() {
         var y = fondo + GAP;
         if (w + MARGINE * 2 > canvasW) canvasW = w + MARGINE * 2;
         if (y + h + MARGINE > canvasH) canvasH = y + h + MARGINE;
-        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, sx: 1, sy: 1, x: MARGINE, y: y });
+        blocchi.push({ pid: p.id, img: p.img, natW: w, natH: h, cx: 0, cy: 0, cw: w, ch: h, sx: 1, sy: 1, x: MARGINE, y: y });
       }
       // La tela non può superare il limite dell'export (32000px per lato):
       // un pezzo fuori misura (full page enorme su schermo retina) viene
@@ -146,7 +162,8 @@ document.addEventListener('paste', function(e) {
   }
 });
 
-// "Fit canvas": riadatta la tela al contenuto, con margini uniformi.
+// "Fit canvas": riadatta la tela al contenuto (pezzi E annotazioni),
+// con margini uniformi.
 function adattaTela() {
   if (!blocchi.length) return;
   var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -156,9 +173,29 @@ function adattaTela() {
     maxX = Math.max(maxX, b.x + larghezza(b));
     maxY = Math.max(maxY, b.y + altezza(b));
   });
-  blocchi.forEach(function(b) {
-    b.x += MARGINE - minX;
-    b.y += MARGINE - minY;
+  note.forEach(function(n) {
+    if (n.tipo === 'linea') {
+      minX = Math.min(minX, n.x1, n.x2);
+      minY = Math.min(minY, n.y1, n.y2);
+      maxX = Math.max(maxX, n.x1, n.x2);
+      maxY = Math.max(maxY, n.y1, n.y2);
+    } else {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + (n.w || 0));
+      maxY = Math.max(maxY, n.y + (n.h || (n.fs ? n.fs * 1.3 : 0)));
+    }
+  });
+  var spX = MARGINE - minX, spY = MARGINE - minY;
+  blocchi.forEach(function(b) { b.x += spX; b.y += spY; });
+  note.forEach(function(n) {
+    if (n.tipo === 'linea') {
+      n.x1 += spX; n.y1 += spY;
+      n.x2 += spX; n.y2 += spY;
+    } else {
+      n.x += spX;
+      n.y += spY;
+    }
   });
   canvasW = Math.round(maxX - minX) + MARGINE * 2;
   canvasH = Math.round(maxY - minY) + MARGINE * 2;
@@ -225,14 +262,26 @@ function render() {
   tela.id = 'tela';
   tela.style.width = Math.round(canvasW * viewK) + 'px';
   tela.style.height = Math.round(canvasH * viewK) + 'px';
-  // click sul VUOTO della tela = deseleziona
+  // click sul VUOTO della tela = deseleziona (e chiude il ritaglio)
   tela.addEventListener('mousedown', function(e) {
     if (e.target === tela) {
       selezionato = -1;
+      selNota = -1;
+      chiudiRitaglio();
       render();
     }
   });
-  blocchi.forEach(function(b, i) { tela.appendChild(creaBlocco(i)); });
+  // Strumento armato: il disegno dell'annotazione parte OVUNQUE sulla
+  // tela, anche sopra i pezzi (fase di cattura, prima dei loro handler).
+  tela.addEventListener('mousedown', function(e) {
+    if (!strumento) return;
+    e.preventDefault();
+    e.stopPropagation();
+    iniziaCreazioneNota(e, tela);
+  }, true);
+  blocchi.forEach(function(b, i) {
+    tela.appendChild(i === ritaglioIdx ? creaBloccoRitaglio(i) : creaBlocco(i));
+  });
   // Alone di selezione: cornice tratteggiata SOPRA tutti i pezzi, così un
   // pezzo selezionato con Alt+click resta visibile anche se sta sotto.
   if (selezionato >= 0 && selezionato < blocchi.length - 1) {
@@ -260,6 +309,10 @@ function render() {
       'background:#ff4fa3;box-shadow:0 0 4px rgba(255,79,163,0.8);';
     tela.appendChild(lh);
   }
+  // Annotazioni sopra il collage + barretta della nota selezionata.
+  note.forEach(function(n, j) { tela.appendChild(creaNota(j)); });
+  if (selNota >= 0 && selNota < note.length) tela.appendChild(creaBarraNota(selNota));
+  if (strumento) tela.style.cursor = 'crosshair';
   cornice.appendChild(tela);
 
   // Maniglie della TELA su tutti i lati e gli angoli: allargano il
@@ -306,12 +359,21 @@ function muoviBadgePixel(b, ev, testo) {
   b.style.top = (ev.clientY + 14) + 'px';
 }
 
-// La tela non può mai stringersi sotto il contenuto.
+// La tela non può mai stringersi sotto il contenuto (pezzi e annotazioni).
 function minimiTela() {
   var mw = 200, mh = 150;
   blocchi.forEach(function(b) {
     mw = Math.max(mw, b.x + larghezza(b));
     mh = Math.max(mh, b.y + altezza(b));
+  });
+  note.forEach(function(n) {
+    if (n.tipo === 'linea') {
+      mw = Math.max(mw, n.x1, n.x2);
+      mh = Math.max(mh, n.y1, n.y2);
+    } else {
+      mw = Math.max(mw, n.x + (n.w || 0));
+      mh = Math.max(mh, n.y + (n.h || (n.fs ? n.fs * 1.3 : 0)));
+    }
   });
   return { w: mw, h: mh };
 }
@@ -341,6 +403,27 @@ function iniziaResizeTela(e, hnd) {
   // altri né mandare le coordinate a NaN.
   var orig = new Map();
   blocchi.forEach(function(b) { orig.set(b, { x: b.x, y: b.y }); });
+  // Anche le annotazioni scivolano con i pezzi quando lo spazio si
+  // aggiunge da sinistra/alto: devono restare incollate al contenuto.
+  var origN = new Map();
+  note.forEach(function(n) {
+    origN.set(n, (n.tipo === 'linea')
+      ? { x1: n.x1, y1: n.y1, x2: n.x2, y2: n.y2 }
+      : { x: n.x, y: n.y });
+  });
+  function scivolaNote(dx, dy) {
+    note.forEach(function(n) {
+      var o = origN.get(n);
+      if (!o) return;
+      if (n.tipo === 'linea') {
+        n.x1 = o.x1 + dx; n.y1 = o.y1 + dy;
+        n.x2 = o.x2 + dx; n.y2 = o.y2 + dy;
+      } else {
+        n.x = o.x + dx;
+        n.y = o.y + dy;
+      }
+    });
+  }
   var minX0 = Infinity, minY0 = Infinity;
   blocchi.forEach(function(b) {
     minX0 = Math.min(minX0, b.x);
@@ -379,6 +462,7 @@ function iniziaResizeTela(e, hnd) {
     var dx = (ev.clientX - startX) / k0;
     var dy = (ev.clientY - startY) / k0;
     var min = minimiTela();
+    var scorriX = 0, scorriY = 0;
     // Est/sud stirano il bordo; ovest/nord aggiungono (o tolgono) spazio da
     // quel lato, e i pezzi scivolano per restare fermi rispetto all'altro.
     if (hnd.indexOf('e') !== -1) canvasW = Math.min(capW, Math.max(min.w, Math.round(w0 + dx)));
@@ -391,6 +475,7 @@ function iniziaResizeTela(e, hnd) {
         var o = orig.get(b);
         if (o) b.x = o.x + delta;
       });
+      scorriX = delta;
     }
     if (hnd.indexOf('n') !== -1) {
       var nh = Math.min(capH, Math.max(Math.max(150, h0 - minY0), Math.round(h0 - dy)));
@@ -400,7 +485,9 @@ function iniziaResizeTela(e, hnd) {
         var o = orig.get(b);
         if (o) b.y = o.y + deltaY;
       });
+      scorriY = deltaY;
     }
+    scivolaNote(scorriX, scorriY);
     render();
     // Scroll di compensazione: il bordo trascinato resta sotto il puntatore
     // anche quando il documento dell'editor si allunga o si accorcia.
@@ -447,14 +534,33 @@ function creaBlocco(i) {
   wrap.style.top = Math.round(b.y * viewK) + 'px';
   wrap.style.zIndex = 1 + i;
 
+  // Ritaglio non distruttivo: si mostra SOLO la regione cw×ch; l'immagine
+  // intera vive dentro una finestra con l'eccedenza nascosta.
+  var wVis = Math.max(16, Math.round(larghezza(b) * viewK));
+  var hVis = Math.max(16, Math.round(altezza(b) * viewK));
+  wrap.style.width = wVis + 'px';
+  wrap.style.height = hVis + 'px';
+  var clip = document.createElement('div');
+  clip.style.cssText = 'position:absolute;inset:0;overflow:hidden;border-radius:4px;';
   var im = document.createElement('img');
   im.src = b.img;
-  im.style.width = Math.max(16, Math.round(larghezza(b) * viewK)) + 'px';
-  im.style.height = Math.max(16, Math.round(altezza(b) * viewK)) + 'px';
-  wrap.appendChild(im);
+  im.style.maxWidth = 'none';
+  im.style.width = Math.round(b.natW * b.sx * viewK) + 'px';
+  im.style.height = Math.round(b.natH * b.sy * viewK) + 'px';
+  im.style.marginLeft = -Math.round((b.cx || 0) * b.sx * viewK) + 'px';
+  im.style.marginTop = -Math.round((b.cy || 0) * b.sy * viewK) + 'px';
+  clip.appendChild(im);
+  wrap.appendChild(clip);
 
   var ctr = document.createElement('div');
   ctr.className = 'controlli';
+  ctr.appendChild(bottone('✂', 'Crop — trim the edges (nothing is lost)', function() {
+    chiudiRitaglio();
+    ritaglioIdx = portaSopra(i);
+    selezionato = ritaglioIdx;
+    selNota = -1;
+    render();
+  }));
   ctr.appendChild(bottone('\u{1F5D1}', 'Remove', function() {
     blocchi.splice(i, 1);
     selezionato = -1;
@@ -484,6 +590,8 @@ function creaBlocco(i) {
   wrap.addEventListener('mousedown', function(e) {
     if (e.target.closest('.controlli') || e.target.classList.contains('man')) return;
     e.preventDefault();
+    chiudiRitaglio();
+    selNota = -1;
     if (e.altKey) {
       var rTela = wrap.parentElement.getBoundingClientRect();
       var cx = (e.clientX - rTela.left) / viewK;
@@ -529,6 +637,410 @@ function creaBlocco(i) {
   });
 
   return wrap;
+}
+
+// Uscita dalla modalità ritaglio: il pezzo torna un blocco normale.
+function chiudiRitaglio() {
+  if (ritaglioIdx === -1) return;
+  var b = blocchi[ritaglioIdx];
+  if (b) clampBlocco(b);
+  ritaglioIdx = -1;
+}
+
+// ---- MODALITÀ RITAGLIO ----
+// L'immagine INTERA appare come fantasma trasparente; la finestra luminosa
+// è la parte che resta. Le maniglie TAGLIANO i bordi invece di scalare,
+// trascinando la finestra si sceglie un'altra zona. Non distruttivo:
+// rientrando nel ritaglio i bordi si possono riallargare.
+function creaBloccoRitaglio(i) {
+  var b = blocchi[i];
+  // Origine dell'immagine intera in tela: il fantasma sta fermo, la
+  // finestra (e quindi il pezzo) si muove sopra di lui.
+  var fx = b.x - (b.cx || 0) * b.sx;
+  var fy = b.y - (b.cy || 0) * b.sy;
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;z-index:990;' +
+    'left:' + Math.round(fx * viewK) + 'px;top:' + Math.round(fy * viewK) + 'px;' +
+    'width:' + Math.round(b.natW * b.sx * viewK) + 'px;' +
+    'height:' + Math.round(b.natH * b.sy * viewK) + 'px;';
+
+  var fantasma = document.createElement('img');
+  fantasma.src = b.img;
+  fantasma.style.cssText = 'display:block;width:100%;height:100%;opacity:0.3;' +
+    'pointer-events:none;user-select:none;';
+  wrap.appendChild(fantasma);
+
+  var fin = document.createElement('div');
+  fin.style.cssText = 'position:absolute;cursor:move;' +
+    'outline:2px dashed #00d4ff;outline-offset:-2px;' +
+    'left:' + Math.round((b.cx || 0) * b.sx * viewK) + 'px;' +
+    'top:' + Math.round((b.cy || 0) * b.sy * viewK) + 'px;' +
+    'width:' + Math.round(larghezza(b) * viewK) + 'px;' +
+    'height:' + Math.round(altezza(b) * viewK) + 'px;';
+  var clipFin = document.createElement('div');
+  clipFin.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
+  var nit = document.createElement('img');
+  nit.src = b.img;
+  nit.style.cssText = 'display:block;pointer-events:none;user-select:none;max-width:none;' +
+    'width:' + Math.round(b.natW * b.sx * viewK) + 'px;' +
+    'height:' + Math.round(b.natH * b.sy * viewK) + 'px;' +
+    'margin-left:' + (-Math.round((b.cx || 0) * b.sx * viewK)) + 'px;' +
+    'margin-top:' + (-Math.round((b.cy || 0) * b.sy * viewK)) + 'px;';
+  clipFin.appendChild(nit);
+  fin.appendChild(clipFin);
+  wrap.appendChild(fin);
+
+  function badgeTxt() { return Math.round(b.cw) + ' × ' + Math.round(b.ch) + ' px'; }
+
+  // Finestra sempre dentro l'immagine, minimo 10px sorgente; il pezzo in
+  // tela segue la finestra (b.x/b.y ancorati al fantasma fermo).
+  function normalizza() {
+    b.cx = Math.min(Math.max(0, b.cx), b.natW - 10);
+    b.cy = Math.min(Math.max(0, b.cy), b.natH - 10);
+    b.cw = Math.min(Math.max(10, b.cw), b.natW - b.cx);
+    b.ch = Math.min(Math.max(10, b.ch), b.natH - b.cy);
+    b.x = fx + b.cx * b.sx;
+    b.y = fy + b.cy * b.sy;
+  }
+
+  // Trascinare la finestra = scegliere un'altra zona, stessa misura.
+  fin.addEventListener('mousedown', function(e) {
+    if (e.target.classList.contains('man') || e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    e.stopPropagation();
+    var sx0 = e.clientX, sy0 = e.clientY;
+    var cx0 = b.cx, cy0 = b.cy;
+    var badge = creaBadgePixel();
+    muoviBadgePixel(badge, e, badgeTxt());
+    function onMove(ev) {
+      b.cx = cx0 + (ev.clientX - sx0) / viewK / b.sx;
+      b.cy = cy0 + (ev.clientY - sy0) / viewK / b.sy;
+      normalizza();
+      render();
+      muoviBadgePixel(badge, ev, badgeTxt());
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      badge.remove();
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+
+  // Le 8 maniglie TAGLIANO i bordi (in pixel sorgente).
+  MANIGLIE.forEach(function(hnd) {
+    var man = document.createElement('div');
+    man.className = 'man man-' + hnd;
+    man.style.display = 'block';
+    man.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var sx0 = e.clientX, sy0 = e.clientY;
+      var c0 = { cx: b.cx, cy: b.cy, cw: b.cw, ch: b.ch };
+      var badge = creaBadgePixel();
+      muoviBadgePixel(badge, e, badgeTxt());
+      function onMove(ev) {
+        var dx = (ev.clientX - sx0) / viewK / b.sx;
+        var dy = (ev.clientY - sy0) / viewK / b.sy;
+        if (hnd.indexOf('e') !== -1) b.cw = c0.cw + dx;
+        if (hnd.indexOf('w') !== -1) { b.cx = c0.cx + dx; b.cw = c0.cw - dx; }
+        if (hnd.indexOf('s') !== -1) b.ch = c0.ch + dy;
+        if (hnd.indexOf('n') !== -1) { b.cy = c0.cy + dy; b.ch = c0.ch - dy; }
+        normalizza();
+        render();
+        muoviBadgePixel(badge, ev, badgeTxt());
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        badge.remove();
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    fin.appendChild(man);
+  });
+
+  var ok = document.createElement('button');
+  ok.textContent = '✓ Done';
+  ok.title = 'Finish cropping';
+  ok.style.cssText = 'position:absolute;top:-36px;right:0;z-index:5;' +
+    'background:#00d4ff;color:#0d1220;border:none;border-radius:7px;' +
+    'font-family:inherit;font-size:12px;font-weight:700;padding:5px 10px;cursor:pointer;';
+  ok.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+  ok.addEventListener('click', function(e) {
+    e.stopPropagation();
+    chiudiRitaglio();
+    render();
+  });
+  fin.appendChild(ok);
+
+  return wrap;
+}
+
+// ---- ANNOTAZIONI: oggetti leggeri sopra il collage, stessi gesti dei pezzi ----
+
+// Colori a vista, niente pannelli: il primo è il default.
+var PALETTE = {
+  oscura: ['#0b0b10', '#ffffff', '#e11d48'],
+  evidenzia: ['#ffe14d', '#7dff8a', '#ff7ad9'],
+  linea: ['#e11d48', '#0b0b10', '#00b3e6'],
+  testo: ['#e11d48', '#0b0b10', '#ffffff']
+};
+
+// Arma (o disarma) uno strumento della barra: il prossimo trascinamento
+// sulla tela crea l'annotazione, poi si torna alla manina (one-shot).
+function armaStrumento(t) {
+  strumento = (strumento === t) ? null : t;
+  selezionato = -1;
+  selNota = -1;
+  chiudiRitaglio();
+  aggiornaBarraStrumenti();
+  render();
+}
+
+function aggiornaBarraStrumenti() {
+  [['btnOscura', 'oscura'], ['btnEvidenzia', 'evidenzia'], ['btnLinea', 'linea'], ['btnTesto', 'testo']].forEach(function(v) {
+    var el = $(v[0]);
+    if (el) el.classList.toggle('attivo', strumento === v[1]);
+  });
+}
+
+function iniziaCreazioneNota(e, tela) {
+  var r = tela.getBoundingClientRect();
+  var x0 = (e.clientX - r.left) / viewK;
+  var y0 = (e.clientY - r.top) / viewK;
+  var t = strumento;
+  strumento = null;
+  aggiornaBarraStrumenti();
+  var n;
+  if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
+  else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
+  else n = { tipo: t, x: x0, y: y0, w: 0, h: 0, colore: PALETTE[t][0] };
+  note.push(n);
+  selNota = note.length - 1;
+  function onMove(ev) {
+    var x = (ev.clientX - r.left) / viewK;
+    var y = (ev.clientY - r.top) / viewK;
+    if (n.tipo === 'linea') { n.x2 = x; n.y2 = y; }
+    else if (n.tipo === 'testo') { n.w = Math.max(80, x - n.x); }
+    else {
+      n.x = Math.min(x0, x);
+      n.y = Math.min(y0, y);
+      n.w = Math.abs(x - x0);
+      n.h = Math.abs(y - y0);
+    }
+    render();
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    if (n.tipo === 'oscura' || n.tipo === 'evidenzia') {
+      if (n.w < 6 || n.h < 6) { note.pop(); selNota = -1; }
+    } else if (n.tipo === 'linea') {
+      if (Math.hypot(n.x2 - n.x1, n.y2 - n.y1) < 6) { note.pop(); selNota = -1; }
+    } else if (n.tipo === 'testo') {
+      testoEdit = selNota;   // si scrive subito, senza altri click
+    }
+    render();
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  render();
+}
+
+function creaNota(j) {
+  var n = note[j];
+  var sel = (j === selNota);
+  var el = document.createElement('div');
+  var base = 'position:absolute;z-index:' + (800 + j) + ';';
+  if (n.tipo === 'linea') {
+    var len = Math.hypot(n.x2 - n.x1, n.y2 - n.y1);
+    var ang = Math.atan2(n.y2 - n.y1, n.x2 - n.x1);
+    el.style.cssText = base +
+      'left:' + Math.round(n.x1 * viewK) + 'px;top:' + Math.round(n.y1 * viewK) + 'px;' +
+      'width:' + Math.round(len * viewK) + 'px;height:' + Math.max(2, Math.round(3 * viewK)) + 'px;' +
+      'background:' + n.colore + ';transform-origin:0 50%;transform:rotate(' + ang + 'rad);' +
+      'cursor:grab;border-radius:2px;' +
+      (sel ? 'box-shadow:0 0 0 2px rgba(0,212,255,0.7);' : '');
+  } else if (n.tipo === 'testo') {
+    el.style.cssText = base +
+      'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
+      'width:' + Math.round(n.w * viewK) + 'px;min-height:' + Math.round(n.fs * viewK) + 'px;' +
+      'cursor:grab;color:' + n.colore + ';font-weight:600;' +
+      'font-size:' + (n.fs * viewK) + "px;line-height:1.3;font-family:'Segoe UI', sans-serif;" +
+      'white-space:pre-wrap;word-break:break-word;' +
+      (sel || testoEdit === j ? 'outline:1px dashed rgba(0,212,255,0.8);outline-offset:2px;' : '');
+    el.textContent = n.testo || '';
+    if (testoEdit === j) {
+      el.contentEditable = 'true';
+      el.style.cursor = 'text';
+      el.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+      el.addEventListener('blur', function() {
+        n.testo = el.innerText.replace(/\n+$/, '');
+        testoEdit = -1;
+        if (!n.testo.trim()) { note.splice(j, 1); selNota = -1; }
+        render();
+      });
+      setTimeout(function() { el.focus(); }, 0);
+    }
+  } else {
+    // oscura = coprente; evidenzia = colore al 40% (alpha nel colore, non
+    // opacity: le maniglie non devono sbiadire)
+    var fondo = (n.tipo === 'evidenzia') ? (n.colore + '66') : n.colore;
+    el.style.cssText = base +
+      'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
+      'width:' + Math.round(n.w * viewK) + 'px;height:' + Math.round(n.h * viewK) + 'px;' +
+      'background:' + fondo + ';cursor:grab;border-radius:2px;' +
+      (sel ? 'box-shadow:0 0 0 2px rgba(0,212,255,0.7);' : '');
+  }
+
+  if (!(n.tipo === 'testo' && testoEdit === j)) {
+    el.addEventListener('mousedown', function(e) {
+      if (e.target.classList.contains('man') || e.target.classList.contains('capo')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      selNota = j;
+      selezionato = -1;
+      chiudiRitaglio();
+      var sx0 = e.clientX, sy0 = e.clientY;
+      var o = (n.tipo === 'linea')
+        ? { x1: n.x1, y1: n.y1, x2: n.x2, y2: n.y2 }
+        : { x: n.x, y: n.y };
+      function onMove(ev) {
+        var dx = (ev.clientX - sx0) / viewK;
+        var dy = (ev.clientY - sy0) / viewK;
+        if (n.tipo === 'linea') {
+          n.x1 = o.x1 + dx; n.y1 = o.y1 + dy;
+          n.x2 = o.x2 + dx; n.y2 = o.y2 + dy;
+        } else {
+          n.x = o.x + dx;
+          n.y = o.y + dy;
+        }
+        render();
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      render();
+    });
+    if (n.tipo === 'testo') {
+      el.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        testoEdit = j;
+        selNota = j;
+        render();
+      });
+    }
+  }
+
+  if (sel && testoEdit !== j) {
+    if (n.tipo === 'linea') {
+      // due capi trascinabili
+      var lung = Math.hypot(n.x2 - n.x1, n.y2 - n.y1) * viewK;
+      [0, 1].forEach(function(capo) {
+        var man = document.createElement('div');
+        man.className = 'capo';
+        man.style.cssText = 'position:absolute;width:12px;height:12px;border-radius:50%;' +
+          'background:#00d4ff;border:2px solid #0d1220;cursor:crosshair;top:50%;' +
+          'left:' + (capo ? Math.round(lung) : 0) + 'px;transform:translate(-50%,-50%);';
+        man.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var telaEl = $('tela');
+          var r = telaEl.getBoundingClientRect();
+          function onMove(ev) {
+            var x = (ev.clientX - r.left) / viewK;
+            var y = (ev.clientY - r.top) / viewK;
+            if (capo) { n.x2 = x; n.y2 = y; } else { n.x1 = x; n.y1 = y; }
+            render();
+          }
+          function onUp() {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          }
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        });
+        el.appendChild(man);
+      });
+    } else if (n.tipo !== 'testo') {
+      ['nw', 'ne', 'sw', 'se'].forEach(function(hnd) {
+        var man = document.createElement('div');
+        man.className = 'man man-' + hnd;
+        man.style.display = 'block';
+        man.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var sx0 = e.clientX, sy0 = e.clientY;
+          var o = { x: n.x, y: n.y, w: n.w, h: n.h };
+          function onMove(ev) {
+            var dx = (ev.clientX - sx0) / viewK;
+            var dy = (ev.clientY - sy0) / viewK;
+            if (hnd.indexOf('e') !== -1) n.w = Math.max(8, o.w + dx);
+            if (hnd.indexOf('w') !== -1) { n.w = Math.max(8, o.w - dx); n.x = o.x + (o.w - n.w); }
+            if (hnd.indexOf('s') !== -1) n.h = Math.max(8, o.h + dy);
+            if (hnd.indexOf('n') !== -1) { n.h = Math.max(8, o.h - dy); n.y = o.y + (o.h - n.h); }
+            render();
+          }
+          function onUp() {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          }
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        });
+        el.appendChild(man);
+      });
+    }
+  }
+  return el;
+}
+
+// Barretta della nota selezionata: colori a vista, A−/A+ per il testo, 🗑.
+function creaBarraNota(j) {
+  var n = note[j];
+  var bar = document.createElement('div');
+  var bx = (n.tipo === 'linea') ? Math.min(n.x1, n.x2) : n.x;
+  var by = (n.tipo === 'linea') ? Math.min(n.y1, n.y2) : n.y;
+  bar.style.cssText = 'position:absolute;z-index:970;display:flex;gap:5px;align-items:center;' +
+    'left:' + Math.round(bx * viewK) + 'px;top:' + (Math.round(by * viewK) - 34) + 'px;' +
+    'background:#16162a;border:1px solid rgba(0,212,255,0.4);border-radius:7px;padding:4px 6px;';
+  bar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+  PALETTE[n.tipo].forEach(function(c) {
+    var dot = document.createElement('span');
+    dot.style.cssText = 'width:14px;height:14px;border-radius:50%;cursor:pointer;display:inline-block;' +
+      'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
+    dot.addEventListener('click', function() { n.colore = c; render(); });
+    bar.appendChild(dot);
+  });
+  if (n.tipo === 'testo') {
+    [['A−', -3], ['A+', 3]].forEach(function(v) {
+      var bt = document.createElement('button');
+      bt.textContent = v[0];
+      bt.style.cssText = 'border:none;background:transparent;color:#00d4ff;font-weight:700;cursor:pointer;font-size:12px;padding:0 3px;';
+      bt.addEventListener('click', function() {
+        n.fs = Math.min(120, Math.max(10, n.fs + v[1]));
+        render();
+      });
+      bar.appendChild(bt);
+    });
+  }
+  var del = document.createElement('button');
+  del.textContent = '\u{1F5D1}';
+  del.title = 'Remove';
+  del.style.cssText = 'border:none;background:transparent;color:#ff6b6b;cursor:pointer;font-size:12px;padding:0 3px;';
+  del.addEventListener('click', function() {
+    note.splice(j, 1);
+    selNota = -1;
+    render();
+  });
+  bar.appendChild(del);
+  return bar;
 }
 
 // Porta il blocco in cima alla pila (ordine array = sovrapposizione) e
@@ -610,12 +1122,12 @@ function iniziaResize(e, i, hnd) {
     nw = Math.min(Math.max(30, nw), canvasW);
     nh = Math.min(Math.max(30, nh), canvasH);
     if (hnd.length === 2) {           // angolo: entrambe le scale
-      b.sx = nw / b.natW;
-      b.sy = nh / b.natH;
+      b.sx = nw / sorgW(b);
+      b.sy = nh / sorgH(b);
     } else if (hnd === 'e' || hnd === 'w') {
-      b.sx = nw / b.natW;
+      b.sx = nw / sorgW(b);
     } else {
-      b.sy = nh / b.natH;
+      b.sy = nh / sorgH(b);
     }
     // ancora sul lato opposto a quello trascinato
     var w = larghezza(b), h = altezza(b);
@@ -644,15 +1156,49 @@ function iniziaResize(e, i, hnd) {
 // ---- TASTIERA: frecce = spostamento di precisione, Canc = elimina ----
 
 document.addEventListener('keydown', function(e) {
+  // Mentre si scrive un testo, la tastiera è sua.
+  if (document.activeElement && document.activeElement.isContentEditable) return;
   if (e.key === 'Escape') {
     $('scelta').style.display = 'none';
     $('anteprima').style.display = 'none';
+    if (strumento) { strumento = null; aggiornaBarraStrumenti(); }
+    chiudiRitaglio();
+    selNota = -1;
+    render();
+    return;
+  }
+  if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
+  var passo = e.shiftKey ? 10 : 1;
+  // Prima le annotazioni selezionate, poi i pezzi.
+  if (selNota >= 0 && selNota < note.length) {
+    var n = note[selNota];
+    var dx = 0, dy = 0;
+    var presoN = true;
+    if (e.key === 'ArrowLeft') dx = -passo;
+    else if (e.key === 'ArrowRight') dx = passo;
+    else if (e.key === 'ArrowUp') dy = -passo;
+    else if (e.key === 'ArrowDown') dy = passo;
+    else if (e.key === 'Delete') {
+      note.splice(selNota, 1);
+      selNota = -1;
+      render();
+      return;
+    } else presoN = false;
+    if (presoN) {
+      e.preventDefault();
+      if (n.tipo === 'linea') {
+        n.x1 += dx; n.y1 += dy;
+        n.x2 += dx; n.y2 += dy;
+      } else {
+        n.x += dx;
+        n.y += dy;
+      }
+      render();
+    }
     return;
   }
   if (selezionato < 0 || selezionato >= blocchi.length) return;
-  if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
   var b = blocchi[selezionato];
-  var passo = e.shiftKey ? 10 : 1;
   var preso = true;
   if (e.key === 'ArrowLeft') b.x -= passo;
   else if (e.key === 'ArrowRight') b.x += passo;
@@ -661,6 +1207,7 @@ document.addEventListener('keydown', function(e) {
   else if (e.key === 'Delete') {
     blocchi.splice(selezionato, 1);
     selezionato = -1;
+    ritaglioIdx = -1;   // niente clamp: gli indici sono appena slittati
     render();
     return;
   } else {
@@ -692,24 +1239,129 @@ async function componi() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   // Ordine dell'array = ordine di sovrapposizione (l'ultimo sta sopra).
+  // Il ritaglio usa il drawImage a 9 argomenti: dal rettangolo sorgente
+  // cx,cy,cw,ch alla posizione in tela.
   blocchi.forEach(function(b, i) {
-    ctx.drawImage(imgs[i], Math.round(b.x), Math.round(b.y),
+    ctx.drawImage(imgs[i],
+      (b.cx || 0), (b.cy || 0), sorgW(b), sorgH(b),
+      Math.round(b.x), Math.round(b.y),
       Math.round(larghezza(b)), Math.round(altezza(b)));
+  });
+  // Annotazioni SOPRA i pezzi, nell'ordine in cui sono state fatte.
+  note.forEach(function(n) {
+    if (n.tipo === 'oscura') {
+      ctx.fillStyle = n.colore;
+      ctx.fillRect(Math.round(n.x), Math.round(n.y), Math.round(n.w), Math.round(n.h));
+    } else if (n.tipo === 'evidenzia') {
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = n.colore;
+      ctx.fillRect(Math.round(n.x), Math.round(n.y), Math.round(n.w), Math.round(n.h));
+      ctx.globalAlpha = 1;
+    } else if (n.tipo === 'linea') {
+      ctx.strokeStyle = n.colore;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(n.x1, n.y1);
+      ctx.lineTo(n.x2, n.y2);
+      ctx.stroke();
+    } else if (n.tipo === 'testo' && n.testo) {
+      ctx.fillStyle = n.colore;
+      ctx.font = '600 ' + n.fs + "px 'Segoe UI', sans-serif";
+      ctx.textBaseline = 'top';
+      var righe = spezzaTesto(ctx, n.testo, n.w);
+      righe.forEach(function(r, ri) {
+        ctx.fillText(r, Math.round(n.x), Math.round(n.y + ri * n.fs * 1.3));
+      });
+    }
   });
   return canvas;
 }
 
+// A capo del testo: rispetta i newline manuali e spezza le righe troppo
+// lunghe per la larghezza della casella (stessa resa del div in tela).
+function spezzaTesto(ctx, testo, maxW) {
+  var out = [];
+  testo.split('\n').forEach(function(riga) {
+    var parole = riga.split(' ');
+    var cur = '';
+    parole.forEach(function(p) {
+      var prova = cur ? cur + ' ' + p : p;
+      if (ctx.measureText(prova).width > maxW && cur) {
+        out.push(cur);
+        cur = p;
+      } else {
+        cur = prova;
+      }
+    });
+    out.push(cur);
+  });
+  return out;
+}
+
+// PDF senza librerie: una pagina con la JPEG del collage incapsulata
+// (struttura PDF minima scritta a mano — coerente con zero dipendenze).
+function creaPdf(jpegDataUrl, wPx, hPx) {
+  var bin = atob(jpegDataUrl.split(',')[1]);
+  var wPt = wPx * 72 / 96, hPt = hPx * 72 / 96;
+  // Le pagine PDF hanno un tetto di 14400pt per lato: si scala la CARTA,
+  // l'immagine dentro resta a risoluzione piena.
+  var sc = Math.min(1, 14400 / wPt, 14400 / hPt);
+  wPt = +(wPt * sc).toFixed(2);
+  hPt = +(hPt * sc).toFixed(2);
+  var testa = '%PDF-1.4\n';
+  var corpo = '';
+  var offset = [];
+  function oggetto(num, contenuto) {
+    offset[num] = testa.length + corpo.length;
+    corpo += num + ' 0 obj\n' + contenuto + '\nendobj\n';
+  }
+  oggetto(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  oggetto(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  oggetto(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + wPt + ' ' + hPt + '] ' +
+    '/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
+  oggetto(4, '<< /Type /XObject /Subtype /Image /Width ' + wPx + ' /Height ' + hPx +
+    ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + bin.length +
+    ' >>\nstream\n' + bin + '\nendstream');
+  var flusso = 'q ' + wPt + ' 0 0 ' + hPt + ' 0 0 cm /Im0 Do Q';
+  oggetto(5, '<< /Length ' + flusso.length + ' >>\nstream\n' + flusso + '\nendstream');
+  var posXref = testa.length + corpo.length;
+  var xref = 'xref\n0 6\n0000000000 65535 f \n';
+  for (var n = 1; n <= 5; n++) {
+    xref += String(offset[n]).padStart(10, '0') + ' 00000 n \n';
+  }
+  var tutto = testa + corpo + xref +
+    'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + posXref + '\n%%EOF';
+  var bytes = new Uint8Array(tutto.length);
+  for (var i = 0; i < tutto.length; i++) bytes[i] = tutto.charCodeAt(i) & 0xff;
+  return new Blob([bytes], { type: 'application/pdf' });
+}
+
 async function salva() {
   if (!blocchi.length) return;
+  chiudiRitaglio();
   var canvas = await componi();
   if (!canvas) return;
   var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  var fmt = $('formato') ? $('formato').value : 'png';
+  var url, ext;
+  if (fmt === 'jpeg') {
+    url = canvas.toDataURL('image/jpeg', 0.92);
+    ext = 'jpg';
+  } else if (fmt === 'pdf') {
+    url = URL.createObjectURL(creaPdf(canvas.toDataURL('image/jpeg', 0.92), canvas.width, canvas.height));
+    ext = 'pdf';
+  } else {
+    url = canvas.toDataURL('image/png');
+    ext = 'png';
+  }
   chrome.downloads.download({
-    url: canvas.toDataURL('image/png'),
-    filename: 'screenshots/multisnip_' + ts + '.png',
+    url: url,
+    filename: 'screenshots/multisnip_' + ts + '.' + ext,
     saveAs: false
   });
-  // Copia negli appunti: la pagina dell'editor ha il focus (click su Save).
+  // Copia negli appunti SEMPRE in PNG (è il formato che gli appunti
+  // capiscono): Ctrl+V in mail/Word/chat funziona con qualsiasi formato.
   try {
     var blob = await new Promise(function(res) { canvas.toBlob(res, 'image/png'); });
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
@@ -727,6 +1379,12 @@ $('btnAggiungi').addEventListener('click', function() {
   $('scelta').style.display = 'flex';
 });
 $('btnFit').addEventListener('click', adattaTela);
+// Strumenti di annotazione: un click arma, il trascinamento crea, poi si
+// torna alla manina. Zero menu.
+$('btnOscura').addEventListener('click', function() { armaStrumento('oscura'); });
+$('btnEvidenzia').addEventListener('click', function() { armaStrumento('evidenzia'); });
+$('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
+$('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
 // Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
 $('btnAnteprima').addEventListener('click', async function() {
   if (!blocchi.length) return;

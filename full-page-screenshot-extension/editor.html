@@ -69,6 +69,19 @@
       color: #8b8ba3;
     }
     .btn.spento:hover { background: rgba(255,255,255,0.05); }
+    /* Strumento armato: il prossimo trascinamento sulla tela lo usa */
+    .btn.attivo {
+      background: #00d4ff;
+      color: #0d1220;
+      border-color: #00d4ff;
+      font-weight: 700;
+    }
+    select.btn {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 10px;
+    }
+    select.btn option { background: #1a1a2e; color: #eee; }
     .sep {
       width: 1px;
       height: 24px;
@@ -368,9 +381,19 @@
     <div class="spacer"></div>
     <button class="btn" id="btnAggiungi">+ Add piece</button>
     <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
-    <button class="btn spento" id="btnAnteprima" title="See the final image, clean">👁 Preview</button>
     <div class="sep"></div>
+    <button class="btn spento strumento" id="btnOscura" title="Redact — cover sensitive data (drag on the canvas)">⬛ Redact</button>
+    <button class="btn spento strumento" id="btnEvidenzia" title="Highlight (drag on the canvas)">🖍 Highlight</button>
+    <button class="btn spento strumento" id="btnLinea" title="Line (drag on the canvas)">╱ Line</button>
+    <button class="btn spento strumento" id="btnTesto" title="Text (drag on the canvas, then type)">T Text</button>
+    <div class="sep"></div>
+    <button class="btn spento" id="btnAnteprima" title="See the final image, clean">👁 Preview</button>
     <button class="btn spento" id="btnAnnulla">Cancel</button>
+    <select class="btn" id="formato" title="Save format">
+      <option value="png">PNG</option>
+      <option value="jpeg">JPEG</option>
+      <option value="pdf">PDF</option>
+    </select>
     <button class="btn primario" id="btnSalva">✓ Save</button>
   </div>
 
@@ -428,7 +451,7 @@
   </div>
 
   <div id="salvato">✓ Saved &amp; copied to clipboard</div>
-  <div class="hint">drag to move (magnetic edges) · click brings a piece to front · Alt+click selects the piece underneath · corners resize, sides stretch · drag the frame edges to grow the canvas · arrow keys nudge (Shift = ×10) · click empty space to deselect · Del remove · Ctrl+V pastes any image as a piece</div>
+  <div class="hint">drag to move (magnetic edges) · click brings a piece to front · Alt+click selects the piece underneath · corners resize, sides stretch · ✂ crops (nothing is lost) · Redact/Highlight/Line/Text: click the tool, drag on the canvas · drag the frame edges to grow the canvas · arrow keys nudge (Shift = ×10) · Del remove · Ctrl+V pastes any image as a piece</div>
 
   <script src="editor.js"></script>
 </body>
