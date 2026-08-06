@@ -3,7 +3,7 @@ var pct = document.getElementById('pct');
 var text = document.getElementById('text');
 var waterbody = document.getElementById('waterbody');
 
-// Ascolta aggiornamenti dal service worker
+// Ascolta aggiornamenti dal service worker (progresso cattura full page)
 chrome.runtime.onMessage.addListener(function(msg) {
   if (msg.type === 'progress') {
     water.style.height = Math.min(msg.percent, 100) + '%';
@@ -17,86 +17,129 @@ chrome.runtime.onMessage.addListener(function(msg) {
       pct.style.textShadow = '0 1px 2px rgba(255,255,255,0.5)';
     }
   } else if (msg.type === 'success') {
-    pct.textContent = '\u2713';
+    pct.textContent = '✓';
     text.textContent = 'Screenshot salvato!';
     document.body.classList.add('success');
     setTimeout(function() { window.close(); }, 1500);
   } else if (msg.type === 'error') {
-    pct.textContent = '\u2717';
+    pct.textContent = '✗';
     text.textContent = msg.message || 'Errore';
     document.body.classList.add('error');
     setTimeout(function() { window.close(); }, 3000);
   }
 });
 
-// Appena il popup si apre, chiedi al service worker di iniziare la cattura
-chrome.storage.local.get('captureMode', function(data) {
-  var mode = data.captureMode || 'full';
+function vistaCattura() {
+  document.getElementById('pannello').style.display = 'none';
+  document.getElementById('cattura').style.display = 'flex';
+}
+
+// Avvia la cattura nella modalità scelta (il popup fa da launcher).
+function avviaCattura(mode) {
+  vistaCattura();
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-    if (tabs[0]) {
-      if (mode === 'multi') {
-        pct.textContent = '▦';
-        pct.style.fontSize = '28px';
-        text.textContent = 'Multi Snip...';
-        var avviaMulti = function() {
-          chrome.runtime.sendMessage({
-            action: 'startCapture',
-            tabId: tabs[0].id,
-            mode: mode
-          });
+    if (!tabs[0]) return;
+    var tabId = tabs[0].id;
+    if (mode === 'multi') {
+      pct.textContent = '▦';
+      pct.style.fontSize = '28px';
+      text.textContent = 'Multi Snip...';
+      chrome.runtime.sendMessage({ action: 'startCapture', tabId: tabId, mode: mode });
+      // Permesso "segui tra le schede": il click sul pannellino è un gesto
+      // valido, quindi la richiesta parte diretta. Se già concesso Chrome
+      // non mostra nulla; se rifiutato tutto funziona col click per scheda.
+      chrome.permissions.contains({ origins: ['<all_urls>'] }, function(ok) {
+        void chrome.runtime.lastError;
+        if (ok) {
           setTimeout(function() { window.close(); }, 600);
-        };
-        // Se manca il permesso "segui tra le schede", si chiede QUI: il
-        // click nel popup è un gesto valido per permissions.request (dalle
-        // impostazioni la richiesta parte solo ri-cliccando l'opzione, e
-        // chi aveva già Multi Snip selezionato non la vedeva mai).
-        chrome.permissions.contains({ origins: ['<all_urls>'] }, function(ok) {
-          if (ok) { avviaMulti(); return; }
-          text.textContent = 'Multi Snip';
-          document.getElementById('permessoMulti').style.display = 'flex';
-          document.getElementById('pOk').addEventListener('click', function() {
-            // La sessione parte comunque: se il prompt di Chrome chiude il
-            // popup, il permesso concesso resta e il widget è già in pagina.
-            chrome.runtime.sendMessage({
-              action: 'startCapture',
-              tabId: tabs[0].id,
-              mode: mode
-            });
-            chrome.permissions.request({ origins: ['<all_urls>'] }, function() {
-              void chrome.runtime.lastError;
-              window.close();
-            });
-          });
-          document.getElementById('pNo').addEventListener('click', avviaMulti);
+          return;
+        }
+        chrome.permissions.request({ origins: ['<all_urls>'] }, function() {
+          void chrome.runtime.lastError;
+          window.close();
         });
-      } else if (mode === 'area') {
-        // Mostra messaggio e chiudi
-        pct.textContent = '\u2702';
-        pct.style.fontSize = '28px';
-        text.textContent = 'Seleziona l\'area';
-        chrome.runtime.sendMessage({
-          action: 'startCapture',
-          tabId: tabs[0].id,
-          mode: mode
-        });
-        setTimeout(function() { window.close(); }, 800);
-      } else if (mode === 'visible') {
-        pct.textContent = '\u{1F4F7}';
-        pct.style.fontSize = '28px';
-        text.textContent = 'Cattura...';
-        chrome.runtime.sendMessage({
-          action: 'startCapture',
-          tabId: tabs[0].id,
-          mode: mode
-        });
-        setTimeout(function() { window.close(); }, 600);
-      } else {
-        chrome.runtime.sendMessage({
-          action: 'startCapture',
-          tabId: tabs[0].id,
-          mode: mode
-        });
-      }
+      });
+    } else if (mode === 'area') {
+      pct.textContent = '✂';
+      pct.style.fontSize = '28px';
+      text.textContent = 'Seleziona l\'area';
+      chrome.runtime.sendMessage({ action: 'startCapture', tabId: tabId, mode: mode });
+      setTimeout(function() { window.close(); }, 800);
+    } else if (mode === 'visible') {
+      pct.textContent = '\u{1F4F7}';
+      pct.style.fontSize = '28px';
+      text.textContent = 'Cattura...';
+      chrome.runtime.sendMessage({ action: 'startCapture', tabId: tabId, mode: mode });
+      setTimeout(function() { window.close(); }, 600);
+    } else {
+      // full page: il popup resta aperto e mostra il progresso
+      chrome.runtime.sendMessage({ action: 'startCapture', tabId: tabId, mode: mode });
     }
+  });
+}
+
+// ---- PANNELLO DI COMANDO ----
+
+function evidenziaModo(mode) {
+  document.querySelectorAll('.modo').forEach(function(m) {
+    m.classList.toggle('attiva', m.getAttribute('data-mode') === mode);
+  });
+}
+
+function setSw(id, on) {
+  var sw = document.querySelector('#' + id + ' .sw');
+  if (sw) sw.classList.toggle('on', !!on);
+}
+
+document.querySelectorAll('.modo').forEach(function(m) {
+  m.addEventListener('click', function() {
+    var mode = this.getAttribute('data-mode');
+    chrome.storage.local.set({ captureMode: mode });
+    evidenziaModo(mode);
+    avviaCattura(mode);
+  });
+});
+
+document.getElementById('pClip').addEventListener('click', function() {
+  var sw = this.querySelector('.sw');
+  var on = !sw.classList.contains('on');
+  sw.classList.toggle('on', on);
+  chrome.storage.local.set({ copyToClipboard: on });
+});
+
+document.getElementById('pLente').addEventListener('click', function() {
+  var sw = this.querySelector('.sw');
+  var on = !sw.classList.contains('on');
+  sw.classList.toggle('on', on);
+  chrome.storage.local.set({ lentePixel: on });
+});
+
+document.getElementById('linkImpostazioni').addEventListener('click', function() {
+  chrome.tabs.create({ url: 'settings.html' });
+  window.close();
+});
+
+// ---- AVVIO ----
+// Sessione Multi Snip ATTIVA: l'icona evoca il widget di raccolta sulla
+// scheda corrente, come sempre — niente pannello. Altrimenti: pannello di
+// comando con la modalità attiva accesa e i due interruttori.
+chrome.storage.session.get('multi', function(sm) {
+  var inSessione = !!(sm && sm.multi && sm.multi.active);
+  if (inSessione) {
+    vistaCattura();
+    pct.textContent = '▦';
+    pct.style.fontSize = '28px';
+    text.textContent = 'Multi Snip...';
+    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+      if (!tabs[0]) return;
+      chrome.runtime.sendMessage({ action: 'startCapture', tabId: tabs[0].id, mode: 'multi' });
+      setTimeout(function() { window.close(); }, 600);
+    });
+    return;
+  }
+  chrome.storage.local.get(['captureMode', 'copyToClipboard', 'lentePixel'], function(d) {
+    evidenziaModo(d.captureMode || 'full');
+    setSw('pClip', (d.copyToClipboard === undefined) ? true : d.copyToClipboard);
+    setSw('pLente', (d.lentePixel === undefined) ? true : d.lentePixel);
   });
 });

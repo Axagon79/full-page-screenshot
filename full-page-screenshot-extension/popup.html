@@ -4,15 +4,112 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 120px;
+      width: 232px;
       margin: 0;
-      padding: 12px;
+      padding: 10px;
       background: #1a1a2e;
+      font-family: 'Segoe UI', sans-serif;
+      color: #eee;
+    }
+
+    /* ===== PANNELLO DI COMANDO ===== */
+    #pannello { display: block; }
+    .gruppo {
+      background: #16213e;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 6px;
+      margin-bottom: 8px;
+    }
+    .titoletto {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #667;
+      padding: 4px 8px 2px;
+    }
+    .modo {
       display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 8px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .modo:hover { background: rgba(0,212,255,0.08); }
+    .modo .icona { color: #889; flex-shrink: 0; display: flex; }
+    .modo .label { font-size: 13px; font-weight: 600; line-height: 1.2; }
+    .modo .desc { font-size: 10px; color: #778; margin-top: 1px; }
+    .modo .radio {
+      margin-left: auto;
+      width: 14px; height: 14px;
+      border: 2px solid #556;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    /* Modalità ATTIVA: accesa in ciano */
+    .modo.attiva {
+      border-color: #00d4ff;
+      background: rgba(0,212,255,0.10);
+    }
+    .modo.attiva .icona { color: #00d4ff; }
+    .modo.attiva .radio {
+      border-color: #00d4ff;
+      background: radial-gradient(circle, #00d4ff 0 4px, transparent 5px);
+    }
+    .nuovo { color: #00d4ff; font-size: 9px; font-weight: 700; }
+
+    /* Toggle compatti (appunti + lente) */
+    .riga-sw {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 8px;
+      cursor: pointer;
+      border-radius: 9px;
+    }
+    .riga-sw:hover { background: rgba(0,212,255,0.06); }
+    .riga-sw .icona { color: #889; display: flex; flex-shrink: 0; }
+    .riga-sw .label { font-size: 12px; font-weight: 600; }
+    .sw {
+      margin-left: auto;
+      width: 34px; height: 18px;
+      border-radius: 10px;
+      background: #2a2a44;
+      position: relative;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .sw .pomello {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #778;
+      transition: left 0.15s, background 0.15s;
+    }
+    .sw.on { background: rgba(0,212,255,0.35); }
+    .sw.on .pomello { left: 18px; background: #00d4ff; }
+
+    #linkImpostazioni {
+      text-align: center;
+      font-size: 11px;
+      color: #778;
+      padding: 4px;
+      cursor: pointer;
+      border-radius: 7px;
+    }
+    #linkImpostazioni:hover { color: #00d4ff; background: rgba(0,212,255,0.06); }
+
+    /* ===== VISTA CATTURA (cerchio con l'acqua) ===== */
+    #cattura {
+      display: none;
       flex-direction: column;
       align-items: center;
       gap: 8px;
-      font-family: 'Segoe UI', sans-serif;
+      padding: 8px 0;
     }
     @keyframes wave1 {
       0% { transform: translateX(0) translateY(0); }
@@ -92,43 +189,81 @@
       text-align: center;
       white-space: nowrap;
     }
-    /* Successo */
     body.success .circle { border-color: #10b981; }
     body.success .water { height: 100% !important; }
     body.success .water-body { background: linear-gradient(180deg, #10b981 0%, #065f46 100%); }
     body.success .pct { color: white; font-size: 28px; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
     body.success .text { color: #10b981; }
-    /* Errore */
     body.error .circle { border-color: #ef4444; }
     body.error .water { height: 0% !important; }
     body.error .pct { color: #ef4444; font-size: 28px; }
     body.error .text { color: #ef4444; }
-    /* Richiesta permesso "segui tra le schede" (solo Multi Snip) */
-    #permessoMulti { display: none; flex-direction: column; gap: 6px; width: 100%; }
-    #permessoMulti .spiega { font-size: 10px; color: #aab; text-align: center; line-height: 1.4; }
-    .pbtn {
-      font-family: inherit; font-size: 11px; font-weight: 600; padding: 6px;
-      border-radius: 6px; border: 1px solid rgba(0,212,255,0.4);
-      background: transparent; color: #00d4ff; cursor: pointer;
-    }
-    .pbtn.primario { background: #00d4ff; color: #0d1220; border-color: #00d4ff; }
-    .pbtn:hover { filter: brightness(1.15); }
   </style>
 </head>
 <body>
-  <div class="circle">
-    <div class="water" id="water">
-      <div class="wave1"></div>
-      <div class="wave2"></div>
-      <div class="water-body" id="waterbody"></div>
+  <div id="pannello">
+    <div class="gruppo">
+      <div class="titoletto">MODE</div>
+      <div class="modo" data-mode="full">
+        <span class="icona"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+        <div>
+          <div class="label">Full Page</div>
+          <div class="desc">Scroll and capture the whole page</div>
+        </div>
+        <div class="radio"></div>
+      </div>
+      <div class="modo" data-mode="visible">
+        <span class="icona"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <div>
+          <div class="label">Visible Only</div>
+          <div class="desc">Screenshot of what you see</div>
+        </div>
+        <div class="radio"></div>
+      </div>
+      <div class="modo" data-mode="area">
+        <span class="icona"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg></span>
+        <div>
+          <div class="label">Select Area</div>
+          <div class="desc">Choose a rectangle</div>
+        </div>
+        <div class="radio"></div>
+      </div>
+      <div class="modo" data-mode="multi">
+        <span class="icona"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><path d="M9 21h10a2 2 0 0 0 2-2V9"/></svg></span>
+        <div>
+          <div class="label">Multi Snip <span class="nuovo">NEW</span></div>
+          <div class="desc">Capture pieces, combine into one image</div>
+        </div>
+        <div class="radio"></div>
+      </div>
     </div>
-    <div class="pct" id="pct">0%</div>
+
+    <div class="gruppo">
+      <div class="riga-sw" id="pClip">
+        <span class="icona"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg></span>
+        <span class="label">Copy to clipboard</span>
+        <div class="sw"><div class="pomello"></div></div>
+      </div>
+      <div class="riga-sw" id="pLente">
+        <span class="icona"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
+        <span class="label">Pixel magnifier</span>
+        <div class="sw"><div class="pomello"></div></div>
+      </div>
+    </div>
+
+    <div id="linkImpostazioni">⚙ More settings &amp; news</div>
   </div>
-  <div class="text" id="text">Avvio...</div>
-  <div id="permessoMulti">
-    <div class="spiega">Let the Multi Snip panel follow you across tabs?</div>
-    <button id="pOk" class="pbtn primario">Yes, enable</button>
-    <button id="pNo" class="pbtn">Not now</button>
+
+  <div id="cattura">
+    <div class="circle">
+      <div class="water" id="water">
+        <div class="wave1"></div>
+        <div class="wave2"></div>
+        <div class="water-body" id="waterbody"></div>
+      </div>
+      <div class="pct" id="pct">0%</div>
+    </div>
+    <div class="text" id="text">Avvio...</div>
   </div>
   <script src="popup.js"></script>
 </body>
