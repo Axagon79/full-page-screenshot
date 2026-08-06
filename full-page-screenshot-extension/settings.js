@@ -61,6 +61,22 @@ document.getElementById('toggleClipboard').addEventListener('click', function() 
   setClipboardActive(nowActive);
 });
 
+// Interruttore "Pixel magnifier": la lente nella selezione area. Default
+// acceso; chi la trova d'intralcio la spegne qui.
+chrome.storage.local.get('lentePixel', function(data) {
+  var enabled = (data.lentePixel === undefined) ? true : data.lentePixel;
+  setLenteActive(enabled);
+});
+document.getElementById('toggleLente').addEventListener('click', function() {
+  var nowActive = !this.classList.contains('on');
+  chrome.storage.local.set({ lentePixel: nowActive });
+  setLenteActive(nowActive);
+});
+function setLenteActive(enabled) {
+  var el = document.getElementById('toggleLente');
+  if (enabled) { el.classList.add('on'); } else { el.classList.remove('on'); }
+}
+
 document.getElementById('btnSave').addEventListener('click', function() {
   var saved = document.getElementById('saved');
   saved.classList.add('show');

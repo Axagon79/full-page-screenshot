@@ -1329,14 +1329,19 @@ async function doAreaCapture(tabId) {
     var inMulti = !!(sessioneMulti && sessioneMulti.active);
     // Foto del viewport per la LENTE di ingrandimento: scattata PRIMA che
     // l'overlay scurisca la pagina, così la lente mostra i pixel veri.
+    // Disattivabile dalle impostazioni (default: accesa).
+    var stLente = await chrome.storage.local.get('lentePixel');
+    var lenteAttiva = (stLente.lentePixel === undefined) ? true : !!stLente.lentePixel;
     var fotoLente = null;
-    try {
-      fotoLente = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-    } catch (nienteLente) {}
+    if (lenteAttiva) {
+      try {
+        fotoLente = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+      } catch (nienteLente) {}
+    }
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      args: [inMulti, fotoLente],
-      func: function(inMulti, fotoLente) {
+      args: [inMulti, fotoLente, lenteAttiva],
+      func: function(inMulti, fotoLente, lenteAttiva) {
         var old = document.getElementById('__screenshot_area_overlay');
         if (old) old.remove();
         var oldNoSel = document.getElementById('__screenshot_noselect');
@@ -1371,12 +1376,17 @@ async function doAreaCapture(tabId) {
         // mostra ingrandita 4× attorno al puntatore, col mirino. Dopo ogni
         // scroll la foto è vecchia: la lente si nasconde e chiede al service
         // worker una foto fresca quando lo scroll si ferma (~2 scatti/sec max).
-        var LENTE_ZOOM = 4;
+        // Stile "Screenshot Captor": griglia in cui OGNI cella è un pixel
+        // fisico dello schermo, mirino rosso sul pixel centrale, lente a
+        // sinistra e un filo sotto il puntatore.
+        var CELLE = 15;             // pixel inquadrati per lato (dispari)
+        var CELLA = 9;              // lato di ogni pixel dentro la lente
+        var LATO = CELLE * CELLA;   // 135
         var lente = document.createElement('canvas');
-        lente.width = 132;
-        lente.height = 132;
-        lente.style.cssText = 'position:fixed;z-index:2147483647;width:132px;height:132px;' +
-          'border:2px solid #00d4ff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.5);' +
+        lente.width = LATO;
+        lente.height = LATO;
+        lente.style.cssText = 'position:fixed;z-index:2147483647;width:' + LATO + 'px;height:' + LATO + 'px;' +
+          'border:2px solid #00d4ff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.5);' +
           'pointer-events:none;display:none;background:#111;';
         overlay.appendChild(lente);
         var lctx = lente.getContext('2d');
@@ -1400,23 +1410,41 @@ async function doAreaCapture(tabId) {
             return;
           }
           var dpr = lenteImg.width / window.innerWidth;  // scala reale della foto
-          var lato = 132 / LENTE_ZOOM;                    // px CSS inquadrati
-          lctx.imageSmoothingEnabled = false;             // pixel netti, da lente vera
+          var meta = Math.floor(CELLE / 2);
+          // pixel fisico sotto il puntatore, tenuto dentro la foto ai bordi
+          var cxDev = Math.min(Math.max(Math.round(ultimoMX * dpr), meta), lenteImg.width - meta - 1);
+          var cyDev = Math.min(Math.max(Math.round(ultimoMY * dpr), meta), lenteImg.height - meta - 1);
+          lctx.imageSmoothingEnabled = false;             // ogni pixel una cella netta
           lctx.fillStyle = '#111';
-          lctx.fillRect(0, 0, 132, 132);
+          lctx.fillRect(0, 0, LATO, LATO);
           lctx.drawImage(lenteImg,
-            (ultimoMX - lato / 2) * dpr, (ultimoMY - lato / 2) * dpr,
-            lato * dpr, lato * dpr, 0, 0, 132, 132);
-          lctx.strokeStyle = 'rgba(0,212,255,0.9)';
+            cxDev - meta, cyDev - meta, CELLE, CELLE,
+            0, 0, LATO, LATO);
+          // griglia: una cella = UN pixel dello schermo
+          lctx.strokeStyle = 'rgba(0,0,0,0.28)';
           lctx.lineWidth = 1;
           lctx.beginPath();
-          lctx.moveTo(66, 0); lctx.lineTo(66, 132);
-          lctx.moveTo(0, 66); lctx.lineTo(132, 66);
+          for (var g = 0; g <= CELLE; g++) {
+            lctx.moveTo(g * CELLA + 0.5, 0);
+            lctx.lineTo(g * CELLA + 0.5, LATO);
+            lctx.moveTo(0, g * CELLA + 0.5);
+            lctx.lineTo(LATO, g * CELLA + 0.5);
+          }
           lctx.stroke();
-          // accanto al puntatore, saltando dal lato libero vicino ai bordi
-          var lx = ultimoMX + 22, ly = ultimoMY + 22;
-          if (lx + 140 > window.innerWidth) lx = ultimoMX - 22 - 136;
-          if (ly + 140 > window.innerHeight) ly = ultimoMY - 22 - 136;
+          // mirino rosso che incrocia sul pixel centrale (stile Captor)
+          lctx.strokeStyle = 'rgba(224,32,32,0.85)';
+          lctx.beginPath();
+          lctx.moveTo(meta * CELLA + CELLA / 2, 0);
+          lctx.lineTo(meta * CELLA + CELLA / 2, LATO);
+          lctx.moveTo(0, meta * CELLA + CELLA / 2);
+          lctx.lineTo(LATO, meta * CELLA + CELLA / 2);
+          lctx.stroke();
+          // a SINISTRA e un filo sotto il puntatore; se non c'è posto salta
+          // a destra / sopra
+          var lx = ultimoMX - 24 - LATO;
+          var ly = ultimoMY + 14;
+          if (lx < 4) lx = ultimoMX + 24;
+          if (ly + LATO + 8 > window.innerHeight) ly = ultimoMY - 14 - LATO;
           lente.style.left = lx + 'px';
           lente.style.top = ly + 'px';
           lente.style.display = 'block';
@@ -1424,6 +1452,7 @@ async function doAreaCapture(tabId) {
         lenteCarica(fotoLente);
         var lenteTimer = null;
         function lenteScrollata() {
+          if (!lenteAttiva) return;
           // overlay chiuso: il listener si toglie da solo (niente scatti fantasma)
           if (!document.getElementById('__screenshot_area_overlay')) {
             window.removeEventListener('scroll', lenteScrollata, true);
@@ -1449,7 +1478,7 @@ async function doAreaCapture(tabId) {
             }
           }, 450);
         }
-        window.addEventListener('scroll', lenteScrollata, true);
+        if (lenteAttiva) window.addEventListener('scroll', lenteScrollata, true);
 
         // === AUTO-SCROLL durante il drag (Step 1) ===
         var SCROLL_TRIGGER_ZONE = 80;
