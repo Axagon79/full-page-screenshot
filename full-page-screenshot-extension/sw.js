@@ -32,7 +32,20 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 });
 
 // Ricevi messaggio dal popup per avviare cattura
-chrome.runtime.onMessage.addListener(function(msg, sender) {
+var ultimaFotoLente = 0;
+chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+  // La lente dell'overlay area chiede una foto fresca del viewport dopo
+  // uno scroll. Rate-limitata: captureVisibleTab regge ~2 chiamate/sec.
+  if (msg.action === 'lenteRicattura') {
+    var ora = Date.now();
+    if (ora - ultimaFotoLente < 500) { sendResponse(null); return; }
+    ultimaFotoLente = ora;
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, function(dataUrl) {
+      void chrome.runtime.lastError;
+      sendResponse(dataUrl ? { img: dataUrl } : null);
+    });
+    return true;  // risposta asincrona
+  }
   if (msg.action === 'clearNewsBadge') {
     chrome.action.setBadgeText({ text: '' });
     chrome.storage.local.remove('newsUnread');
@@ -1314,10 +1327,16 @@ async function doAreaCapture(tabId) {
     // capisce che il pezzo finirà nell'editor e non nel download.
     var sessioneMulti = await multiSessione();
     var inMulti = !!(sessioneMulti && sessioneMulti.active);
+    // Foto del viewport per la LENTE di ingrandimento: scattata PRIMA che
+    // l'overlay scurisca la pagina, così la lente mostra i pixel veri.
+    var fotoLente = null;
+    try {
+      fotoLente = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    } catch (nienteLente) {}
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      args: [inMulti],
-      func: function(inMulti) {
+      args: [inMulti, fotoLente],
+      func: function(inMulti, fotoLente) {
         var old = document.getElementById('__screenshot_area_overlay');
         if (old) old.remove();
         var oldNoSel = document.getElementById('__screenshot_noselect');
@@ -1346,6 +1365,91 @@ async function doAreaCapture(tabId) {
 
         var startX = 0, startY_doc = 0, dragging = false;
         var currentX = 0, currentMouseY_vp = 0;
+
+        // === LENTE DI INGRANDIMENTO (precisione al pixel) ===
+        // Una foto del viewport fa da sorgente: la lente è un canvas che la
+        // mostra ingrandita 4× attorno al puntatore, col mirino. Dopo ogni
+        // scroll la foto è vecchia: la lente si nasconde e chiede al service
+        // worker una foto fresca quando lo scroll si ferma (~2 scatti/sec max).
+        var LENTE_ZOOM = 4;
+        var lente = document.createElement('canvas');
+        lente.width = 132;
+        lente.height = 132;
+        lente.style.cssText = 'position:fixed;z-index:2147483647;width:132px;height:132px;' +
+          'border:2px solid #00d4ff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.5);' +
+          'pointer-events:none;display:none;background:#111;';
+        overlay.appendChild(lente);
+        var lctx = lente.getContext('2d');
+        var lenteImg = null;
+        var lenteViva = false;
+        var mouseVisto = false;
+        var ultimoMX = 0, ultimoMY = 0;
+        function lenteCarica(dataUrl) {
+          if (!dataUrl) return;
+          var im = new Image();
+          im.onload = function() {
+            lenteImg = im;
+            lenteViva = true;
+            disegnaLente();
+          };
+          im.src = dataUrl;
+        }
+        function disegnaLente() {
+          if (!lenteImg || !lenteViva || !mouseVisto) {
+            lente.style.display = 'none';
+            return;
+          }
+          var dpr = lenteImg.width / window.innerWidth;  // scala reale della foto
+          var lato = 132 / LENTE_ZOOM;                    // px CSS inquadrati
+          lctx.imageSmoothingEnabled = false;             // pixel netti, da lente vera
+          lctx.fillStyle = '#111';
+          lctx.fillRect(0, 0, 132, 132);
+          lctx.drawImage(lenteImg,
+            (ultimoMX - lato / 2) * dpr, (ultimoMY - lato / 2) * dpr,
+            lato * dpr, lato * dpr, 0, 0, 132, 132);
+          lctx.strokeStyle = 'rgba(0,212,255,0.9)';
+          lctx.lineWidth = 1;
+          lctx.beginPath();
+          lctx.moveTo(66, 0); lctx.lineTo(66, 132);
+          lctx.moveTo(0, 66); lctx.lineTo(132, 66);
+          lctx.stroke();
+          // accanto al puntatore, saltando dal lato libero vicino ai bordi
+          var lx = ultimoMX + 22, ly = ultimoMY + 22;
+          if (lx + 140 > window.innerWidth) lx = ultimoMX - 22 - 136;
+          if (ly + 140 > window.innerHeight) ly = ultimoMY - 22 - 136;
+          lente.style.left = lx + 'px';
+          lente.style.top = ly + 'px';
+          lente.style.display = 'block';
+        }
+        lenteCarica(fotoLente);
+        var lenteTimer = null;
+        function lenteScrollata() {
+          // overlay chiuso: il listener si toglie da solo (niente scatti fantasma)
+          if (!document.getElementById('__screenshot_area_overlay')) {
+            window.removeEventListener('scroll', lenteScrollata, true);
+            if (lenteTimer) clearTimeout(lenteTimer);
+            return;
+          }
+          lenteViva = false;
+          lente.style.display = 'none';
+          if (lenteTimer) clearTimeout(lenteTimer);
+          lenteTimer = setTimeout(function() {
+            // l'overlay si nasconde per un attimo: la foto deve riprendere
+            // la pagina, non la nostra velatura scura
+            var vis = overlay.style.visibility;
+            overlay.style.visibility = 'hidden';
+            try {
+              chrome.runtime.sendMessage({ action: 'lenteRicattura' }, function(r) {
+                void chrome.runtime.lastError;
+                overlay.style.visibility = vis || '';
+                if (r && r.img) lenteCarica(r.img);
+              });
+            } catch (senzaPonte) {
+              overlay.style.visibility = vis || '';
+            }
+          }, 450);
+        }
+        window.addEventListener('scroll', lenteScrollata, true);
 
         // === AUTO-SCROLL durante il drag (Step 1) ===
         var SCROLL_TRIGGER_ZONE = 80;
@@ -1507,6 +1611,10 @@ async function doAreaCapture(tabId) {
           currentX = e.clientX;
           currentMouseY_vp = e.clientY;
           startY_doc = e.clientY + getScrollY();
+          mouseVisto = true;
+          ultimoMX = e.clientX;
+          ultimoMY = e.clientY;
+          disegnaLente();
           dragging = true;
           overlay.style.transition = 'none';
           overlay.style.background = 'transparent';
@@ -1519,6 +1627,10 @@ async function doAreaCapture(tabId) {
         });
 
         overlay.addEventListener('mousemove', function(e) {
+          mouseVisto = true;
+          ultimoMX = e.clientX;
+          ultimoMY = e.clientY;
+          disegnaLente();
           if (!dragging) return;
           lastMouseY = e.clientY;
           currentX = e.clientX;
