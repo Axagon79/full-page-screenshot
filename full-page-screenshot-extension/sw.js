@@ -2024,14 +2024,8 @@ async function doAreaCapture(tabId) {
     // Scrollando ARRETRATI dello spessore della barra fissa in cima (vedi
     // sotto), ogni giro copre topCover px in meno: può servire una fetta in
     // più per arrivare al fondo della selezione.
-    // RISERVA ANTI-SCATTO: la prima fetta parte apposta 80px più in alto
-    // del punto voluto (vedi wantedScroll), così le liste che agganciano lo
-    // scroll a multipli di riga non possono MAI fermarsi oltre l'inizio
-    // della selezione — l'eccesso in alto si ritaglia col delta. La riserva
-    // va coperta con eventuali fette in più.
-    var RISERVA_PARTENZA = 80;
-    if (!giaVisibile) {
-      numSlices = Math.ceil((area.h_doc + (meta.topCover || 0) + RISERVA_PARTENZA) / sliceH);
+    if (!giaVisibile && meta.topCover) {
+      numSlices = Math.ceil((area.h_doc + meta.topCover) / sliceH);
     }
 
     var captures = [];
@@ -2050,13 +2044,7 @@ async function doAreaCapture(tabId) {
       // Su window scroll offsetY=0, quindi invariato.
       // Se la selezione è già tutta visibile, lo scroll voluto è quello ATTUALE
       // (meta.sy): non muovo la pagina, catturo dov'è.
-      var veraPartenza = area.y_doc - meta.offsetY;  // inizio ESATTO della selezione
-      // TUTTE le fette arretrano della riserva anti-scatto: la copertura
-      // resta CONTINUA (stesso passo tra le fette) e la prima ritaglia
-      // l'eccesso fino alla vera partenza col delta. Arretrare la SOLA
-      // prima fetta (tentativo precedente) apriva un buco di 80px mai
-      // fotografato tra la prima e la seconda: cuciture nel caos.
-      var basePos = giaVisibile ? meta.sy : Math.max(0, veraPartenza - RISERVA_PARTENZA + i * sliceH);
+      var basePos = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
       // BARRA FISSA IN CIMA (header Facebook e simili): si scrolla ARRETRATI
       // del suo spessore. Prima fetta: la barra è visibile e coprirebbe
       // l'inizio della selezione — il delta risultante fa partire il ritaglio
@@ -2220,11 +2208,10 @@ async function doAreaCapture(tabId) {
       if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
         realScroll = riletto[0].result;
       }
-      // Prima fetta: delta misurato rispetto alla VERA partenza della
-      // selezione (non al target arretrato): il ritaglio elimina riserva
-      // anti-scatto + eventuale barra fissa in un colpo solo. Fette
-      // successive: rispetto al target arretrato (delta 0 se raggiunto).
-      deltas.push((i === 0 ? (giaVisibile ? basePos : veraPartenza) : wantedScroll) - realScroll);
+      // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
+      // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
+      // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
+      deltas.push((i === 0 ? basePos : wantedScroll) - realScroll);
       realScrolls.push(realScroll);  // posizione assoluta reale di questa slice
 
       // LOG DIAGNOSTICO problema "selezione corta in fondo cattura piu in alto":
@@ -2339,10 +2326,7 @@ async function doAreaCapture(tabId) {
           function trovaOverlap(prevData, prevW, prevH, nextCnv, atteso) {
             var nextData = rowsOf(nextCnv);
             var bandH = Math.min(40, nextCnv.height, prevH);  // banda di confronto
-            // Finestra LARGA: con le firme a 16 colonne i falsi agganci su
-            // testo ripetitivo non reggono il confronto, e la finestra ampia
-            // assorbe scatti e derive dello scroll che i numeri non vedono.
-            var WIN = 48;
+            var WIN = 6;  // cerca solo da (atteso-6) a (atteso+6)
             var lo = Math.max(1, atteso - WIN);
             var hi = Math.min(nextCnv.height - 1, atteso + WIN);
             var bestOff = atteso, bestScore = Infinity;
@@ -2417,16 +2401,7 @@ async function doAreaCapture(tabId) {
           }
 
           // Altezza ESATTA richiesta dall'utente (area selezionata, in px reali).
-          // SCATTO OLTRE IL BERSAGLIO: sulle liste che agganciano lo scroll a
-          // multipli di riga, la prima fetta può fermarsi PIÙ GIÙ del punto
-          // di partenza voluto (delta negativo). Quel pezzetto iniziale è
-          // fisicamente non catturabile, e senza compensazione tutta la
-          // finestra slittava in giù: in fondo entrava la riga SOTTO la fine
-          // della selezione. L'altezza finale si accorcia dell'eccesso: mai
-          // contenuto oltre il punto dove l'utente ha chiuso la selezione.
-          var sovra0 = (deltas && deltas[0] < 0) ? Math.round(-deltas[0] * realRatio) : 0;
-          var targetH = Math.round(ah_doc * realRatio) - sovra0;
-          if (targetH < 1) targetH = 1;
+          var targetH = Math.round(ah_doc * realRatio);
 
           // CORREZIONE ACCUMULO: su pagine lunghe l'overlap stimato è un filo alto
           // per ogni giunzione, quindi cursorY risulta più corto di targetH e il
