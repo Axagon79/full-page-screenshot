@@ -855,6 +855,14 @@ async function doFullCapture(tabId) {
         window.scrollTo({ top: (y0 > 0 ? y0 - 1 : y0 + 1), left: window.scrollX, behavior: 'instant' });
         var windowScrolls = window.scrollY !== y0;
         window.scrollTo({ top: y0, left: window.scrollX, behavior: 'instant' });
+        // CORSA VERA: certe app (Yahoo Mail: documento 829px su finestra
+        // 828) lasciano alla finestra 1-2px di gioco — la prova del pixel
+        // passa ma il contenuto vive in un contenitore interno con migliaia
+        // di px di scroll. La finestra vale come scroller solo se ha almeno
+        // mezza schermata di corsa; altrimenti si cercano i contenitori
+        // interni (se non ce ne sono, si ritorna comunque alla finestra).
+        var corsaWin = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+        if (windowScrolls && corsaWin < window.innerHeight * 0.5) windowScrolls = false;
 
         if (!windowScrolls) {
           var all = document.querySelectorAll('*');
@@ -1633,7 +1641,11 @@ async function doAreaCapture(tabId) {
           window.scrollTo({ top: (y0 > 0 ? y0 - 1 : y0 + 1), left: window.scrollX, behavior: 'instant' });
           var winMoved = window.scrollY !== y0;
           window.scrollTo({ top: y0, left: window.scrollX, behavior: 'instant' });
-          if (winMoved) {
+          // CORSA VERA (vedi doFullCapture): 1-2px di gioco della finestra
+          // non fanno di lei lo scroller — Yahoo Mail lascia 1px e il
+          // contenuto vero vive in un contenitore interno.
+          var corsaWin = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+          if (winMoved && corsaWin >= window.innerHeight * 0.5) {
             scrollTarget = null;
             return;
           }
