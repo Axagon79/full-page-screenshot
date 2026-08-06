@@ -1386,7 +1386,9 @@ async function doAreaCapture(tabId) {
           var dy = e.clientY - lastEvY;
           lastEvX = e.clientX;
           lastEvY = e.clientY;
-          if (Math.abs(dx) + Math.abs(dy) <= SOGLIA_LENTA) {
+          // Il freno esiste SOLO con la lente accesa: senza lente non si
+          // vedrebbe la punta frenata e sembrerebbe un mouse impazzito.
+          if (lenteAttiva && Math.abs(dx) + Math.abs(dy) <= SOGLIA_LENTA) {
             accX += dx / FRENO;
             accY += dy / FRENO;
             var passiX = Math.trunc(accX);
