@@ -1089,6 +1089,16 @@ async function doFullCapture(tabId) {
           }
         }
       }
+      // DEDUP PER CONTENUTO: foto identica alla precedente = la vista NON è
+      // avanzata davvero (webmail con scroller annidati che "mentono": lo
+      // scrollTop del contenitore marcato cresce ma il contenuto visibile è
+      // già al fondo). Con le animazioni in pausa un view fermo produce PNG
+      // byte-identici: scartando la fetta il doppione diventa impossibile
+      // per costruzione, qualunque cosa dichiarino gli scroller.
+      if (captures.length && dataUrl === captures[captures.length - 1]) {
+        realScrolls.pop();
+        continue;
+      }
       captures.push(dataUrl);
     }
 
@@ -1526,22 +1536,45 @@ async function doAreaCapture(tabId) {
           lente.style.display = 'block';
         }
         lenteCarica(fotoLente);
+        // Disegno agganciato ai frame: una raffica di mousemove produce al
+        // massimo un ridisegno per frame (fluidità, zero lavoro sprecato).
+        var lenteRafPend = false;
+        function disegnaLenteRaf() {
+          if (lenteRafPend) return;
+          lenteRafPend = true;
+          requestAnimationFrame(function() {
+            lenteRafPend = false;
+            disegnaLente();
+          });
+        }
+        var ultimaMossa = 0;
         var lenteTimer = null;
         function lenteScrollata() {
           if (!lenteAttiva) return;
           // overlay chiuso: il listener si toglie da solo (niente scatti fantasma)
-          if (!document.getElementById('__screenshot_area_overlay')) {
+          if (!overlay.isConnected) {
             window.removeEventListener('scroll', lenteScrollata, true);
             if (lenteTimer) clearTimeout(lenteTimer);
             return;
           }
-          lenteViva = false;
-          lente.style.display = 'none';
+          if (lenteViva) {
+            lenteViva = false;
+            lente.style.display = 'none';
+          }
           if (lenteTimer) clearTimeout(lenteTimer);
-          lenteTimer = setTimeout(function() {
+          lenteTimer = setTimeout(ricatturaLente, 450);
+        }
+        function ricatturaLente() {
             // Se l'overlay non è più in pagina (selezione già chiusa),
             // nessuno scatto: si eviterebbe pure di rubare quota alle slice.
             if (!overlay.isConnected) return;
+            // Mano ancora in movimento: niente blink adesso, si riprova tra
+            // poco — il lampeggio del velo durante lo stop-and-go del turbo
+            // scroll era percepito come "scatti".
+            if (performance.now() - ultimaMossa < 350) {
+              lenteTimer = setTimeout(ricatturaLente, 300);
+              return;
+            }
             // Per lo scatto spariscono SOLO velo e cornici — l'overlay
             // resta attivo e cliccabile. MAI visibility:hidden sull'overlay:
             // un elemento nascosto non riceve eventi, e un mouseup in
@@ -1573,7 +1606,6 @@ async function doAreaCapture(tabId) {
             } catch (senzaPonte) {
               ripristina();
             }
-          }, 450);
         }
         if (lenteAttiva) window.addEventListener('scroll', lenteScrollata, true);
 
@@ -1766,12 +1798,13 @@ async function doAreaCapture(tabId) {
 
         overlay.addEventListener('mousemove', function(e) {
           mouseVisto = true;
+          ultimaMossa = performance.now();
           // Il freno lavora SEMPRE, anche prima del click: si mira il punto
           // di partenza con la lente, che segue la punta virtuale frenata.
           aggiornaVirtuale(e);
           ultimoMX = virtX;
           ultimoMY = virtY;
-          disegnaLente();
+          disegnaLenteRaf();
           if (!dragging) return;
           lastMouseY = e.clientY;   // la zona turbo legge il mouse REALE
           currentX = virtX;
