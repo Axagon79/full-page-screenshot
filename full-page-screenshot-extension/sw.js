@@ -2319,18 +2319,27 @@ async function doAreaCapture(tabId) {
             var lo = Math.max(1, atteso - WIN);
             var hi = Math.min(nextCnv.height - 1, atteso + WIN);
             var bestOff = atteso, bestScore = Infinity;
+            // Si campionano 16 COLONNE distribuite su tutta la larghezza,
+            // non solo la prima a sinistra: sul bordo sinistro delle liste
+            // (webmail) i pixel sono uniformi e i candidati risultavano
+            // quasi pari — la cucitura andava a fortuna e mangiava qualche
+            // pixel di riga. Con 16 colonne la firma di ogni riga è netta.
+            var wCmp = Math.min(prevW, nextCnv.width);
+            var passoX = Math.max(1, Math.floor(wCmp / 16));
             for (var off = lo; off <= hi; off++) {
               var score = 0, cnt = 0;
               for (var by = 0; by < bandH; by++) {
                 var prevY = prevH - off + by;
                 if (prevY < 0 || prevY >= prevH) { score = Infinity; break; }
-                var pi = (prevY * prevW) * 4;
-                var ni = (by * nextCnv.width) * 4;
-                var dr = prevData[pi] - nextData[ni];
-                var dg = prevData[pi+1] - nextData[ni+1];
-                var db = prevData[pi+2] - nextData[ni+2];
-                score += dr*dr + dg*dg + db*db;
-                cnt++;
+                for (var cx = 0; cx < wCmp; cx += passoX) {
+                  var pi = (prevY * prevW + cx) * 4;
+                  var ni = (by * nextCnv.width + cx) * 4;
+                  var dr = prevData[pi] - nextData[ni];
+                  var dg = prevData[pi+1] - nextData[ni+1];
+                  var db = prevData[pi+2] - nextData[ni+2];
+                  score += dr*dr + dg*dg + db*db;
+                  cnt++;
+                }
               }
               if (cnt > 0) { score = score / cnt; if (score < bestScore) { bestScore = score; bestOff = off; } }
             }
