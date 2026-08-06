@@ -1485,12 +1485,15 @@ async function doAreaCapture(tabId) {
         var lenteViva = false;
         var mouseVisto = false;
         var ultimoMX = 0, ultimoMY = 0;
+        var fotoScrollX = 0, fotoScrollY = 0;   // scroll al momento della foto
         function lenteCarica(dataUrl) {
           if (!dataUrl) return;
           var im = new Image();
           im.onload = function() {
             lenteImg = im;
             lenteViva = true;
+            fotoScrollX = window.scrollX;
+            fotoScrollY = window.scrollY;
             disegnaLente();
           };
           im.src = dataUrl;
@@ -1502,10 +1505,16 @@ async function doAreaCapture(tabId) {
           }
           var dpr = lenteImg.width / window.innerWidth;  // scala reale della foto
           var meta = CELLE / 2;
+          // COMPENSAZIONE SCROLL: durante lo scroll la foto è "vecchia" —
+          // si campiona spostati di quanto la pagina è scorsa da allora.
+          // Così la lente resta SEMPRE visibile e sensata anche mentre la
+          // pagina corre; la foto fresca arriva appena lo scroll si ferma.
+          var compX = window.scrollX - fotoScrollX;
+          var compY = window.scrollY - fotoScrollY;
           // CONFINE tra pixel più vicino al puntatore (il mirino segna un
           // bordo, non il centro di un pixel), tenuto dentro la foto.
-          var cxDev = Math.min(Math.max(Math.round(ultimoMX * dpr), meta), lenteImg.width - meta);
-          var cyDev = Math.min(Math.max(Math.round(ultimoMY * dpr), meta), lenteImg.height - meta);
+          var cxDev = Math.min(Math.max(Math.round((ultimoMX + compX) * dpr), meta), lenteImg.width - meta);
+          var cyDev = Math.min(Math.max(Math.round((ultimoMY + compY) * dpr), meta), lenteImg.height - meta);
           lctx.imageSmoothingEnabled = false;             // ogni pixel una cella netta
           lctx.fillStyle = '#111';
           lctx.fillRect(0, 0, LATO, LATO);
@@ -1555,7 +1564,6 @@ async function doAreaCapture(tabId) {
             disegnaLente();
           });
         }
-        var ultimaMossa = 0;
         var lenteTimer = null;
         function lenteScrollata() {
           if (!lenteAttiva) return;
@@ -1565,24 +1573,16 @@ async function doAreaCapture(tabId) {
             if (lenteTimer) clearTimeout(lenteTimer);
             return;
           }
-          if (lenteViva) {
-            lenteViva = false;
-            lente.style.display = 'none';
-          }
+          // La lente NON si nasconde più durante lo scroll: resta visibile
+          // con la foto compensata, e si rinfresca a scroll fermo.
           if (lenteTimer) clearTimeout(lenteTimer);
           lenteTimer = setTimeout(ricatturaLente, 450);
+          disegnaLenteRaf();
         }
         function ricatturaLente() {
             // Se l'overlay non è più in pagina (selezione già chiusa),
             // nessuno scatto: si eviterebbe pure di rubare quota alle slice.
             if (!overlay.isConnected) return;
-            // Mano ancora in movimento: niente blink adesso, si riprova tra
-            // poco — il lampeggio del velo durante lo stop-and-go del turbo
-            // scroll era percepito come "scatti".
-            if (performance.now() - ultimaMossa < 350) {
-              lenteTimer = setTimeout(ricatturaLente, 300);
-              return;
-            }
             // Per lo scatto spariscono SOLO velo e cornici — l'overlay
             // resta attivo e cliccabile. MAI visibility:hidden sull'overlay:
             // un elemento nascosto non riceve eventi, e un mouseup in
@@ -1817,7 +1817,6 @@ async function doAreaCapture(tabId) {
 
         overlay.addEventListener('mousemove', function(e) {
           mouseVisto = true;
-          ultimaMossa = performance.now();
           // Il freno lavora SEMPRE, anche prima del click: si mira il punto
           // di partenza con la lente, che segue la punta virtuale frenata.
           aggiornaVirtuale(e);
@@ -2025,8 +2024,14 @@ async function doAreaCapture(tabId) {
     // Scrollando ARRETRATI dello spessore della barra fissa in cima (vedi
     // sotto), ogni giro copre topCover px in meno: può servire una fetta in
     // più per arrivare al fondo della selezione.
-    if (!giaVisibile && meta.topCover) {
-      numSlices = Math.ceil((area.h_doc + meta.topCover) / sliceH);
+    // RISERVA ANTI-SCATTO: la prima fetta parte apposta 80px più in alto
+    // del punto voluto (vedi wantedScroll), così le liste che agganciano lo
+    // scroll a multipli di riga non possono MAI fermarsi oltre l'inizio
+    // della selezione — l'eccesso in alto si ritaglia col delta. La riserva
+    // va coperta con eventuali fette in più.
+    var RISERVA_PARTENZA = 80;
+    if (!giaVisibile) {
+      numSlices = Math.ceil((area.h_doc + (meta.topCover || 0) + RISERVA_PARTENZA) / sliceH);
     }
 
     var captures = [];
@@ -2052,7 +2057,11 @@ async function doAreaCapture(tabId) {
       // subito SOTTO la barra. Fette successive: la barra è già nascosta dal
       // censimento sticky, ma l'arretramento uniforme tiene le fette contigue.
       var coverTop = giaVisibile ? 0 : (meta.topCover || 0);
-      var wantedScroll = coverTop ? Math.max(0, basePos - coverTop) : basePos;
+      // La PRIMA fetta arretra anche della riserva anti-scatto: qualunque
+      // aggancio a multipli di riga cade sotto (o sul) punto di partenza,
+      // mai oltre — e il delta misurato a foto ritaglia l'eccesso esatto.
+      var arretra = coverTop + ((i === 0 && !giaVisibile) ? RISERVA_PARTENZA : 0);
+      var wantedScroll = arretra ? Math.max(0, basePos - arretra) : basePos;
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(targetScroll, hasCustomScroll, idx) {
@@ -2209,59 +2218,6 @@ async function doAreaCapture(tabId) {
       if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
         realScroll = riletto[0].result;
       }
-      // SCATTO OLTRE IL BERSAGLIO sulla PRIMA fetta: la lista ha agganciato
-      // lo scroll più giù del punto di partenza voluto — l'inizio della
-      // selezione resterebbe fuori dalla foto. Si RIPROVA puntando più in
-      // alto (fino a 2 volte): sulle liste a righe l'aggancio precedente
-      // cade sotto o sul punto giusto, e il delta positivo che ne risulta
-      // viene già compensato dal ritaglio. Solo se la lista rifiuta ogni
-      // posizione più alta resta il taglio del pezzetto di testa.
-      if (i === 0 && !giaVisibile && realScroll > basePos) {
-        for (var tentativo = 0; tentativo < 2 && realScroll > basePos; tentativo++) {
-          var sopra = Math.max(0, basePos - (realScroll - basePos) * (tentativo + 1) - 1);
-          var esitoR = await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: function(targetScroll, custom) {
-              var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
-              if (el) {
-                el.scrollTo({ top: targetScroll, behavior: 'instant' });
-              } else {
-                window.scrollTo({ top: targetScroll, behavior: 'instant' });
-              }
-              return new Promise(function(res) {
-                var giri = 0, prima = -1;
-                var iv = setInterval(function() {
-                  var ora = el ? el.scrollTop : window.scrollY;
-                  giri++;
-                  if ((giri > 2 && Math.abs(ora - prima) < 1) || giri > 12) {
-                    clearInterval(iv);
-                    res(ora);
-                  }
-                  prima = ora;
-                }, 50);
-              });
-            },
-            args: [sopra, area.hasCustomScroll]
-          });
-          if (esitoR && esitoR[0] && typeof esitoR[0].result === 'number') {
-            realScroll = esitoR[0].result;
-          } else {
-            break;
-          }
-        }
-        await sleep(250);  // il contenuto si assesta dopo il ritocco
-        var riletto2 = await chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          func: function(custom) {
-            var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
-            return el ? el.scrollTop : window.scrollY;
-          },
-          args: [area.hasCustomScroll]
-        });
-        if (riletto2 && riletto2[0] && typeof riletto2[0].result === 'number') {
-          realScroll = riletto2[0].result;
-        }
-      }
       // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
       // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
       // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
@@ -2380,7 +2336,10 @@ async function doAreaCapture(tabId) {
           function trovaOverlap(prevData, prevW, prevH, nextCnv, atteso) {
             var nextData = rowsOf(nextCnv);
             var bandH = Math.min(40, nextCnv.height, prevH);  // banda di confronto
-            var WIN = 6;  // cerca solo da (atteso-6) a (atteso+6)
+            // Finestra LARGA: con le firme a 16 colonne i falsi agganci su
+            // testo ripetitivo non reggono il confronto, e la finestra ampia
+            // assorbe scatti e derive dello scroll che i numeri non vedono.
+            var WIN = 48;
             var lo = Math.max(1, atteso - WIN);
             var hi = Math.min(nextCnv.height - 1, atteso + WIN);
             var bestOff = atteso, bestScore = Infinity;
