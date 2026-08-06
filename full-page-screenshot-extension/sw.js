@@ -1742,6 +1742,13 @@ async function doAreaCapture(tabId) {
           scrollRAF = requestAnimationFrame(autoScrollLoop);
         }
 
+        // POINTER CAPTURE: da qui in poi movimenti e rilascio arrivano
+        // all'overlay ANCHE fuori dalla finestra del browser (barra di
+        // Windows compresa). Senza, un rilascio fuori finestra si perdeva
+        // e la selezione restava appesa a metà.
+        overlay.addEventListener('pointerdown', function(pe) {
+          try { overlay.setPointerCapture(pe.pointerId); } catch (senzaCapture) {}
+        });
         overlay.addEventListener('mousedown', function(e) {
           // Impedisce alla trascinata di avviare la selezione NATIVA del testo
           // (evidenziatura blu sotto l'overlay quando il mouse corre più
