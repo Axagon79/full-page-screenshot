@@ -2050,18 +2050,20 @@ async function doAreaCapture(tabId) {
       // Su window scroll offsetY=0, quindi invariato.
       // Se la selezione è già tutta visibile, lo scroll voluto è quello ATTUALE
       // (meta.sy): non muovo la pagina, catturo dov'è.
-      var basePos = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
+      var veraPartenza = area.y_doc - meta.offsetY;  // inizio ESATTO della selezione
+      // TUTTE le fette arretrano della riserva anti-scatto: la copertura
+      // resta CONTINUA (stesso passo tra le fette) e la prima ritaglia
+      // l'eccesso fino alla vera partenza col delta. Arretrare la SOLA
+      // prima fetta (tentativo precedente) apriva un buco di 80px mai
+      // fotografato tra la prima e la seconda: cuciture nel caos.
+      var basePos = giaVisibile ? meta.sy : Math.max(0, veraPartenza - RISERVA_PARTENZA + i * sliceH);
       // BARRA FISSA IN CIMA (header Facebook e simili): si scrolla ARRETRATI
       // del suo spessore. Prima fetta: la barra è visibile e coprirebbe
       // l'inizio della selezione — il delta risultante fa partire il ritaglio
       // subito SOTTO la barra. Fette successive: la barra è già nascosta dal
       // censimento sticky, ma l'arretramento uniforme tiene le fette contigue.
       var coverTop = giaVisibile ? 0 : (meta.topCover || 0);
-      // La PRIMA fetta arretra anche della riserva anti-scatto: qualunque
-      // aggancio a multipli di riga cade sotto (o sul) punto di partenza,
-      // mai oltre — e il delta misurato a foto ritaglia l'eccesso esatto.
-      var arretra = coverTop + ((i === 0 && !giaVisibile) ? RISERVA_PARTENZA : 0);
-      var wantedScroll = arretra ? Math.max(0, basePos - arretra) : basePos;
+      var wantedScroll = coverTop ? Math.max(0, basePos - coverTop) : basePos;
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(targetScroll, hasCustomScroll, idx) {
@@ -2218,10 +2220,11 @@ async function doAreaCapture(tabId) {
       if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
         realScroll = riletto[0].result;
       }
-      // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
-      // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
-      // Fette successive: rispetto al target arretrato (delta 0 se raggiunto).
-      deltas.push((i === 0 ? basePos : wantedScroll) - realScroll);
+      // Prima fetta: delta misurato rispetto alla VERA partenza della
+      // selezione (non al target arretrato): il ritaglio elimina riserva
+      // anti-scatto + eventuale barra fissa in un colpo solo. Fette
+      // successive: rispetto al target arretrato (delta 0 se raggiunto).
+      deltas.push((i === 0 ? (giaVisibile ? basePos : veraPartenza) : wantedScroll) - realScroll);
       realScrolls.push(realScroll);  // posizione assoluta reale di questa slice
 
       // LOG DIAGNOSTICO problema "selezione corta in fondo cattura piu in alto":
@@ -2367,6 +2370,13 @@ async function doAreaCapture(tabId) {
               }
               if (cnt > 0) { score = score / cnt; if (score < bestScore) { bestScore = score; bestOff = off; } }
             }
+            // FIDUCIA CONDIZIONATA: la finestra larga vince SOLO con un
+            // aggancio vero (punteggio da pixel praticamente identici).
+            // Sulle giunture contigue (overlap 0, sliceH = containerH) ogni
+            // candidato è sbagliato ma uno risulta comunque "meno peggio":
+            // cucirci sopra taglierebbe decine di px buoni. Senza un match
+            // netto si resta sull'overlap atteso dai numeri.
+            if (bestScore > 900) bestOff = atteso;
             return bestOff;
           }
 
