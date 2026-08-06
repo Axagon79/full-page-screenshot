@@ -1371,6 +1371,40 @@ async function doAreaCapture(tabId) {
         var startX = 0, startY_doc = 0, dragging = false;
         var currentX = 0, currentMouseY_vp = 0;
 
+        // === FRENO DI PRECISIONE ===
+        // Quando il mouse striscia (pochi px tra un evento e l'altro), la
+        // punta della selezione avanza a SCATTI di 1px esatto, demoltiplicata
+        // (~3px reali = 1px di selezione): calamita pixel per pixel. Appena
+        // il movimento torna veloce, la punta si riallinea al cursore vero.
+        var FRENO = 3;
+        var SOGLIA_LENTA = 4;
+        var virtX = 0, virtY = 0;    // punta virtuale della selezione
+        var accX = 0, accY = 0;      // resti accumulati in modalità lenta
+        var lastEvX = 0, lastEvY = 0;
+        function aggiornaVirtuale(e) {
+          var dx = e.clientX - lastEvX;
+          var dy = e.clientY - lastEvY;
+          lastEvX = e.clientX;
+          lastEvY = e.clientY;
+          if (Math.abs(dx) + Math.abs(dy) <= SOGLIA_LENTA) {
+            accX += dx / FRENO;
+            accY += dy / FRENO;
+            var passiX = Math.trunc(accX);
+            var passiY = Math.trunc(accY);
+            accX -= passiX;
+            accY -= passiY;
+            virtX += passiX;
+            virtY += passiY;
+          } else {
+            virtX = e.clientX;
+            virtY = e.clientY;
+            accX = 0;
+            accY = 0;
+          }
+          virtX = Math.min(Math.max(0, virtX), window.innerWidth - 1);
+          virtY = Math.min(Math.max(0, virtY), window.innerHeight - 1);
+        }
+
         // === LENTE DI INGRANDIMENTO (precisione al pixel) ===
         // Una foto del viewport fa da sorgente: la lente è un canvas che la
         // mostra ingrandita 4× attorno al puntatore, col mirino. Dopo ogni
@@ -1646,6 +1680,12 @@ async function doAreaCapture(tabId) {
           currentX = e.clientX;
           currentMouseY_vp = e.clientY;
           startY_doc = e.clientY + getScrollY();
+          virtX = e.clientX;
+          virtY = e.clientY;
+          lastEvX = e.clientX;
+          lastEvY = e.clientY;
+          accX = 0;
+          accY = 0;
           mouseVisto = true;
           ultimoMX = e.clientX;
           ultimoMY = e.clientY;
@@ -1663,13 +1703,20 @@ async function doAreaCapture(tabId) {
 
         overlay.addEventListener('mousemove', function(e) {
           mouseVisto = true;
-          ultimoMX = e.clientX;
-          ultimoMY = e.clientY;
+          if (dragging) {
+            // la lente segue la punta VIRTUALE: mostra il pixel vero del bordo
+            aggiornaVirtuale(e);
+            ultimoMX = virtX;
+            ultimoMY = virtY;
+          } else {
+            ultimoMX = e.clientX;
+            ultimoMY = e.clientY;
+          }
           disegnaLente();
           if (!dragging) return;
-          lastMouseY = e.clientY;
-          currentX = e.clientX;
-          currentMouseY_vp = e.clientY;
+          lastMouseY = e.clientY;   // la zona turbo legge il mouse REALE
+          currentX = virtX;
+          currentMouseY_vp = virtY;
           if (!scrollRAF) scrollRAF = requestAnimationFrame(autoScrollLoop);
           updateBox();
         });
@@ -1698,8 +1745,11 @@ async function doAreaCapture(tabId) {
           dragging = false;
           window.removeEventListener('scroll', onScrollDuringDrag, true);
           if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
-          var endY_doc = e.clientY + getScrollY();
-          var endX = e.clientX;
+          // La fine della selezione è la punta VIRTUALE (col freno di
+          // precisione attivo può stare qualche px indietro dal cursore).
+          aggiornaVirtuale(e);
+          var endY_doc = virtY + getScrollY();
+          var endX = virtX;
           var y_doc = Math.min(startY_doc, endY_doc);
           var h_doc = Math.abs(endY_doc - startY_doc);
           var x = Math.min(endX, startX);
