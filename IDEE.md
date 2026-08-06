@@ -178,6 +178,17 @@ Due strade:
   DevTools compresi, da frame di uno stream video. Avviso permesso
   "cattura contenuti dello schermo" + dialog a ogni uso + review più dura.
 
+### 13. Modalità Raffica / burst area (idea 06/08, promossa a parole — candidata 9.10)
+Un click sull'icona, poi ritagli-e-salva a ripetizione: ogni selezione
+area viene salvata SUBITO come file a sé e l'overlay si ri-arma, senza
+chiedere nulla. Gemella del giro Multi Snip ("+ Area" ripetuto) ma con
+mestiere opposto: Multi Snip = raccogli e componi, Raffica = spara e
+salva. Riusa la meccanica esistente → costo basso. Rischio UX unico:
+l'USCITA deve essere evidentissima (badge "Raffica: N salvati · Esc per
+uscire", Esc chiude sempre). Casi d'uso: QA che documenta molti punti,
+docenti che ritagliano esercizi, ricerca. Da valutare con OCR e
+scorciatoia da tastiera nella "release della produttività" (9.10).
+
 ### 8. Descrizione store in elenco puntato
 Rifare la descrizione con elenco chiaro **di quello che l'estensione fa davvero** (niente feature copiate dai concorrenti).
 Includere una sezione onesta "cosa NON fa" (limiti): gestisce le aspettative e aumenta la fiducia.
