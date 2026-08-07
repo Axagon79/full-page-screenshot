@@ -18,7 +18,57 @@ scroll selection, clipboard. Promessa privacy in chiusura.)
 
 ---
 
-## Descrizione lunga — VERSIONE DEFINITIVA 05/08 (fusione: testo esistente dell'utente + sezione onesta + differenziatori; SOLO funzioni già pubblicate nella 9.8)
+## Descrizione lunga — VERSIONE 9.9 (07/08) ← QUESTA si incolla per la 9.9
+
+Novità rispetto alla 05/08: c'è **Multi Snip** (la funzione titolo della
+9.9), la scroll selection è spiegata con lo scenario invece che con la
+geometria ("areas taller than the screen" non diceva niente a chi legge),
+e c'è la firma dell'autore in fondo.
+
+```
+Full Page Screenshot — capture entire web pages, precise areas, or pieces from several tabs, with a single click. Every capture is also copied straight to your clipboard, ready to paste with Ctrl+V.
+
+FOUR CAPTURE MODES
+
+✔ Full Page — automatically scrolls and stitches the entire page into one image. Works on regular sites AND on web apps that scroll inside an internal panel: webmail, dashboards, chat apps.
+✔ Select Area — drag a rectangle around what you need. Doesn't all fit on the screen? Just keep dragging: the page scrolls by itself and your selection keeps growing, so you can grab a long article or a whole conversation in one clean shot. That's scroll selection — almost no other extension does it.
+✔ Visible Only — captures exactly what you see on screen, instantly.
+✔ Multi Snip (NEW) — grab several pieces one after another, even from different tabs: the collector follows you as you switch. Then save everything as one stitched image or as separate files. Perfect for research, comparisons, receipts and anything scattered across pages.
+
+FEATURES
+
+- Copy to clipboard — every screenshot is instantly copied, so you can paste it anywhere with Ctrl+V (toggle it on or off in settings)
+- Saves to a "screenshots" folder inside your Downloads — no cloud, no account needed
+- Smart detection of scrollable containers (not just the main page)
+- Hides sticky headers/footers so they don't repeat in your screenshot
+- Water-fill animation shows capture progress in real time
+- Right-click the extension icon to change capture mode anytime
+
+PRIVACY FIRST
+
+Zero data collection, zero tracking, zero analytics. Everything stays on your device: your screenshots go to your Downloads folder and your clipboard, nowhere else.
+
+WHAT IT DOESN'T DO (yet — honesty matters)
+
+✘ PDF files opened in the browser: Chrome blocks extensions there, so full-page capture of PDFs isn't possible (no extension can). Visible capture works.
+✘ Browser internal pages (chrome://, the Web Store): Chrome blocks capture there by design; the extension falls back to the visible screen where allowed.
+✘ No image editor built in (annotations, arrows, blur) — on the roadmap.
+
+If a page captures wrong, report it and it gets fixed — this release adds proper support for webmail (Gmail, Yahoo, Libero and friends), where the message list scrolls inside its own panel.
+
+If I helped you, leave a star or a comment — it's how other people find this extension.
+
+Made by Lorenzo Casciano (Axagon79) — one person, no company behind it.
+```
+
+DOPO la pubblicazione della 9.9, aggiungere a Select Area: "Push to the
+very edge for turbo speed; when you're done, you're taken back to the
+top." e agli update recenti: "admin consoles with fixed top bars".
+Impostare come sito web della scheda: https://axagon79.github.io/full-page-screenshot/
+
+---
+
+## Descrizione lunga — VERSIONE 05/08 (superata dalla 9.9 qui sopra; SOLO funzioni della 9.8)
 
 ```
 Full Page Screenshot — capture entire web pages, precise areas, or scrolling selections with a single click. Every capture is also copied straight to your clipboard, ready to paste with Ctrl+V.

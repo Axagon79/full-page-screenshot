@@ -32,7 +32,7 @@
         column-gap: 48px;
         align-items: start;
       }
-      .brand, .footer {
+      .brand {
         grid-column: 1 / -1;
       }
       .col-right {
@@ -305,9 +305,11 @@
     }
 
     /* Invito a recensire: riquadro BEN VISIBILE (la vecchia riga a 11px
-       grigio scuro era invisibile — nessuno la notava). */
+       grigio scuro era invisibile — nessuno la notava). Vive nella colonna
+       destra sotto la guida, cosi' sui monitor larghi non resta il buco
+       vuoto tra la fine della guida e la striscia a tutta larghezza. */
     .footer {
-      margin-top: 22px;
+      margin-top: 6px;
       padding: 16px 18px;
       border-radius: 14px;
       background: rgba(0,212,255,0.06);
@@ -343,6 +345,20 @@
       border: 1px solid rgba(0,212,255,0.4);
     }
     .footer-btn.secondaria:hover { background: rgba(0,212,255,0.1); }
+
+    /* Firma dell'autore: chi ha scritto l'estensione ha un nome, e chi la
+       usa deve poterlo leggere. Discreta, sotto i bottoni. */
+    .autore {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 12px;
+      color: #7a8394;
+    }
+    .autore b {
+      color: #b9c2d0;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -468,7 +484,15 @@
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><path d="M14 3h3a4 4 0 0 1 4 4v3M21 14v3a4 4 0 0 1-4 4h-3M10 21H7a4 4 0 0 1-4-4v-3"/></svg>
             Select Area
           </div>
-          <div class="a">Click the icon, then drag a rectangle. Drag near the top or bottom edge to auto-scroll — you can select an area taller than the screen.</div>
+          <div class="a">Click the icon, then drag a rectangle. Doesn't all fit on the screen? Keep dragging near the top or bottom edge: the page scrolls by itself and your selection keeps growing.</div>
+        </div>
+
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><path d="M9 21h10a2 2 0 0 0 2-2V9"/></svg>
+            Multi Snip
+          </div>
+          <div class="a">Grab several pieces one after another — even from different tabs — then save them as one stitched image or as separate files.</div>
         </div>
 
         <div class="help-item">
@@ -488,13 +512,14 @@
         </div>
         </div>
       </div>
-    </div>
 
-    <div class="footer">
-      <div class="footer-testo">⭐ If I helped you, leave a star or a comment</div>
-      <div class="footer-bottoni">
-        <a class="footer-btn" href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj/reviews" target="_blank" rel="noopener">★ Leave a star</a>
-        <a class="footer-btn secondaria" href="mailto:lollotj@gmail.com?subject=Full%20Page%20Screenshot%20feedback">Tell me what to improve</a>
+      <div class="footer">
+        <div class="footer-testo">⭐ If I helped you, leave a star or a comment</div>
+        <div class="footer-bottoni">
+          <a class="footer-btn" href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj/reviews" target="_blank" rel="noopener">★ Leave a star</a>
+          <a class="footer-btn secondaria" href="mailto:lollotj@gmail.com?subject=Full%20Page%20Screenshot%20feedback">Tell me what to improve</a>
+        </div>
+        <div class="autore">Made by <b>Lorenzo Casciano</b> (Axagon79)</div>
       </div>
     </div>
   </div>
