@@ -92,7 +92,33 @@ function versoTela(b, sx, sy) {
 
 // Aggancia la nota al pezzo che sta sotto il suo centro (nessun pezzo =
 // nota libera, si comporta come prima).
+// La lente di richiamo tiene DUE rettangoli: la regione da ingrandire —
+// ancorata alla foto, in coordinate naturali — e il riquadro ingrandito, che
+// invece sta libero sulla tela. Qui si ricava dove cade la regione adesso.
+function lenteSorgente(n) {
+  var b = bloccoDaPid(n.pid);
+  if (!b || !n.src) return null;
+  var p = versoTela(b, n.src.x, n.src.y);
+  return { x: p.x, y: p.y, w: n.src.w * b.sx, h: n.src.h * b.sy, b: b };
+}
+
+// Le due linee di richiamo: partono dal lato della regione rivolto verso il
+// riquadro ingrandito e arrivano al lato opposto di quello, così non si
+// incrociano mai e formano il classico cono.
+function lenteRichiami(s, n) {
+  var scx = s.x + s.w / 2, scy = s.y + s.h / 2;
+  var dcx = n.x + n.w / 2, dcy = n.y + n.h / 2;
+  var dx = dcx - scx, dy = dcy - scy;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx > 0) return [[s.x + s.w, s.y, n.x, n.y], [s.x + s.w, s.y + s.h, n.x, n.y + n.h]];
+    return [[s.x, s.y, n.x + n.w, n.y], [s.x, s.y + s.h, n.x + n.w, n.y + n.h]];
+  }
+  if (dy > 0) return [[s.x, s.y + s.h, n.x, n.y], [s.x + s.w, s.y + s.h, n.x + n.w, n.y]];
+  return [[s.x, s.y, n.x, n.y + n.h], [s.x + s.w, s.y, n.x + n.w, n.y + n.h]];
+}
+
 function ancoraNota(n) {
+  if (n.tipo === 'lente') return;   // la lente ancora la REGIONE, non il riquadro
   var cx, cy;
   if (n.tipo === 'linea') { cx = (n.x1 + n.x2) / 2; cy = (n.y1 + n.y2) / 2; }
   else { cx = n.x + (n.w || 0) / 2; cy = n.y + (n.h || (n.fs || 0)) / 2; }
@@ -468,6 +494,31 @@ function render() {
       'background:#ff4fa3;box-shadow:0 0 4px rgba(255,79,163,0.8);';
     tela.appendChild(lh);
   }
+  // Contorno della regione e linee di richiamo delle lenti: stanno SOTTO i
+  // riquadri ingranditi e non si possono cliccare (si trascina il riquadro).
+  note.forEach(function(n) {
+    if (n.tipo !== 'lente') return;
+    var s = lenteSorgente(n);
+    if (!s) return;
+    var cont = document.createElement('div');
+    cont.style.cssText = 'position:absolute;pointer-events:none;z-index:780;' +
+      'left:' + Math.round(s.x * viewK) + 'px;top:' + Math.round(s.y * viewK) + 'px;' +
+      'width:' + Math.round(s.w * viewK) + 'px;height:' + Math.round(s.h * viewK) + 'px;' +
+      'border:' + Math.max(2, Math.round(2 * viewK)) + 'px solid ' + n.colore + ';box-sizing:border-box;';
+    tela.appendChild(cont);
+    var sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    sv.setAttribute('style', 'position:absolute;left:0;top:0;width:100%;height:100%;' +
+      'pointer-events:none;z-index:779;overflow:visible');
+    lenteRichiami(s, n).forEach(function(L) {
+      var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', L[0] * viewK); ln.setAttribute('y1', L[1] * viewK);
+      ln.setAttribute('x2', L[2] * viewK); ln.setAttribute('y2', L[3] * viewK);
+      ln.setAttribute('stroke', n.colore);
+      ln.setAttribute('stroke-width', Math.max(1, 2 * viewK));
+      sv.appendChild(ln);
+    });
+    tela.appendChild(sv);
+  });
   // Annotazioni sopra il collage + barretta della nota selezionata.
   note.forEach(function(n, j) { tela.appendChild(creaNota(j)); });
   if (selNota >= 0 && selNota < note.length) tela.appendChild(creaBarraNota(selNota));
@@ -947,7 +998,8 @@ var PALETTE = {
   linea: ['#e11d48', '#0b0b10', '#00b3e6'],
   testo: ['#e11d48', '#0b0b10', '#ffffff'],
   forma: ['#e11d48', '#00b3e6', '#ffe14d', '#0b0b10', '#ffffff'],
-  contatore: ['#e11d48', '#00b3e6', '#16a34a', '#0b0b10']
+  contatore: ['#e11d48', '#00b3e6', '#16a34a', '#0b0b10'],
+  lente: ['#e11d48', '#00b3e6', '#16a34a', '#0b0b10', '#ffffff']
 };
 
 // Numero mostrato da un contatore: NON è memorizzato, si ricava dalla
@@ -1027,7 +1079,8 @@ function armaStrumento(t) {
 
 function aggiornaBarraStrumenti() {
   [['btnOscura', 'oscura'], ['btnEvidenzia', 'evidenzia'], ['btnLinea', 'linea'],
-   ['btnTesto', 'testo'], ['btnForme', 'forma'], ['btnContatore', 'contatore']].forEach(function(v) {
+   ['btnTesto', 'testo'], ['btnForme', 'forma'], ['btnContatore', 'contatore'],
+   ['btnLente', 'lente']].forEach(function(v) {
     var el = $(v[0]);
     if (el) el.classList.toggle('attivo', strumento === v[1]);
   });
@@ -1046,6 +1099,7 @@ function iniziaCreazioneNota(e, tela) {
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
   else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
+  else if (t === 'lente') n = { tipo: 'lente', x: x0, y: y0, w: 0, h: 0, colore: '#e11d48', zoom: 2 };
   else if (t === 'contatore') {
     // Un click secco lo piazza già bello e pronto; trascinando si decide
     // quanto grande. Il numero arriva da solo.
@@ -1084,7 +1138,26 @@ function iniziaCreazioneNota(e, tela) {
   function onUp() {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
-    if (n.tipo === 'oscura' || n.tipo === 'evidenzia' || n.tipo === 'forma') {
+    if (n.tipo === 'lente') {
+      // Quello che hai trascinato è la REGIONE da ingrandire: si converte
+      // nelle coordinate della foto e il riquadro ingrandito nasce accanto.
+      var bl = (n.w >= 8 && n.h >= 8) ? bloccoSotto(n.x + n.w / 2, n.y + n.h / 2) : null;
+      if (!bl) {
+        note.pop();
+        selNota = -1;
+      } else {
+        var ps = versoSorgente(bl, n.x, n.y);
+        n.pid = bl.pid;
+        n.src = { x: ps.x, y: ps.y, w: n.w / bl.sx, h: n.h / bl.sy };
+        var dw = n.w * n.zoom, dh = n.h * n.zoom;
+        var dxn = n.x + n.w / 2 - dw / 2;
+        var dyn = n.y + n.h + 34;
+        if (dyn + dh > canvasH) dyn = n.y - dh - 34;          // non ci sta sotto: sopra
+        if (dyn < 0) dyn = Math.min(n.y + n.h + 34, Math.max(0, canvasH - dh));
+        dxn = Math.min(Math.max(0, dxn), Math.max(0, canvasW - dw));
+        n.x = dxn; n.y = dyn; n.w = dw; n.h = dh;
+      }
+    } else if (n.tipo === 'oscura' || n.tipo === 'evidenzia' || n.tipo === 'forma') {
       if (n.w < 6 || n.h < 6) { note.pop(); selNota = -1; }
     } else if (n.tipo === 'linea') {
       if (Math.hypot(n.x2 - n.x1, n.y2 - n.y1) < 6) { note.pop(); selNota = -1; }
@@ -1142,6 +1215,27 @@ function creaNota(j) {
         render();
       });
       setTimeout(function() { el.focus(); }, 0);
+    }
+  } else if (n.tipo === 'lente') {
+    // Il riquadro ingrandito: la foto stessa, riscalata con lo sfondo CSS.
+    // Il contorno della regione e le linee di richiamo li disegna render(),
+    // perché stanno FUORI da questo riquadro.
+    var sl = lenteSorgente(n);
+    el.style.cssText = base +
+      'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
+      'width:' + Math.round(n.w * viewK) + 'px;height:' + Math.round(n.h * viewK) + 'px;' +
+      'cursor:grab;overflow:hidden;background-color:#fff;' +
+      'border:' + Math.max(2, Math.round(3 * viewK)) + 'px solid ' + n.colore + ';' +
+      'box-sizing:border-box;box-shadow:0 4px 14px rgba(0,0,0,0.4);' +
+      (sel ? 'outline:2px solid rgba(0,212,255,0.9);outline-offset:3px;' : '');
+    if (sl) {
+      var kIng = n.w / n.src.w;   // da pixel naturali della foto a unità di tela
+      var interno = document.createElement('div');
+      interno.style.cssText = 'position:absolute;inset:0;pointer-events:none;' +
+        'background-repeat:no-repeat;background-image:url(' + sl.b.img + ');' +
+        'background-size:' + (sl.b.natW * kIng * viewK) + 'px ' + (sl.b.natH * kIng * viewK) + 'px;' +
+        'background-position:' + (-n.src.x * kIng * viewK) + 'px ' + (-n.src.y * kIng * viewK) + 'px;';
+      el.appendChild(interno);
     }
   } else if (n.tipo === 'contatore') {
     var lato = Math.max(n.w, n.h) * viewK;
@@ -1333,6 +1427,33 @@ function creaBarraNota(j) {
         'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
       dot.addEventListener('click', function() { n.colore = c; render(); salvaStato(); });
       bar.appendChild(dot);
+    });
+  }
+  // Lente: quanto ingrandire. Il riquadro cresce dal centro, la regione
+  // inquadrata resta la stessa.
+  if (n.tipo === 'lente') {
+    var sLn = lenteSorgente(n);
+    var fatt = (sLn && sLn.w) ? (n.w / sLn.w) : 1;
+    var et = document.createElement('span');
+    et.textContent = (Math.round(fatt * 10) / 10) + '×';
+    et.style.cssText = 'color:#8b8ba3;font-size:11px;font-weight:700;padding:0 2px;';
+    bar.appendChild(et);
+    [['−', 1 / 1.25], ['+', 1.25]].forEach(function(v) {
+      var bt = document.createElement('button');
+      bt.textContent = v[0];
+      bt.title = 'Magnification';
+      bt.style.cssText = 'border:none;background:transparent;color:#00d4ff;font-family:inherit;' +
+        'font-weight:700;cursor:pointer;font-size:13px;padding:0 4px;';
+      bt.addEventListener('click', function() {
+        var c = n.x + n.w / 2, m = n.y + n.h / 2;
+        n.w = Math.max(30, n.w * v[1]);
+        n.h = Math.max(30, n.h * v[1]);
+        n.x = c - n.w / 2;
+        n.y = m - n.h / 2;
+        render();
+        salvaStato();
+      });
+      bar.appendChild(bt);
     });
   }
   // Contatore: solo la misura del pallino (il numero se lo fa da solo).
@@ -1710,6 +1831,34 @@ async function componi() {
         ctx.stroke(p2);
       }
       ctx.restore();
+    } else if (n.tipo === 'lente') {
+      var s = lenteSorgente(n);
+      if (!s) return;
+      var bi = blocchi.indexOf(s.b);
+      if (bi < 0) return;
+      ctx.save();
+      ctx.strokeStyle = n.colore;
+      // Prima le linee di richiamo e il contorno della regione: il riquadro
+      // ingrandito ci va sopra e ne copre i capi.
+      ctx.lineWidth = 2;
+      lenteRichiami(s, n).forEach(function(L) {
+        ctx.beginPath();
+        ctx.moveTo(L[0], L[1]);
+        ctx.lineTo(L[2], L[3]);
+        ctx.stroke();
+      });
+      ctx.strokeRect(s.x + 1, s.y + 1, Math.max(1, s.w - 2), Math.max(1, s.h - 2));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(n.x, n.y, n.w, n.h);
+      ctx.clip();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(n.x, n.y, n.w, n.h);
+      ctx.drawImage(imgs[bi], n.src.x, n.src.y, n.src.w, n.src.h, n.x, n.y, n.w, n.h);
+      ctx.restore();
+      ctx.lineWidth = 3;
+      ctx.strokeRect(n.x + 1.5, n.y + 1.5, Math.max(1, n.w - 3), Math.max(1, n.h - 3));
+      ctx.restore();
     } else if (n.tipo === 'contatore') {
       var lato = Math.max(n.w, n.h);
       var rc = lato / 2;
@@ -1877,6 +2026,7 @@ $('btnEvidenzia').addEventListener('click', function() { armaStrumento('evidenzi
 $('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
 $('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
 $('btnContatore').addEventListener('click', function() { armaStrumento('contatore'); });
+$('btnLente').addEventListener('click', function() { armaStrumento('lente'); });
 $('btnUndo').addEventListener('click', annulla);
 $('btnRedo').addEventListener('click', rifai);
 
