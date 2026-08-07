@@ -1,6 +1,13 @@
 // Changelog per versione: solo le voci rivolte all'utente (niente dettagli
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
+  '9.9': [
+    'New: Multi Snip — grab several pieces one after another, even from different tabs, then save them as one stitched image or as separate files.',
+    'New: Pixel magnifier — a zoom lens with a pixel grid while you select an area, so you can land on the exact edge.',
+    'New: Quick panel — clicking the icon opens the mode panel; turn it off in settings to capture instantly with your saved mode.',
+    'Fixed: webmail now captures properly — Gmail, Yahoo and Libero, where the message list scrolls inside its own panel.',
+    'Fixed: Select Area is far more precise — no more cut or repeated rows where slices join, and no drift when your selection starts above a scrolling list.'
+  ],
   '9.8': [
     'Fixed: Full Page and Select Area now work correctly on pages that scroll their whole body (some sports/stats sites).',
     'Fixed: apps with an internal scroll area no longer lose content or repeat the sidebar in Full Page and Select Area captures.'
