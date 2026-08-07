@@ -946,8 +946,18 @@ var PALETTE = {
   evidenzia: ['#ffe14d', '#7dff8a', '#ff7ad9'],
   linea: ['#e11d48', '#0b0b10', '#00b3e6'],
   testo: ['#e11d48', '#0b0b10', '#ffffff'],
-  forma: ['#e11d48', '#00b3e6', '#ffe14d', '#0b0b10', '#ffffff']
+  forma: ['#e11d48', '#00b3e6', '#ffe14d', '#0b0b10', '#ffffff'],
+  contatore: ['#e11d48', '#00b3e6', '#16a34a', '#0b0b10']
 };
+
+// Numero mostrato da un contatore: NON è memorizzato, si ricava dalla
+// posizione fra gli altri contatori. Così cancellandone uno in mezzo la
+// numerazione si richiude da sola e non restano buchi né doppioni.
+function numeroContatore(j) {
+  var k = 0;
+  for (var i = 0; i <= j; i++) if (note[i] && note[i].tipo === 'contatore') k++;
+  return k;
+}
 
 // ---- LIBRERIA DELLE FORME ----
 // Ogni forma è un percorso disegnato dentro una scatola 100×100. Da lì si
@@ -1017,7 +1027,7 @@ function armaStrumento(t) {
 
 function aggiornaBarraStrumenti() {
   [['btnOscura', 'oscura'], ['btnEvidenzia', 'evidenzia'], ['btnLinea', 'linea'],
-   ['btnTesto', 'testo'], ['btnForme', 'forma']].forEach(function(v) {
+   ['btnTesto', 'testo'], ['btnForme', 'forma'], ['btnContatore', 'contatore']].forEach(function(v) {
     var el = $(v[0]);
     if (el) el.classList.toggle('attivo', strumento === v[1]);
   });
@@ -1036,6 +1046,12 @@ function iniziaCreazioneNota(e, tela) {
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
   else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
+  else if (t === 'contatore') {
+    // Un click secco lo piazza già bello e pronto; trascinando si decide
+    // quanto grande. Il numero arriva da solo.
+    var D = 42;
+    n = { tipo: 'contatore', x: x0 - D / 2, y: y0 - D / 2, w: D, h: D, colore: PALETTE.contatore[0] };
+  }
   else if (t === 'forma') n = {
     tipo: 'forma', forma: formaScelta, x: x0, y: y0, w: 0, h: 0,
     colore: PALETTE.forma[0],
@@ -1050,6 +1066,13 @@ function iniziaCreazioneNota(e, tela) {
     var y = (ev.clientY - r.top) / viewK;
     if (n.tipo === 'linea') { n.x2 = x; n.y2 = y; }
     else if (n.tipo === 'testo') { n.w = Math.max(80, x - n.x); }
+    else if (n.tipo === 'contatore') {
+      // resta un cerchio e resta centrato sul punto cliccato
+      var d = Math.max(20, Math.hypot(x - x0, y - y0) * 2);
+      n.w = d; n.h = d;
+      n.x = x0 - d / 2;
+      n.y = y0 - d / 2;
+    }
     else {
       n.x = Math.min(x0, x);
       n.y = Math.min(y0, y);
@@ -1120,6 +1143,18 @@ function creaNota(j) {
       });
       setTimeout(function() { el.focus(); }, 0);
     }
+  } else if (n.tipo === 'contatore') {
+    var lato = Math.max(n.w, n.h) * viewK;
+    el.style.cssText = base +
+      'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
+      'width:' + Math.round(lato) + 'px;height:' + Math.round(lato) + 'px;' +
+      'background:' + n.colore + ';border-radius:50%;cursor:grab;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'color:#fff;font-weight:800;font-family:\'Segoe UI\', sans-serif;' +
+      'font-size:' + Math.round(lato * 0.56) + 'px;line-height:1;' +
+      'box-shadow:0 2px 6px rgba(0,0,0,0.35);' +
+      (sel ? 'outline:2px solid rgba(0,212,255,0.9);outline-offset:3px;' : '');
+    el.textContent = String(numeroContatore(j));
   } else if (n.tipo === 'forma') {
     // La forma è lo STESSO percorso dell'export, stirato dentro il rettangolo
     // che hai trascinato. Il tratto non si deforma (non-scaling-stroke): un
@@ -1255,6 +1290,14 @@ function creaNota(j) {
             if (hnd.indexOf('w') !== -1) { n.w = Math.max(8, o.w - dx); n.x = o.x + (o.w - n.w); }
             if (hnd.indexOf('s') !== -1) n.h = Math.max(8, o.h + dy);
             if (hnd.indexOf('n') !== -1) { n.h = Math.max(8, o.h - dy); n.y = o.y + (o.h - n.h); }
+            // Il contatore resta tondo: un cerchio schiacciato non è un
+            // contatore, è un errore.
+            if (n.tipo === 'contatore') {
+              var d = Math.max(n.w, n.h);
+              if (hnd.indexOf('w') !== -1) n.x = o.x + (o.w - d);
+              if (hnd.indexOf('n') !== -1) n.y = o.y + (o.h - d);
+              n.w = d; n.h = d;
+            }
             render();
           }
           function onUp() {
@@ -1290,6 +1333,27 @@ function creaBarraNota(j) {
         'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
       dot.addEventListener('click', function() { n.colore = c; render(); salvaStato(); });
       bar.appendChild(dot);
+    });
+  }
+  // Contatore: solo la misura del pallino (il numero se lo fa da solo).
+  if (n.tipo === 'contatore') {
+    [['−', -6], ['+', 6]].forEach(function(v) {
+      var bt = document.createElement('button');
+      bt.textContent = v[0];
+      bt.title = 'Size';
+      bt.style.cssText = 'border:none;background:transparent;color:#00d4ff;font-family:inherit;' +
+        'font-weight:700;cursor:pointer;font-size:13px;padding:0 4px;';
+      bt.addEventListener('click', function() {
+        var c = n.x + n.w / 2, m = n.y + n.h / 2;
+        var d = Math.min(200, Math.max(20, n.w + v[1]));
+        n.w = d; n.h = d;
+        n.x = c - d / 2;
+        n.y = m - d / 2;
+        ancoraNota(n);
+        render();
+        salvaStato();
+      });
+      bar.appendChild(bt);
     });
   }
   // Forme: pieno o solo contorno, e lo spessore del contorno.
@@ -1590,7 +1654,7 @@ async function componi() {
       Math.round(larghezza(b)), Math.round(altezza(b)));
   });
   // Annotazioni SOPRA i pezzi, nell'ordine in cui sono state fatte.
-  note.forEach(function(n) {
+  note.forEach(function(n, jn) {
     if (n.tipo === 'oscura' && n.stile === 'blur') {
       // Sfocatura VERA sui pixel finali: si preleva la regione già composta,
       // la si sfoca e la si rimette al suo posto ritagliata. Il margine extra
@@ -1645,6 +1709,21 @@ async function componi() {
         ctx.lineJoin = 'round';
         ctx.stroke(p2);
       }
+      ctx.restore();
+    } else if (n.tipo === 'contatore') {
+      var lato = Math.max(n.w, n.h);
+      var rc = lato / 2;
+      var ccx = n.x + rc, ccy = n.y + rc;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ccx, ccy, rc, 0, Math.PI * 2);
+      ctx.fillStyle = n.colore;
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 ' + Math.round(lato * 0.56) + "px 'Segoe UI', sans-serif";
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(numeroContatore(jn)), ccx, ccy + lato * 0.02);
       ctx.restore();
     } else if (n.tipo === 'linea') {
       ctx.strokeStyle = n.colore;
@@ -1797,6 +1876,7 @@ $('btnOscura').addEventListener('click', function() { armaStrumento('oscura'); }
 $('btnEvidenzia').addEventListener('click', function() { armaStrumento('evidenzia'); });
 $('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
 $('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
+$('btnContatore').addEventListener('click', function() { armaStrumento('contatore'); });
 $('btnUndo').addEventListener('click', annulla);
 $('btnRedo').addEventListener('click', rifai);
 
