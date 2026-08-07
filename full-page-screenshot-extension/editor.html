@@ -69,13 +69,35 @@
       color: #8b8ba3;
     }
     .btn.spento:hover { background: rgba(255,255,255,0.05); }
-    /* Strumento armato: il prossimo trascinamento sulla tela lo usa */
+    /* Strumento armato: RESTA armato finche' non torni alla manina, quindi
+       deve essere inconfondibile — pieno ciano, alone, e una spunta. */
     .btn.attivo {
       background: #00d4ff;
       color: #0d1220;
       border-color: #00d4ff;
       font-weight: 700;
+      box-shadow: 0 0 0 2px rgba(0,212,255,0.3), 0 0 14px rgba(0,212,255,0.45);
     }
+    .btn.attivo:hover { background: #00d4ff; filter: brightness(1.08); }
+    .btn.attivo svg { stroke: #0d1220; }
+    .btn.strumento.attivo::after {
+      content: '\2713';
+      font-size: 13px;
+      font-weight: 900;
+      margin-left: 2px;
+    }
+    .btn.icona { padding: 8px 10px; }
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+      border-color: rgba(255,255,255,0.12);
+      color: #6b6b80;
+    }
+    .btn:disabled:hover { background: transparent; }
+    /* Strumento armato: il mirino vince su TUTTO quello che sta in tela —
+       senza questo i pezzi mostravano ancora la manina del trascinamento e
+       non si capiva di essere in modalita' disegno. */
+    #tela.armato, #tela.armato * { cursor: crosshair !important; }
     select.btn {
       appearance: none;
       -webkit-appearance: none;
@@ -382,10 +404,14 @@
     <button class="btn" id="btnAggiungi">+ Add piece</button>
     <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
     <div class="sep"></div>
-    <button class="btn spento strumento" id="btnOscura" title="Redact — cover sensitive data (drag on the canvas)">⬛ Redact</button>
-    <button class="btn spento strumento" id="btnEvidenzia" title="Highlight (drag on the canvas)">🖍 Highlight</button>
-    <button class="btn spento strumento" id="btnLinea" title="Line (drag on the canvas)">╱ Line</button>
-    <button class="btn spento strumento" id="btnTesto" title="Text (drag on the canvas, then type)">T Text</button>
+    <button class="btn icona spento" id="btnUndo" title="Undo (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></button>
+    <button class="btn icona spento" id="btnRedo" title="Redo (Ctrl+Shift+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg></button>
+    <div class="sep"></div>
+    <button class="btn spento strumento" id="btnMano" title="Move &amp; select — back to the hand (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a1.5 1.5 0 0 0-3 0m0 0V5a1.5 1.5 0 0 0-3 0v6M12 5.5a1.5 1.5 0 0 0-3 0V12m0-4a1.5 1.5 0 0 0-3 0v6a8 8 0 0 0 8 8h1a7 7 0 0 0 7-7v-4a1.5 1.5 0 0 0-3 0"/></svg> Move</button>
+    <button class="btn spento strumento" id="btnOscura" title="Redact — cover sensitive data (drag on the canvas). Stays armed until you pick Move."><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" fill="currentColor" stroke="none" opacity="0.55"/><rect x="3" y="6" width="18" height="12" rx="2"/></svg> Redact</button>
+    <button class="btn spento strumento" id="btnEvidenzia" title="Highlight (drag on the canvas)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="m14 4 6 6-8 8H6v-6Z"/></svg> Highlight</button>
+    <button class="btn spento strumento" id="btnLinea" title="Line (drag on the canvas)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5"/></svg> Line</button>
+    <button class="btn spento strumento" id="btnTesto" title="Text (drag on the canvas, then type)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4h16v2M12 4v16M9 20h6"/></svg> Text</button>
     <div class="sep"></div>
     <button class="btn spento" id="btnAnteprima" title="See the final image, clean">👁 Preview</button>
     <button class="btn spento" id="btnAnnulla">Cancel</button>

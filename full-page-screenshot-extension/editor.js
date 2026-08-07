@@ -58,6 +58,149 @@ function sorgH(b) { return (b.ch != null) ? b.ch : b.natH; }
 function larghezza(b) { return sorgW(b) * b.sx; }
 function altezza(b) { return sorgH(b) * b.sy; }
 
+// ---- ANCORAGGIO DELLE ANNOTAZIONI AI PEZZI ----
+// Una toppa disegnata sopra un pezzo DEVE seguirlo. Se vive solo in
+// coordinate della tela, basta spostare il pezzo e il dato coperto riemerge
+// da sotto: un difetto di privacy, non un dettaglio estetico. Ogni nota
+// tiene quindi l'id del pezzo che sta sotto e le proprie coordinate nello
+// spazio NATURALE di quell'immagine; le coordinate in tela si ricalcolano
+// prima di ogni disegno, così la nota segue spostamenti, scale e ritagli.
+
+function bloccoSotto(x, y) {
+  for (var i = blocchi.length - 1; i >= 0; i--) {
+    var b = blocchi[i];
+    if (x >= b.x && x <= b.x + larghezza(b) && y >= b.y && y <= b.y + altezza(b)) return b;
+  }
+  return null;
+}
+
+function bloccoDaPid(pid) {
+  for (var i = 0; i < blocchi.length; i++) if (blocchi[i].pid === pid) return blocchi[i];
+  return null;
+}
+
+function versoSorgente(b, x, y) {
+  return { x: (x - b.x) / b.sx + (b.cx || 0), y: (y - b.y) / b.sy + (b.cy || 0) };
+}
+function versoTela(b, sx, sy) {
+  return { x: b.x + (sx - (b.cx || 0)) * b.sx, y: b.y + (sy - (b.cy || 0)) * b.sy };
+}
+
+// Aggancia la nota al pezzo che sta sotto il suo centro (nessun pezzo =
+// nota libera, si comporta come prima).
+function ancoraNota(n) {
+  var cx, cy;
+  if (n.tipo === 'linea') { cx = (n.x1 + n.x2) / 2; cy = (n.y1 + n.y2) / 2; }
+  else { cx = n.x + (n.w || 0) / 2; cy = n.y + (n.h || (n.fs || 0)) / 2; }
+  var b = bloccoSotto(cx, cy);
+  if (!b) { n.pid = null; n.anc = null; return; }
+  n.pid = b.pid;
+  if (n.tipo === 'linea') {
+    var p1 = versoSorgente(b, n.x1, n.y1), p2 = versoSorgente(b, n.x2, n.y2);
+    n.anc = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+  } else {
+    var p = versoSorgente(b, n.x, n.y);
+    n.anc = { x: p.x, y: p.y, w: (n.w || 0) / b.sx, h: (n.h || 0) / b.sy };
+  }
+}
+
+// Ricalcola le coordinate in tela dall'ancora: chiamata prima di ogni
+// disegno a schermo e prima dell'export, così non esiste un istante in cui
+// la toppa e il contenuto coperto siano disallineati.
+function sincronizzaNote() {
+  note.forEach(function(n) {
+    if (!n.pid || !n.anc) return;
+    var b = bloccoDaPid(n.pid);
+    if (!b) return;   // pezzo eliminato: la nota resta dov'è
+    if (n.tipo === 'linea') {
+      var p1 = versoTela(b, n.anc.x1, n.anc.y1), p2 = versoTela(b, n.anc.x2, n.anc.y2);
+      n.x1 = p1.x; n.y1 = p1.y; n.x2 = p2.x; n.y2 = p2.y;
+    } else {
+      var p = versoTela(b, n.anc.x, n.anc.y);
+      n.x = p.x; n.y = p.y;
+      n.w = n.anc.w * b.sx;
+      if (n.tipo !== 'testo') n.h = n.anc.h * b.sy;
+    }
+  });
+}
+
+// Raggio della sfocatura: generoso di proposito. Una sfocatura leggera su
+// testo piccolo si può ricostruire; a questo raggio no.
+function raggioSfoca(n) {
+  return Math.max(10, Math.min(n.w || 0, n.h || 0) / 4);
+}
+
+// ---- CRONOLOGIA (annulla / ripeti) ----
+// Le immagini dei pezzi sono data URL da megabyte: tenerle in ogni
+// istantanea farebbe esplodere la memoria. Restano in un registro a parte e
+// si riagganciano per id al ripristino.
+var storia = [];
+var storiaIdx = -1;
+var imgPerPid = {};
+var statoPreFit = null;   // per il Fit canvas che fa avanti-indietro
+
+function istantanea() {
+  return JSON.stringify({
+    blocchi: blocchi.map(function(b) {
+      var c = {};
+      for (var k in b) if (k !== 'img') c[k] = b[k];
+      return c;
+    }),
+    note: note,
+    cw: canvasW,
+    ch: canvasH
+  });
+}
+
+function salvaStato() {
+  var s = istantanea();
+  if (storiaIdx >= 0 && storia[storiaIdx] === s) return;   // niente di cambiato
+  storia = storia.slice(0, storiaIdx + 1);
+  storia.push(s);
+  if (storia.length > 60) storia.shift();
+  storiaIdx = storia.length - 1;
+  aggiornaBottoniStoria();
+}
+
+function ripristina(s) {
+  var d = JSON.parse(s);
+  blocchi = d.blocchi.map(function(b) { b.img = imgPerPid[b.pid]; return b; })
+                     .filter(function(b) { return !!b.img; });
+  note = d.note || [];
+  canvasW = d.cw;
+  canvasH = d.ch;
+  selezionato = -1;
+  selNota = -1;
+  ritaglioIdx = -1;
+  testoEdit = -1;
+  render();
+}
+
+function annulla() {
+  if (storiaIdx <= 0) return;
+  storiaIdx--;
+  ripristina(storia[storiaIdx]);
+  aggiornaBottoniStoria();
+}
+
+function rifai() {
+  if (storiaIdx >= storia.length - 1) return;
+  storiaIdx++;
+  ripristina(storia[storiaIdx]);
+  aggiornaBottoniStoria();
+}
+
+function aggiornaBottoniStoria() {
+  var u = $('btnUndo'), r = $('btnRedo');
+  if (u) u.disabled = (storiaIdx <= 0);
+  if (r) r.disabled = (storiaIdx >= storia.length - 1);
+}
+
+// Ogni gesto col mouse finisce qui: se lo stato è cambiato davvero, entra
+// nella cronologia. Il rinvio serve a lasciar finire i gestori del gesto
+// (che a volte annullano una nota troppo piccola).
+window.addEventListener('mouseup', function() { setTimeout(salvaStato, 0); });
+
 // Il pezzo resta sempre DENTRO la tela.
 function clampBlocco(b) {
   var w = larghezza(b), h = altezza(b);
@@ -124,12 +267,16 @@ async function sincronizzaConSessione() {
       if (canvasH > 32000) canvasH = 32000;
       clampBlocco(blocchi[blocchi.length - 1]);
       selezionato = blocchi.length - 1;
+      // Registro delle immagini: le istantanee della cronologia non se le
+      // portano dietro (sono data URL da megabyte), si riagganciano per id.
+      imgPerPid[p.id] = p.img;
     } catch (e) {
       if (p.id != null) importati.delete(p.id);
       console.warn('Pezzo illeggibile, saltato:', e);
     }
   }
   render();
+  salvaStato();
   // Editor aperto e vuoto: si apre da solo il pannello di scelta.
   if (!blocchi.length && !pannelloAutoAperto) {
     pannelloAutoAperto = true;
@@ -238,6 +385,7 @@ function calamita(i, x, y) {
 // ---- RENDER ----
 
 function render() {
+  sincronizzaNote();   // le toppe seguono sempre il pezzo che coprono
   var palco = $('palco');
   palco.innerHTML = '';
   $('contatore').textContent = blocchi.length + (blocchi.length === 1 ? ' piece' : ' pieces');
@@ -312,7 +460,7 @@ function render() {
   // Annotazioni sopra il collage + barretta della nota selezionata.
   note.forEach(function(n, j) { tela.appendChild(creaNota(j)); });
   if (selNota >= 0 && selNota < note.length) tela.appendChild(creaBarraNota(selNota));
-  if (strumento) tela.style.cursor = 'crosshair';
+  if (strumento) { tela.style.cursor = 'crosshair'; tela.classList.add('armato'); }
   cornice.appendChild(tela);
 
   // Maniglie della TELA su tutti i lati e gli angoli: allargano il
@@ -789,8 +937,9 @@ var PALETTE = {
   testo: ['#e11d48', '#0b0b10', '#ffffff']
 };
 
-// Arma (o disarma) uno strumento della barra: il prossimo trascinamento
-// sulla tela crea l'annotazione, poi si torna alla manina (one-shot).
+// Arma (o disarma) uno strumento della barra. Lo strumento RESTA armato
+// finché non si torna alla manina (bottone Move o Esc): disegnare dieci
+// riquadri di seguito non deve costare dieci click sulla barra.
 function armaStrumento(t) {
   strumento = (strumento === t) ? null : t;
   selezionato = -1;
@@ -805,6 +954,8 @@ function aggiornaBarraStrumenti() {
     var el = $(v[0]);
     if (el) el.classList.toggle('attivo', strumento === v[1]);
   });
+  var m = $('btnMano');
+  if (m) m.classList.toggle('attivo', !strumento);
 }
 
 function iniziaCreazioneNota(e, tela) {
@@ -812,12 +963,13 @@ function iniziaCreazioneNota(e, tela) {
   var x0 = (e.clientX - r.left) / viewK;
   var y0 = (e.clientY - r.top) / viewK;
   var t = strumento;
-  strumento = null;
-  aggiornaBarraStrumenti();
+  // Lo strumento NON si disarma: resta attivo per il disegno successivo.
+  // Solo il testo torna alla manina, perché subito dopo si scrive.
+  if (t === 'testo') { strumento = null; aggiornaBarraStrumenti(); }
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
   else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
-  else n = { tipo: t, x: x0, y: y0, w: 0, h: 0, colore: PALETTE[t][0] };
+  else n = { tipo: t, x: x0, y: y0, w: 0, h: 0, colore: PALETTE[t][0], stile: 'solid' };
   note.push(n);
   selNota = note.length - 1;
   function onMove(ev) {
@@ -843,6 +995,7 @@ function iniziaCreazioneNota(e, tela) {
     } else if (n.tipo === 'testo') {
       testoEdit = selNota;   // si scrive subito, senza altri click
     }
+    if (note[selNota]) ancoraNota(note[selNota]);
     render();
   }
   window.addEventListener('mousemove', onMove);
@@ -858,12 +1011,21 @@ function creaNota(j) {
   if (n.tipo === 'linea') {
     var len = Math.hypot(n.x2 - n.x1, n.y2 - n.y1);
     var ang = Math.atan2(n.y2 - n.y1, n.x2 - n.x1);
+    // La zona cliccabile è una fascia di 16px trasparente: la linea vera è
+    // spessa 3px e prenderla al pixel era impossibile — sembrava che una
+    // volta disegnata non si potesse più né spostare né selezionare.
+    var PRESA = 16;
     el.style.cssText = base +
-      'left:' + Math.round(n.x1 * viewK) + 'px;top:' + Math.round(n.y1 * viewK) + 'px;' +
-      'width:' + Math.round(len * viewK) + 'px;height:' + Math.max(2, Math.round(3 * viewK)) + 'px;' +
-      'background:' + n.colore + ';transform-origin:0 50%;transform:rotate(' + ang + 'rad);' +
-      'cursor:grab;border-radius:2px;' +
+      'left:' + Math.round(n.x1 * viewK) + 'px;top:' + (Math.round(n.y1 * viewK) - PRESA / 2) + 'px;' +
+      'width:' + Math.round(len * viewK) + 'px;height:' + PRESA + 'px;' +
+      'background:transparent;transform-origin:0 ' + (PRESA / 2) + 'px;transform:rotate(' + ang + 'rad);' +
+      'cursor:grab;';
+    var tratto = document.createElement('div');
+    tratto.style.cssText = 'position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);' +
+      'height:' + Math.max(2, Math.round(3 * viewK)) + 'px;border-radius:2px;pointer-events:none;' +
+      'background:' + n.colore + ';' +
       (sel ? 'box-shadow:0 0 0 2px rgba(0,212,255,0.7);' : '');
+    el.appendChild(tratto);
   } else if (n.tipo === 'testo') {
     el.style.cssText = base +
       'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
@@ -886,13 +1048,17 @@ function creaNota(j) {
       setTimeout(function() { el.focus(); }, 0);
     }
   } else {
-    // oscura = coprente; evidenzia = colore al 40% (alpha nel colore, non
-    // opacity: le maniglie non devono sbiadire)
-    var fondo = (n.tipo === 'evidenzia') ? (n.colore + '66') : n.colore;
+    // oscura = coprente (o sfocata); evidenzia = colore al 40% (alpha nel
+    // colore, non opacity: le maniglie non devono sbiadire)
+    var sfoca = (n.tipo === 'oscura' && n.stile === 'blur');
+    var fondo = sfoca ? 'transparent'
+      : (n.tipo === 'evidenzia') ? (n.colore + '66') : n.colore;
+    var rs = sfoca ? (raggioSfoca(n) * viewK) : 0;
     el.style.cssText = base +
       'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
       'width:' + Math.round(n.w * viewK) + 'px;height:' + Math.round(n.h * viewK) + 'px;' +
       'background:' + fondo + ';cursor:grab;border-radius:2px;' +
+      (sfoca ? 'backdrop-filter:blur(' + rs + 'px);-webkit-backdrop-filter:blur(' + rs + 'px);' : '') +
       (sel ? 'box-shadow:0 0 0 2px rgba(0,212,255,0.7);' : '');
   }
 
@@ -923,6 +1089,7 @@ function creaNota(j) {
       function onUp() {
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
+        ancoraNota(n);   // spostata: si riaggancia al pezzo che ora sta sotto
       }
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
@@ -956,12 +1123,23 @@ function creaNota(j) {
           function onMove(ev) {
             var x = (ev.clientX - r.left) / viewK;
             var y = (ev.clientY - r.top) / viewK;
+            // Con Shift l'angolo scatta di 15 in 15 gradi: è il modo per
+            // ottenere una linea esattamente a 30° (o 45°, o orizzontale)
+            // senza andare a occhio.
+            if (ev.shiftKey) {
+              var fx = capo ? n.x1 : n.x2, fy = capo ? n.y1 : n.y2;
+              var d = Math.hypot(x - fx, y - fy);
+              var a = Math.round(Math.atan2(y - fy, x - fx) / (Math.PI / 12)) * (Math.PI / 12);
+              x = fx + Math.cos(a) * d;
+              y = fy + Math.sin(a) * d;
+            }
             if (capo) { n.x2 = x; n.y2 = y; } else { n.x1 = x; n.y1 = y; }
             render();
           }
           function onUp() {
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
+            ancoraNota(n);
           }
           window.addEventListener('mousemove', onMove);
           window.addEventListener('mouseup', onUp);
@@ -990,6 +1168,7 @@ function creaNota(j) {
           function onUp() {
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
+            ancoraNota(n);
           }
           window.addEventListener('mousemove', onMove);
           window.addEventListener('mouseup', onUp);
@@ -1011,13 +1190,32 @@ function creaBarraNota(j) {
     'left:' + Math.round(bx * viewK) + 'px;top:' + (Math.round(by * viewK) - 34) + 'px;' +
     'background:#16162a;border:1px solid rgba(0,212,255,0.4);border-radius:7px;padding:4px 6px;';
   bar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-  PALETTE[n.tipo].forEach(function(c) {
-    var dot = document.createElement('span');
-    dot.style.cssText = 'width:14px;height:14px;border-radius:50%;cursor:pointer;display:inline-block;' +
-      'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
-    dot.addEventListener('click', function() { n.colore = c; render(); });
-    bar.appendChild(dot);
-  });
+  // Col riempimento sfocato il colore non c'entra nulla: i pallini spariscono.
+  if (!(n.tipo === 'oscura' && n.stile === 'blur')) {
+    PALETTE[n.tipo].forEach(function(c) {
+      var dot = document.createElement('span');
+      dot.style.cssText = 'width:14px;height:14px;border-radius:50%;cursor:pointer;display:inline-block;' +
+        'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
+      dot.addEventListener('click', function() { n.colore = c; render(); salvaStato(); });
+      bar.appendChild(dot);
+    });
+  }
+  // Coprente o sfocato: due modi di nascondere, si scelgono qui.
+  if (n.tipo === 'oscura') {
+    [['Solid', 'solid', 'Solid fill — the safest way to hide data'],
+     ['Blur', 'blur', 'Blur the area — see-through effect']].forEach(function(v) {
+      var bt = document.createElement('button');
+      bt.textContent = v[0];
+      bt.title = v[2];
+      var on = ((n.stile || 'solid') === v[1]);
+      bt.style.cssText = 'border:1px solid ' + (on ? '#00d4ff' : 'rgba(255,255,255,0.2)') + ';' +
+        'background:' + (on ? '#00d4ff' : 'transparent') + ';' +
+        'color:' + (on ? '#0d1220' : '#8b8ba3') + ';font-family:inherit;' +
+        'font-weight:700;cursor:pointer;font-size:11px;padding:2px 7px;border-radius:5px;';
+      bt.addEventListener('click', function() { n.stile = v[1]; render(); salvaStato(); });
+      bar.appendChild(bt);
+    });
+  }
   if (n.tipo === 'testo') {
     [['A−', -3], ['A+', 3]].forEach(function(v) {
       var bt = document.createElement('button');
@@ -1026,6 +1224,7 @@ function creaBarraNota(j) {
       bt.addEventListener('click', function() {
         n.fs = Math.min(120, Math.max(10, n.fs + v[1]));
         render();
+        salvaStato();
       });
       bar.appendChild(bt);
     });
@@ -1038,6 +1237,7 @@ function creaBarraNota(j) {
     note.splice(j, 1);
     selNota = -1;
     render();
+    salvaStato();
   });
   bar.appendChild(del);
   return bar;
@@ -1158,6 +1358,17 @@ function iniziaResize(e, i, hnd) {
 document.addEventListener('keydown', function(e) {
   // Mentre si scrive un testo, la tastiera è sua.
   if (document.activeElement && document.activeElement.isContentEditable) return;
+  // Annulla / ripeti: le scorciatoie di sempre.
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault();
+    if (e.shiftKey) rifai(); else annulla();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+    e.preventDefault();
+    rifai();
+    return;
+  }
   if (e.key === 'Escape') {
     $('scelta').style.display = 'none';
     $('anteprima').style.display = 'none';
@@ -1182,6 +1393,7 @@ document.addEventListener('keydown', function(e) {
       note.splice(selNota, 1);
       selNota = -1;
       render();
+      salvaStato();
       return;
     } else presoN = false;
     if (presoN) {
@@ -1193,7 +1405,9 @@ document.addEventListener('keydown', function(e) {
         n.x += dx;
         n.y += dy;
       }
+      ancoraNota(n);
       render();
+      salvaStato();
     }
     return;
   }
@@ -1209,6 +1423,7 @@ document.addEventListener('keydown', function(e) {
     selezionato = -1;
     ritaglioIdx = -1;   // niente clamp: gli indici sono appena slittati
     render();
+    salvaStato();
     return;
   } else {
     preso = false;
@@ -1217,12 +1432,14 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     clampBlocco(b);
     render();
+    salvaStato();
   }
 });
 
 // ---- COMPOSIZIONE ED EXPORT ----
 
 async function componi() {
+  sincronizzaNote();   // mai esportare con le toppe fuori posto
   var imgs = await Promise.all(blocchi.map(function(b) { return caricaImmagine(b.img); }));
   var W = Math.round(canvasW), H = Math.round(canvasH);
   // Limiti canvas di Chrome: ~32k px per lato, ~268M px di area totale.
@@ -1249,7 +1466,31 @@ async function componi() {
   });
   // Annotazioni SOPRA i pezzi, nell'ordine in cui sono state fatte.
   note.forEach(function(n) {
-    if (n.tipo === 'oscura') {
+    if (n.tipo === 'oscura' && n.stile === 'blur') {
+      // Sfocatura VERA sui pixel finali: si preleva la regione già composta,
+      // la si sfoca e la si rimette al suo posto ritagliata. Il margine extra
+      // evita che i bordi risucchino il trasparente fuori dalla tela.
+      var bx = Math.round(n.x), by = Math.round(n.y);
+      var bw = Math.round(n.w), bh = Math.round(n.h);
+      if (bw <= 0 || bh <= 0) return;
+      var r = raggioSfoca(n);
+      var pad = Math.ceil(r * 2);
+      var sx = Math.max(0, bx - pad), sy = Math.max(0, by - pad);
+      var sw = Math.min(W - sx, bw + pad * 2), sh = Math.min(H - sy, bh + pad * 2);
+      if (sw <= 0 || sh <= 0) return;
+      var tmp = document.createElement('canvas');
+      tmp.width = sw;
+      tmp.height = sh;
+      tmp.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bx, by, bw, bh);
+      ctx.clip();
+      ctx.filter = 'blur(' + r + 'px)';
+      ctx.drawImage(tmp, sx, sy);
+      ctx.filter = 'none';
+      ctx.restore();
+    } else if (n.tipo === 'oscura') {
       ctx.fillStyle = n.colore;
       ctx.fillRect(Math.round(n.x), Math.round(n.y), Math.round(n.w), Math.round(n.h));
     } else if (n.tipo === 'evidenzia') {
@@ -1378,13 +1619,32 @@ async function salva() {
 $('btnAggiungi').addEventListener('click', function() {
   $('scelta').style.display = 'flex';
 });
-$('btnFit').addEventListener('click', adattaTela);
-// Strumenti di annotazione: un click arma, il trascinamento crea, poi si
-// torna alla manina. Zero menu.
+// "Fit canvas" fa avanti-indietro: la seconda pressione rimette la tela
+// esattamente com'era, così si può provare l'adattamento senza perdere la
+// disposizione di prima.
+$('btnFit').addEventListener('click', function() {
+  if (statoPreFit) {
+    var s = statoPreFit;
+    statoPreFit = null;
+    ripristina(s);
+    salvaStato();
+    $('btnFit').classList.remove('attivo');
+    return;
+  }
+  statoPreFit = istantanea();
+  adattaTela();
+  salvaStato();
+  $('btnFit').classList.add('attivo');
+});
+// Strumenti di annotazione: un click arma e lo strumento RESTA armato
+// finché non si torna alla manina (bottone Move o Esc).
+$('btnMano').addEventListener('click', function() { armaStrumento(strumento); });
 $('btnOscura').addEventListener('click', function() { armaStrumento('oscura'); });
 $('btnEvidenzia').addEventListener('click', function() { armaStrumento('evidenzia'); });
 $('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
 $('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
+$('btnUndo').addEventListener('click', annulla);
+$('btnRedo').addEventListener('click', rifai);
 // Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
 $('btnAnteprima').addEventListener('click', async function() {
   if (!blocchi.length) return;
