@@ -2,7 +2,8 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Capture Mode</title>
+  <title>Full Page Screenshot — Settings</title>
+  <link rel="icon" type="image/png" href="icon_128.png">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -44,7 +45,14 @@
            casuali. */
         border-left: 1px solid rgba(255,255,255,0.09);
         padding-left: 48px;
+        /* La colonna si allunga fino in fondo e l'invito a recensire viene
+           spinto in basso: le due colonne chiudono insieme invece di lasciare
+           un vuoto sotto la guida. */
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
       }
+      .col-right .footer { margin-top: auto; }
       /* Le voci di "How it works" a due per riga invece che impilate: c'e'
          spazio orizzontale, meglio usarlo che allungare la card in verticale.
          L'ultima voce (numero dispari) resta da sola sull'ultima riga. */
@@ -54,20 +62,48 @@
         column-gap: 20px;
       }
     }
+    /* Intestazione di pagina: icona vera dell'estensione, nome, versione e
+       una riga che dice cosa si sta guardando. Prima era un titoletto
+       centrato che poteva stare in qualunque pagina di qualunque cosa. */
     .brand {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin: 0 0 28px 0;
+      gap: 14px;
+      margin: 0 0 26px 0;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
-    .brand svg { flex-shrink: 0; width: 26px; height: 26px; }
+    .brand-icona {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
     .brand h2 {
       margin: 0;
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 700;
-      color: #eee;
-      letter-spacing: 0.2px;
+      color: #f2f5fa;
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: #7a8394;
+      margin-top: 3px;
+    }
+    .ver {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      border-radius: 20px;
+      background: rgba(0,212,255,0.12);
+      border: 1px solid rgba(0,212,255,0.3);
+      color: #00d4ff;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      vertical-align: 1px;
     }
 
     /* Card generica: stesso contenitore per tutte le sezioni, cosi' la
@@ -370,22 +406,15 @@
 <body>
   <div class="container">
     <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="5" width="18" height="14" rx="2"/>
-        <circle cx="12" cy="12" r="3.2"/>
-      </svg>
-      <h2>Capture Mode</h2>
-    </div>
-
-    <div class="news" id="news">
-      <div class="news-head">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
-        <span id="newsVersion">What's new</span>
+      <img class="brand-icona" src="icon_128.png" alt="">
+      <div>
+        <h2>Full Page Screenshot</h2>
+        <div class="brand-sub">Capture settings<span class="ver" id="verBadge"></span></div>
       </div>
-      <ul id="newsList"></ul>
     </div>
 
     <div class="card">
+      <div class="card-title">Preferences</div>
       <div class="switch-row">
         <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
         <div class="switch-text">
@@ -422,7 +451,7 @@
     </div>
 
     <div class="card">
-      <div class="card-title">Mode</div>
+      <div class="card-title">Capture mode</div>
 
       <div class="option active" data-mode="full">
         <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
@@ -465,6 +494,14 @@
     <div class="saved" id="saved">Saved!</div>
 
     <div class="col-right">
+      <div class="news" id="news">
+        <div class="news-head">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+          <span id="newsVersion">What's new</span>
+        </div>
+        <ul id="newsList"></ul>
+      </div>
+
       <div class="card">
         <div class="card-title">How it works</div>
 

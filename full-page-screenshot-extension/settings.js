@@ -18,6 +18,11 @@ chrome.storage.local.get('captureMode', function(data) {
   setActive(data.captureMode || 'full');
 });
 
+// Versione nell'intestazione: presa dal manifest, così non c'e' un numero
+// scritto a mano che resta indietro a ogni pubblicazione.
+var badgeVer = document.getElementById('verBadge');
+if (badgeVer) badgeVer.textContent = 'v' + chrome.runtime.getManifest().version;
+
 // Mostra "What's new" solo se c'e' una versione non ancora vista con un
 // changelog scritto, poi spegne subito il badge NEW sull'icona.
 chrome.storage.local.get('newsUnread', function(data) {
