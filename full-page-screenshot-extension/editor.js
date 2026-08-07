@@ -945,8 +945,63 @@ var PALETTE = {
   oscura: ['#0b0b10', '#ffffff', '#e11d48'],
   evidenzia: ['#ffe14d', '#7dff8a', '#ff7ad9'],
   linea: ['#e11d48', '#0b0b10', '#00b3e6'],
-  testo: ['#e11d48', '#0b0b10', '#ffffff']
+  testo: ['#e11d48', '#0b0b10', '#ffffff'],
+  forma: ['#e11d48', '#00b3e6', '#ffe14d', '#0b0b10', '#ffffff']
 };
+
+// ---- LIBRERIA DELLE FORME ----
+// Ogni forma è un percorso disegnato dentro una scatola 100×100. Da lì si
+// adatta a qualunque rettangolo: a schermo con un SVG che si stira, e
+// nell'export con lo STESSO percorso ridisegnato sul canvas (Path2D). Una
+// sola definizione per entrambi: non possono divergere.
+// soloTratto = forme che vivono di linea, non di riempimento (spunta,
+// croce, frecce sottili, mirino).
+var FORME = [
+  { id: 'rettangolo', nome: 'Rectangle', d: 'M4 4H96V96H4Z' },
+  { id: 'arrotondato', nome: 'Rounded box', d: 'M22 4H78A18 18 0 0 1 96 22V78A18 18 0 0 1 78 96H22A18 18 0 0 1 4 78V22A18 18 0 0 1 22 4Z' },
+  { id: 'cerchio', nome: 'Circle', d: 'M50 5A45 45 0 1 0 50 95A45 45 0 1 0 50 5Z' },
+  { id: 'triangolo', nome: 'Triangle', d: 'M50 6L95 94H5Z' },
+  { id: 'triangoloGiu', nome: 'Triangle down', d: 'M50 94L5 6H95Z' },
+  { id: 'rombo', nome: 'Diamond', d: 'M50 5L95 50L50 95L5 50Z' },
+  { id: 'pentagono', nome: 'Pentagon', d: 'M50 5L95 39L78 92H22L5 39Z' },
+  { id: 'esagono', nome: 'Hexagon', d: 'M28 8H72L95 50L72 92H28L5 50Z' },
+  { id: 'ottagono', nome: 'Octagon', d: 'M32 5H68L95 32V68L68 95H32L5 68V32Z' },
+  { id: 'parallelogramma', nome: 'Parallelogram', d: 'M26 12H96L74 88H4Z' },
+  { id: 'trapezio', nome: 'Trapezoid', d: 'M26 12H74L96 88H4Z' },
+  { id: 'stella5', nome: 'Star', d: 'M50 4L62 37H97L69 58L80 93L50 71L20 93L31 58L3 37H38Z' },
+  { id: 'stella6', nome: 'Six-point star', d: 'M50 6L88 72H12Z M50 94L12 28H88Z' },
+  { id: 'cuore', nome: 'Heart', d: 'M50 92C20 70 6 52 6 34C6 18 18 8 31 8C40 8 46 13 50 20C54 13 60 8 69 8C82 8 94 18 94 34C94 52 80 70 50 92Z' },
+  { id: 'mezzaluna', nome: 'Crescent', d: 'M64 5A45 45 0 1 0 64 95A37 37 0 1 1 64 5Z' },
+  { id: 'nuvola', nome: 'Cloud', d: 'M27 82A23 23 0 0 1 27 36A27 27 0 0 1 75 30A21 21 0 0 1 79 82Z' },
+  { id: 'fulmine', nome: 'Lightning', d: 'M58 3L20 55H45L38 97L82 41H55Z' },
+  { id: 'scudo', nome: 'Shield', d: 'M50 4L92 18V50C92 74 74 90 50 96C26 90 8 74 8 50V18Z' },
+  { id: 'goccia', nome: 'Drop', d: 'M50 4C50 4 84 44 84 64A34 34 0 1 1 16 64C16 44 50 4 50 4Z' },
+  { id: 'croce', nome: 'Plus', d: 'M38 4H62V38H96V62H62V96H38V62H4V38H38Z' },
+  { id: 'segnalibro', nome: 'Bookmark', d: 'M22 4H78V96L50 74L22 96Z' },
+  { id: 'cornice', nome: 'Frame', d: 'M4 4H96V96H4Z M18 18V82H82V18Z' },
+  { id: 'frecciaDx', nome: 'Arrow right', d: 'M4 36H58V14L96 50L58 86V64H4Z' },
+  { id: 'frecciaSx', nome: 'Arrow left', d: 'M96 36H42V14L4 50L42 86V64H96Z' },
+  { id: 'frecciaSu', nome: 'Arrow up', d: 'M36 96V42H14L50 4L86 42H64V96Z' },
+  { id: 'frecciaGiu', nome: 'Arrow down', d: 'M36 4V58H14L50 96L86 58H64V4Z' },
+  { id: 'frecciaDoppia', nome: 'Double arrow', d: 'M4 50L28 22V38H72V22L96 50L72 78V62H28V78Z' },
+  { id: 'frecciaDoppiaV', nome: 'Double arrow up/down', d: 'M50 4L78 28H62V72H78L50 96L22 72H38V28H22Z' },
+  { id: 'frecciaSottile', nome: 'Thin arrow', d: 'M6 50H88 M68 28L92 50L68 72', soloTratto: true },
+  { id: 'frecciaCurva', nome: 'Curved arrow', d: 'M8 90C8 42 38 16 84 16 M84 16L62 4 M84 16L62 30', soloTratto: true },
+  { id: 'spunta', nome: 'Check', d: 'M8 54L38 84L92 16', soloTratto: true },
+  { id: 'ics', nome: 'Cross', d: 'M12 12L88 88 M88 12L12 88', soloTratto: true },
+  { id: 'mirino', nome: 'Target', d: 'M50 6V26 M50 74V94 M6 50H26 M74 50H94 M50 22A28 28 0 1 0 50 78A28 28 0 1 0 50 22Z', soloTratto: true },
+  { id: 'fumetto', nome: 'Speech bubble', d: 'M50 8C24 8 6 24 6 44C6 60 18 73 36 78L27 96L56 78C79 76 94 61 94 44C94 24 76 8 50 8Z' },
+  { id: 'fumettoQuadro', nome: 'Square bubble', d: 'M8 10H92V68H48L26 94V68H8Z' },
+  { id: 'fumettoPensiero', nome: 'Thought bubble', d: 'M50 8C27 8 10 21 10 37C10 51 22 61 39 63L33 76L52 63C75 61 90 51 90 37C90 21 73 8 50 8Z M24 78A8 8 0 1 0 24 94A8 8 0 1 0 24 78Z M10 88A5 5 0 1 0 10 98A5 5 0 1 0 10 88Z' },
+  { id: 'fumettoUrlo', nome: 'Burst bubble', d: 'M50 3L60 21L80 13L76 33L96 39L80 51L94 67L74 69L76 89L58 79L50 97L42 79L24 89L26 69L6 67L20 51L4 39L24 33L20 13L40 21Z' }
+];
+
+function formaDaId(id) {
+  for (var i = 0; i < FORME.length; i++) if (FORME[i].id === id) return FORME[i];
+  return FORME[0];
+}
+
+var formaScelta = 'rettangolo';   // ultima forma presa dal pannellino
 
 // Arma (o disarma) uno strumento della barra. Lo strumento RESTA armato
 // finché non si torna alla manina (bottone Move o Esc): disegnare dieci
@@ -961,7 +1016,8 @@ function armaStrumento(t) {
 }
 
 function aggiornaBarraStrumenti() {
-  [['btnOscura', 'oscura'], ['btnEvidenzia', 'evidenzia'], ['btnLinea', 'linea'], ['btnTesto', 'testo']].forEach(function(v) {
+  [['btnOscura', 'oscura'], ['btnEvidenzia', 'evidenzia'], ['btnLinea', 'linea'],
+   ['btnTesto', 'testo'], ['btnForme', 'forma']].forEach(function(v) {
     var el = $(v[0]);
     if (el) el.classList.toggle('attivo', strumento === v[1]);
   });
@@ -980,6 +1036,12 @@ function iniziaCreazioneNota(e, tela) {
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
   else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
+  else if (t === 'forma') n = {
+    tipo: 'forma', forma: formaScelta, x: x0, y: y0, w: 0, h: 0,
+    colore: PALETTE.forma[0],
+    riempito: !formaDaId(formaScelta).soloTratto,
+    spessore: 4
+  };
   else n = { tipo: t, x: x0, y: y0, w: 0, h: 0, colore: PALETTE[t][0], stile: 'solid' };
   note.push(n);
   selNota = note.length - 1;
@@ -999,7 +1061,7 @@ function iniziaCreazioneNota(e, tela) {
   function onUp() {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
-    if (n.tipo === 'oscura' || n.tipo === 'evidenzia') {
+    if (n.tipo === 'oscura' || n.tipo === 'evidenzia' || n.tipo === 'forma') {
       if (n.w < 6 || n.h < 6) { note.pop(); selNota = -1; }
     } else if (n.tipo === 'linea') {
       if (Math.hypot(n.x2 - n.x1, n.y2 - n.y1) < 6) { note.pop(); selNota = -1; }
@@ -1058,6 +1120,25 @@ function creaNota(j) {
       });
       setTimeout(function() { el.focus(); }, 0);
     }
+  } else if (n.tipo === 'forma') {
+    // La forma è lo STESSO percorso dell'export, stirato dentro il rettangolo
+    // che hai trascinato. Il tratto non si deforma (non-scaling-stroke): un
+    // contorno resta di spessore uniforme anche su una forma schiacciata.
+    var f = formaDaId(n.forma);
+    var pieno = n.riempito && !f.soloTratto;
+    el.style.cssText = base +
+      'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
+      'width:' + Math.round(n.w * viewK) + 'px;height:' + Math.round(n.h * viewK) + 'px;' +
+      'cursor:grab;' +
+      (sel ? 'outline:2px solid rgba(0,212,255,0.7);outline-offset:3px;border-radius:3px;' : '');
+    el.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 100 100" ' +
+      'preserveAspectRatio="none" style="display:block;overflow:visible;pointer-events:none">' +
+      '<path d="' + f.d + '" fill-rule="evenodd" ' +
+      'fill="' + (pieno ? n.colore : 'none') + '" ' +
+      'stroke="' + n.colore + '" ' +
+      'stroke-width="' + (pieno ? 0 : Math.max(1, n.spessore * viewK)) + '" ' +
+      'vector-effect="non-scaling-stroke" ' +
+      'stroke-linecap="round" stroke-linejoin="round"/></svg>';
   } else {
     // oscura = coprente (o sfocata); evidenzia = colore al 40% (alpha nel
     // colore, non opacity: le maniglie non devono sbiadire)
@@ -1210,6 +1291,38 @@ function creaBarraNota(j) {
       dot.addEventListener('click', function() { n.colore = c; render(); salvaStato(); });
       bar.appendChild(dot);
     });
+  }
+  // Forme: pieno o solo contorno, e lo spessore del contorno.
+  if (n.tipo === 'forma') {
+    var fm = formaDaId(n.forma);
+    if (!fm.soloTratto) {
+      [['Fill', true], ['Outline', false]].forEach(function(v) {
+        var bt = document.createElement('button');
+        bt.textContent = v[0];
+        var on = (!!n.riempito === v[1]);
+        bt.style.cssText = 'border:1px solid ' + (on ? '#00d4ff' : 'rgba(255,255,255,0.2)') + ';' +
+          'background:' + (on ? '#00d4ff' : 'transparent') + ';' +
+          'color:' + (on ? '#0d1220' : '#8b8ba3') + ';font-family:inherit;' +
+          'font-weight:700;cursor:pointer;font-size:11px;padding:2px 7px;border-radius:5px;';
+        bt.addEventListener('click', function() { n.riempito = v[1]; render(); salvaStato(); });
+        bar.appendChild(bt);
+      });
+    }
+    if (fm.soloTratto || !n.riempito) {
+      [['−', -1], ['+', 1]].forEach(function(v) {
+        var bt = document.createElement('button');
+        bt.textContent = v[0];
+        bt.title = 'Line thickness';
+        bt.style.cssText = 'border:none;background:transparent;color:#00d4ff;font-family:inherit;' +
+          'font-weight:700;cursor:pointer;font-size:13px;padding:0 4px;';
+        bt.addEventListener('click', function() {
+          n.spessore = Math.min(24, Math.max(1, (n.spessore || 4) + v[1]));
+          render();
+          salvaStato();
+        });
+        bar.appendChild(bt);
+      });
+    }
   }
   // Coprente o sfocato: due modi di nascondere, si scelgono qui.
   if (n.tipo === 'oscura') {
@@ -1383,6 +1496,7 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     $('scelta').style.display = 'none';
     $('anteprima').style.display = 'none';
+    chiudiPannelloForme();
     if (strumento) { strumento = null; aggiornaBarraStrumenti(); }
     chiudiRitaglio();
     selNota = -1;
@@ -1509,6 +1623,29 @@ async function componi() {
       ctx.fillStyle = n.colore;
       ctx.fillRect(Math.round(n.x), Math.round(n.y), Math.round(n.w), Math.round(n.h));
       ctx.globalAlpha = 1;
+    } else if (n.tipo === 'forma') {
+      // Stesso percorso mostrato a schermo, ridisegnato sul canvas: una sola
+      // definizione, così anteprima ed export non possono divergere.
+      var f = formaDaId(n.forma);
+      if (!n.w || !n.h) return;
+      var p2 = new Path2D(f.d);
+      ctx.save();
+      ctx.translate(Math.round(n.x), Math.round(n.y));
+      ctx.scale(n.w / 100, n.h / 100);
+      if (n.riempito && !f.soloTratto) {
+        ctx.fillStyle = n.colore;
+        ctx.fill(p2, 'evenodd');
+      } else {
+        // La scala è diversa sui due assi: si compensa lo spessore, altrimenti
+        // un contorno su una forma schiacciata verrebbe ovale.
+        var sc = ((Math.abs(n.w) + Math.abs(n.h)) / 200) || 1;
+        ctx.strokeStyle = n.colore;
+        ctx.lineWidth = n.spessore / sc;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke(p2);
+      }
+      ctx.restore();
     } else if (n.tipo === 'linea') {
       ctx.strokeStyle = n.colore;
       ctx.lineWidth = 3;
@@ -1662,6 +1799,70 @@ $('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
 $('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
 $('btnUndo').addEventListener('click', annulla);
 $('btnRedo').addEventListener('click', rifai);
+
+// ---- PANNELLINO DELLE FORME ----
+// Si apre sotto il bottone, si prende una forma, e da lì lo strumento resta
+// armato: se ne disegnano quante se ne vuole senza tornare al pannello.
+function costruisciGrigliaForme() {
+  var g = $('formeGriglia');
+  if (!g || g.childNodes.length) return;
+  FORME.forEach(function(f) {
+    var b = document.createElement('button');
+    b.className = 'forma-cella';
+    b.title = f.nome;
+    b.setAttribute('data-forma', f.id);
+    b.innerHTML = '<svg width="24" height="24" viewBox="0 0 100 100" style="pointer-events:none">' +
+      '<path d="' + f.d + '" fill-rule="evenodd" ' +
+      'fill="' + (f.soloTratto ? 'none' : 'currentColor') + '" ' +
+      'stroke="currentColor" stroke-width="' + (f.soloTratto ? 9 : 0) + '" ' +
+      'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.addEventListener('click', function() {
+      formaScelta = f.id;
+      chiudiPannelloForme();
+      strumento = 'forma';
+      selezionato = -1;
+      selNota = -1;
+      chiudiRitaglio();
+      aggiornaBarraStrumenti();
+      render();
+    });
+    g.appendChild(b);
+  });
+}
+
+function apriPannelloForme() {
+  costruisciGrigliaForme();
+  var g = $('formeGriglia');
+  Array.prototype.forEach.call(g.children, function(c) {
+    c.classList.toggle('scelta', c.getAttribute('data-forma') === formaScelta);
+  });
+  var p = $('formePanel'), b = $('btnForme');
+  p.classList.add('aperto');
+  var r = b.getBoundingClientRect();
+  var w = p.offsetWidth;
+  p.style.left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - w - 8)) + 'px';
+  p.style.top = (r.bottom + 8) + 'px';
+}
+
+function chiudiPannelloForme() {
+  var p = $('formePanel');
+  if (p) p.classList.remove('aperto');
+}
+
+$('btnForme').addEventListener('click', function(e) {
+  e.stopPropagation();
+  var p = $('formePanel');
+  if (p.classList.contains('aperto')) { chiudiPannelloForme(); return; }
+  apriPannelloForme();
+});
+
+// Click fuori: il pannellino si chiude, come qualunque menu a tendina.
+document.addEventListener('mousedown', function(e) {
+  var p = $('formePanel');
+  if (!p || !p.classList.contains('aperto')) return;
+  if (p.contains(e.target) || $('btnForme').contains(e.target)) return;
+  chiudiPannelloForme();
+});
 
 // ---- ZOOM DELL'AREA DI LAVORO ----
 // Il "100%" al centro è anche un bottone: riporta all'adatta-alla-finestra.
