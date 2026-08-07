@@ -1731,6 +1731,30 @@ $('btnAnnulla').addEventListener('click', function() {
 });
 $('btnSalva').addEventListener('click', salva);
 
+// Copia senza salvare: si manda il lavoro in corso su una chat o dentro un
+// documento con Ctrl+V, senza lasciare un file nei Download che poi nessuno
+// cancella. Stessa composizione del Save, solo che finisce negli appunti.
+$('btnCopia').addEventListener('click', async function() {
+  if (!blocchi.length) return;
+  var bt = $('btnCopia');
+  var prima = bt.innerHTML;
+  var canvas = await componi();
+  if (!canvas) return;
+  try {
+    var blob = await new Promise(function(res) { canvas.toBlob(res, 'image/png'); });
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    bt.innerHTML = '✓ Copied — paste with Ctrl+V';
+    bt.classList.add('attivo');
+  } catch (e) {
+    console.warn('Copia negli appunti fallita:', e);
+    bt.innerHTML = '✗ Copy failed';
+  }
+  setTimeout(function() {
+    bt.innerHTML = prima;
+    bt.classList.remove('attivo');
+  }, 1800);
+});
+
 window.addEventListener('resize', function() { render(); });
 
 importaNuoviPezzi();
