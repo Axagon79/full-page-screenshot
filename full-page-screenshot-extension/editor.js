@@ -39,6 +39,10 @@ function stageW() {
 var canvasW = 0;     // dimensione FISSA della tela = dimensione dell'export
 var canvasH = 0;
 var viewK = 1;
+// Zoom dell'area di lavoro. null = "adatta alla finestra" (il comportamento
+// storico); un numero = zoom scelto a mano, anche oltre il 100%.
+var zoomUtente = null;
+var ZOOM_PASSI = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 var pannelloAutoAperto = false;
 
 function $(id) { return document.getElementById(id); }
@@ -396,7 +400,14 @@ function render() {
   }
   // Durante il resize della tela lo zoom resta CONGELATO: così il bordo
   // segue il mouse 1:1 (il refit alla nuova misura avviene al rilascio).
-  viewK = (viewKBloccata != null) ? viewKBloccata : Math.min(1, stageW() / canvasW);
+  viewK = (viewKBloccata != null) ? viewKBloccata
+        : (zoomUtente != null) ? zoomUtente
+        : Math.min(1, stageW() / canvasW);
+  var zv = $('zoomVal');
+  if (zv) zv.textContent = Math.round(viewK * 100) + '%';
+  var z1 = $('zoom100'), zf = $('zoomFit');
+  if (z1) z1.classList.toggle('attivo', zoomUtente === 1);
+  if (zf) zf.classList.toggle('attivo', zoomUtente == null);
 
   var cornice = document.createElement('div');
   cornice.id = 'cornice';
@@ -1645,6 +1656,39 @@ $('btnLinea').addEventListener('click', function() { armaStrumento('linea'); });
 $('btnTesto').addEventListener('click', function() { armaStrumento('testo'); });
 $('btnUndo').addEventListener('click', annulla);
 $('btnRedo').addEventListener('click', rifai);
+
+// ---- ZOOM DELL'AREA DI LAVORO ----
+// Il "100%" al centro è anche un bottone: riporta all'adatta-alla-finestra.
+function zoomVerso(su) {
+  var attuale = (zoomUtente != null) ? zoomUtente : Math.min(1, stageW() / canvasW);
+  var z = null;
+  if (su) {
+    for (var i = 0; i < ZOOM_PASSI.length; i++) {
+      if (ZOOM_PASSI[i] > attuale + 0.001) { z = ZOOM_PASSI[i]; break; }
+    }
+    if (z == null) z = ZOOM_PASSI[ZOOM_PASSI.length - 1];
+  } else {
+    for (var k = ZOOM_PASSI.length - 1; k >= 0; k--) {
+      if (ZOOM_PASSI[k] < attuale - 0.001) { z = ZOOM_PASSI[k]; break; }
+    }
+    if (z == null) z = ZOOM_PASSI[0];
+  }
+  zoomUtente = z;
+  render();
+}
+
+$('zoomPiu').addEventListener('click', function() { zoomVerso(true); });
+$('zoomMeno').addEventListener('click', function() { zoomVerso(false); });
+$('zoom100').addEventListener('click', function() { zoomUtente = 1; render(); });
+$('zoomFit').addEventListener('click', function() { zoomUtente = null; render(); });
+
+// Ctrl + rotellina: lo zoom come in qualunque programma di disegno.
+document.addEventListener('wheel', function(e) {
+  if (!e.ctrlKey && !e.metaKey) return;
+  if (!blocchi.length) return;
+  e.preventDefault();
+  zoomVerso(e.deltaY < 0);
+}, { passive: false });
 // Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
 $('btnAnteprima').addEventListener('click', async function() {
   if (!blocchi.length) return;

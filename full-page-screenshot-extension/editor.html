@@ -111,11 +111,54 @@
       margin: 0 4px;
     }
 
+    /* Zoom dell'area di lavoro: senza, con una tela grande si lavora su
+       un'anteprima rimpicciolita e nessuno strumento si piazza preciso. */
+    .zoom {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 2px;
+      margin-left: 10px;
+    }
+    .zoom button {
+      border: none;
+      background: transparent;
+      color: #8b8ba3;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 9px;
+      border-radius: 6px;
+    }
+    .zoom button:hover { background: rgba(0,212,255,0.12); color: #00d4ff; }
+    #zoomVal {
+      min-width: 60px;
+      font-size: 12px;
+      color: #00d4ff;
+      padding: 5px 2px;
+      cursor: default;
+    }
+    #zoomVal:hover { background: transparent; color: #00d4ff; }
+    .zoom-sep {
+      width: 1px;
+      height: 18px;
+      background: rgba(255,255,255,0.14);
+      margin: 0 3px;
+    }
+    /* Il bottone dello zoom attivo si accende: si vede a colpo d'occhio se
+       si sta guardando a grandezza vera o adattato alla finestra. */
+    .zoom button.attivo { background: rgba(0,212,255,0.16); color: #00d4ff; }
+
     /* Palco centrale */
     #palco {
       max-width: 1540px;
       margin: 26px auto 80px;
       padding: 0 20px;
+      overflow: auto;   /* zoom oltre l'adatta-alla-finestra: si scorre */
     }
     #vuoto {
       text-align: center;
@@ -400,6 +443,14 @@
       Multi Snip
     </div>
     <span id="contatore">0 pieces</span>
+    <div class="zoom">
+      <button id="zoomMeno" title="Zoom out (Ctrl + mouse wheel)">&minus;</button>
+      <button id="zoomVal" title="Current zoom">100%</button>
+      <button id="zoomPiu" title="Zoom in (Ctrl + mouse wheel)">+</button>
+      <span class="zoom-sep"></span>
+      <button id="zoom100" title="Actual size — 100%, one canvas pixel = one screen pixel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button id="zoomFit" title="Fit to the work area"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+    </div>
     <div class="spacer"></div>
     <button class="btn" id="btnAggiungi">+ Add piece</button>
     <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
