@@ -45,14 +45,11 @@
            casuali. */
         border-left: 1px solid rgba(255,255,255,0.09);
         padding-left: 48px;
-        /* La colonna si allunga fino in fondo e l'invito a recensire viene
-           spinto in basso: le due colonne chiudono insieme invece di lasciare
-           un vuoto sotto la guida. */
-        align-self: stretch;
-        display: flex;
-        flex-direction: column;
       }
-      .col-right .footer { margin-top: auto; }
+      /* Niente margin-top:auto qui: spingere l'invito in fondo alla colonna
+         apre un vuoto in mezzo quando le novità non ci sono. Meglio una
+         colonna che finisce prima di un riquadro isolato con un buco sopra. */
+      .col-right .footer { margin-top: 16px; }
       /* Le voci di "How it works" a due per riga invece che impilate: c'e'
          spazio orizzontale, meglio usarlo che allungare la card in verticale.
          L'ultima voce (numero dispari) resta da sola sull'ultima riga. */
@@ -544,6 +541,14 @@
             After every capture
           </div>
           <div class="a">The image is saved to a "screenshots" folder inside your Downloads, and — if "Copy to clipboard" is on above — also copied, so you can just press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste it anywhere.</div>
+        </div>
+
+        <div class="help-item">
+          <div class="q">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5 4 4M3 21l1.2-4.4L16 4.8a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L7.4 19.8Z"/></svg>
+            The Multi Snip editor
+          </div>
+          <div class="a">When you close a Multi Snip session an editor opens: arrange the pieces, crop them, then redact (solid or blurred), highlight, add arrows and shapes, numbered steps, a zoom callout, and a background frame. Undo with <kbd>Ctrl</kbd>+<kbd>Z</kbd>.</div>
         </div>
 
         <div class="help-item">
