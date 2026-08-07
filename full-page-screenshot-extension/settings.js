@@ -15,7 +15,9 @@ var CHANGELOG = {
 };
 
 chrome.storage.local.get('captureMode', function(data) {
-  setActive(data.captureMode || 'full');
+  var m = data.captureMode || 'full';
+  setActive(m);
+  aggiornaQuickPanel(m);
 });
 
 // Versione nell'intestazione: presa dal manifest, così non c'e' un numero
@@ -54,6 +56,7 @@ document.querySelectorAll('.option[data-mode]').forEach(function(opt) {
     var mode = this.getAttribute('data-mode');
     chrome.storage.local.set({ captureMode: mode });
     setActive(mode);
+    aggiornaQuickPanel(mode);
     // Multi Snip: chiede UNA volta per sempre l'accesso ai siti, così il
     // pannellino di raccolta segue l'utente quando cambia scheda. Se già
     // concesso Chrome non mostra nulla; se rifiutato tutto funziona lo
@@ -92,11 +95,11 @@ function setLenteActive(enabled) {
 // Interruttore "Quick panel": il click sull'icona apre il pannello delle
 // modalità (default) oppure parte subito con la modalità salvata, come una
 // volta. Il widget di raccolta Multi Snip non c'entra: resta sempre uguale.
-chrome.storage.local.get('mostraPannello', function(data) {
-  var enabled = (data.mostraPannello === undefined) ? true : data.mostraPannello;
-  setPannelloActive(enabled);
-});
+// Lo stato iniziale lo decide aggiornaQuickPanel (che tiene conto anche
+// della modalità scelta): qui non serve più leggerlo a parte.
 document.getElementById('togglePannello').addEventListener('click', function() {
+  // Con Multi Snip l'interruttore è neutralizzato: il click non fa nulla.
+  if (document.getElementById('rigaPannello').classList.contains('bloccata')) return;
   var nowActive = !this.classList.contains('on');
   chrome.storage.local.set({ mostraPannello: nowActive });
   setPannelloActive(nowActive);
@@ -104,6 +107,26 @@ document.getElementById('togglePannello').addEventListener('click', function() {
 function setPannelloActive(enabled) {
   var el = document.getElementById('togglePannello');
   if (enabled) { el.classList.add('on'); } else { el.classList.remove('on'); }
+}
+
+// Multi Snip si porta già il suo pannellino SULLA pagina: tenere acceso
+// anche il quick panel significherebbe un click in più a ogni cattura, per
+// arrivare comunque allo stesso posto. Quando Multi Snip è la modalità
+// scelta l'interruttore si spegne e si blocca; scegliendo un'altra modalità
+// torna com'era — la preferenza dell'utente NON viene sovrascritta, resta
+// salvata e si riprende da lì.
+function aggiornaQuickPanel(mode) {
+  var riga = document.getElementById('rigaPannello');
+  if (!riga) return;
+  var bloccato = (mode === 'multi');
+  riga.classList.toggle('bloccata', bloccato);
+  if (bloccato) {
+    setPannelloActive(false);
+    return;
+  }
+  chrome.storage.local.get('mostraPannello', function(d) {
+    setPannelloActive((d.mostraPannello === undefined) ? true : d.mostraPannello);
+  });
 }
 
 document.getElementById('btnSave').addEventListener('click', function() {
