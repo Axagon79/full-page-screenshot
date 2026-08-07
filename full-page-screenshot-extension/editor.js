@@ -1600,6 +1600,12 @@ async function salva() {
   if (fmt === 'jpeg') {
     url = canvas.toDataURL('image/jpeg', 0.92);
     ext = 'jpg';
+  } else if (fmt === 'webp') {
+    // WEBP: stessa resa del PNG a una frazione del peso. Se il browser non
+    // lo producesse, toDataURL ricade da solo sul PNG: in quel caso si
+    // salva col nome giusto invece di spacciare un PNG per webp.
+    url = canvas.toDataURL('image/webp', 0.92);
+    ext = (url.indexOf('data:image/webp') === 0) ? 'webp' : 'png';
   } else if (fmt === 'pdf') {
     url = URL.createObjectURL(creaPdf(canvas.toDataURL('image/jpeg', 0.92), canvas.width, canvas.height));
     ext = 'pdf';
