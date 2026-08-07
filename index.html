@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Full Page Screenshot — Scroll, Area &amp; Full Capture</title>
+<meta name="description" content="Full page screenshots, scroll selection & multi-snip collection for Chrome. Every capture auto-copied to your clipboard. No account, no tracking — 100% on-device.">
+<link rel="icon" type="image/png" href="full-page-screenshot-extension/icon_128.png">
+<meta property="og:title" content="Full Page Screenshot — Scroll, Area &amp; Full Capture">
+<meta property="og:description" content="Capture the whole page, exactly the area you need, or snips from many tabs. Auto-copied to your clipboard. No account, no tracking — 100% on-device.">
+<meta property="og:image" content="https://axagon79.github.io/full-page-screenshot/full-page-screenshot-extension/shot_1.png">
+<meta property="og:url" content="https://axagon79.github.io/full-page-screenshot/">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    --bg: #0a0f1c;
+    --bg2: #0e1526;
+    --card: #111a2e;
+    --card-edge: #1c2942;
+    --text: #e6ebf5;
+    --muted: #8b95a9;
+    --cyan: #00d4ff;
+    --cyan-dark: #00a8cc;
+    --green: #34d399;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- header ---- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 15, 28, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--card-edge);
+  }
+  .nav { display: flex; align-items: center; gap: 14px; padding: 14px 0; }
+  .nav img { width: 34px; height: 34px; border-radius: 8px; }
+  .nav .brand { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+  .nav .links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+  .nav .links a { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .nav .links a:hover { color: var(--text); }
+  .btn {
+    display: inline-block; background: var(--cyan); color: #04121a;
+    font-weight: 700; text-decoration: none; border-radius: 10px;
+    padding: 10px 20px; font-size: 15px; transition: transform .12s, box-shadow .12s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0, 212, 255, 0.35); }
+  .btn.small { padding: 8px 16px; font-size: 13px; }
+  .btn.ghost {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--card-edge);
+  }
+  .btn.ghost:hover { border-color: var(--cyan); box-shadow: none; color: var(--cyan); }
+
+  /* ---- hero ---- */
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(32px, 5.5vw, 56px); line-height: 1.12;
+    letter-spacing: -0.02em; font-weight: 800; max-width: 800px; margin: 0 auto;
+  }
+  .hero h1 em { font-style: normal; color: var(--cyan); }
+  .hero p.sub {
+    color: var(--muted); font-size: clamp(16px, 2.2vw, 19px);
+    max-width: 640px; margin: 20px auto 0;
+  }
+  .hero .cta { margin-top: 32px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .trust { margin-top: 26px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+  .trust span::before { content: "●"; font-size: 9px; vertical-align: 2px; margin-right: 7px; color: var(--cyan); }
+  .trust span.green::before { color: var(--green); }
+  .hero .shot {
+    margin: 48px auto 0; max-width: 880px;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--card-edge);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  }
+  .hero .shot img { width: 100%; display: block; }
+
+  /* ---- sections ---- */
+  section { padding: 64px 0; }
+  section.alt { background: var(--bg2); }
+  h2 { font-size: clamp(24px, 3.5vw, 34px); letter-spacing: -0.015em; text-align: center; }
+  .kicker {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 12px;
+    font-weight: 700; color: var(--cyan); text-align: center; margin-bottom: 10px;
+  }
+  .lead { color: var(--muted); text-align: center; max-width: 620px; margin: 12px auto 0; }
+
+  /* ---- mode cards ---- */
+  .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin-top: 40px; }
+  .mode {
+    background: var(--card); border: 1px solid var(--card-edge);
+    border-radius: 14px; padding: 26px 22px; position: relative;
+  }
+  .mode:hover { border-color: #2a3d63; }
+  .mode .icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: rgba(0, 212, 255, 0.1); color: var(--cyan);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  }
+  .mode h3 { font-size: 17px; margin-bottom: 8px; }
+  .mode p { color: var(--muted); font-size: 14px; }
+  .badge {
+    position: absolute; top: 18px; right: 18px;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+    padding: 4px 9px; border-radius: 20px;
+    background: rgba(0, 212, 255, 0.12); color: var(--cyan);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+  }
+  .badge.new { background: rgba(52, 211, 153, 0.12); color: var(--green); border-color: rgba(52, 211, 153, 0.4); }
+
+  /* ---- feature list ---- */
+  .feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px 28px; margin-top: 36px; max-width: 860px; margin-left: auto; margin-right: auto; }
+  .feat { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; }
+  .feat .tick { color: var(--cyan); font-weight: 800; flex-shrink: 0; }
+  .feat b { font-weight: 600; }
+  .feat span { color: var(--muted); }
+
+  /* ---- gallery ---- */
+  .gallery { display: flex; gap: 16px; overflow-x: auto; padding: 36px 4px 12px; scroll-snap-type: x mandatory; }
+  .gallery img {
+    height: 260px; border-radius: 12px; border: 1px solid var(--card-edge);
+    scroll-snap-align: start; flex-shrink: 0;
+  }
+
+  /* ---- honesty ---- */
+  .honest { max-width: 680px; margin: 32px auto 0; }
+  .honest .item { display: flex; gap: 12px; color: var(--muted); font-size: 15px; margin-bottom: 14px; }
+  .honest .x { color: #f87171; font-weight: 800; flex-shrink: 0; }
+
+  /* ---- privacy ---- */
+  .privacy-box {
+    max-width: 680px; margin: 36px auto 0; text-align: center;
+    background: var(--card); border: 1px solid rgba(52, 211, 153, 0.25);
+    border-radius: 16px; padding: 36px 30px;
+  }
+  .privacy-box .shield { font-size: 34px; }
+  .privacy-box p { color: var(--muted); margin-top: 12px; }
+  .privacy-box a { color: var(--green); }
+
+  /* ---- final cta ---- */
+  .final { text-align: center; }
+  .final .btn { margin-top: 28px; font-size: 17px; padding: 14px 32px; }
+  .final .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
+
+  /* ---- footer ---- */
+  footer { border-top: 1px solid var(--card-edge); padding: 30px 0 40px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); }
+  .foot a { color: var(--muted); text-decoration: none; }
+  .foot a:hover { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="full-page-screenshot-extension/icon_128.png" alt="Full Page Screenshot icon">
+    <span class="brand">Full Page Screenshot</span>
+    <nav class="links">
+      <a href="#modes">Capture modes</a>
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
+      <a class="btn small" href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj" target="_blank" rel="noopener">Add to Chrome</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>Capture the whole page.<br>Or <em>exactly</em> the part you need.</h1>
+    <p class="sub">One-click full page screenshots, scroll selection taller than your screen, and multi-snip collection across tabs — every capture copied straight to your clipboard, ready to paste with Ctrl+V.</p>
+    <div class="cta">
+      <a class="btn" href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj" target="_blank" rel="noopener">Add to Chrome — it's free</a>
+      <a class="btn ghost" href="https://github.com/Axagon79/full-page-screenshot" target="_blank" rel="noopener">View on GitHub</a>
+    </div>
+    <div class="trust">
+      <span>No account</span>
+      <span>No trackers</span>
+      <span class="green">100% on-device</span>
+    </div>
+    <div class="shot">
+      <img src="full-page-screenshot-extension/shot_1.png" alt="Scroll Selection — drag a box and the page scrolls by itself">
+    </div>
+  </div>
+
+  <section id="modes">
+    <div class="wrap">
+      <div class="kicker">Four ways to capture</div>
+      <h2>Pick a mode once — then it's one click</h2>
+      <p class="lead">Set your default with a right-click on the icon. Every capture after that is a single click.</p>
+      <div class="modes">
+        <div class="mode">
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 6v8m0 0l-3-3m3 3l3-3"/></svg></div>
+          <h3>Full Page</h3>
+          <p>The page scrolls itself and every part is stitched into one image, top to bottom. Works on regular sites AND web apps that scroll inside an internal panel — webmail, dashboards, chat apps.</p>
+        </div>
+        <div class="mode">
+          <span class="badge">Signature move</span>
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2m8-16h2a2 2 0 0 1 2 2v2m-4 12h2a2 2 0 0 0 2-2v-2"/></svg></div>
+          <h3>Select Area + Scroll Selection</h3>
+          <p>Drag a rectangle around exactly what you need. Reach the edge and the page scrolls with you — push to the very edge for turbo speed. Select areas taller than the screen: almost no other extension does it.</p>
+        </div>
+        <div class="mode">
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3>Visible Only</h3>
+          <p>Instant screenshot of exactly what's on screen right now. No scrolling, no waiting — click, done.</p>
+        </div>
+        <div class="mode">
+          <span class="badge new">New in 9.9</span>
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+          <h3>Multi Snip</h3>
+          <p>Snip several areas — from the same page or across different tabs, the collector follows you. Then save everything as one stitched image or as separate files. No other extension combines multi-snip with multi-tab.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="features">
+    <div class="wrap">
+      <div class="kicker">Built for daily use</div>
+      <h2>Small, fast, and it does the job well</h2>
+      <div class="feats">
+        <div class="feat"><span class="tick">✔</span><div><b>Copy to clipboard</b> <span>— every screenshot is instantly copied: paste anywhere with Ctrl+V (toggle in settings).</span></div></div>
+        <div class="feat"><span class="tick">✔</span><div><b>Tidy saving</b> <span>— files go to a "screenshots" folder inside your Downloads. No cloud, no account.</span></div></div>
+        <div class="feat"><span class="tick">✔</span><div><b>Smart scroll detection</b> <span>— finds the real scrollable container, not just the main page.</span></div></div>
+        <div class="feat"><span class="tick">✔</span><div><b>No repeated headers</b> <span>— sticky headers and footers are hidden so they don't show up in every slice.</span></div></div>
+        <div class="feat"><span class="tick">✔</span><div><b>Live progress</b> <span>— a water-fill animation shows the capture progress in real time.</span></div></div>
+        <div class="feat"><span class="tick">✔</span><div><b>What's new inside</b> <span>— a changelog in the settings tells you what each update brings.</span></div></div>
+      </div>
+      <div class="gallery">
+        <img src="full-page-screenshot-extension/shot_2.png" alt="Full Page — capture the entire page top to bottom in one click">
+        <img src="full-page-screenshot-extension/shot_1.png" alt="Scroll Selection — capture an area taller than the screen">
+        <img src="full-page-screenshot-extension/shot_4.png" alt="Copy to Clipboard — every capture instantly in your clipboard">
+        <img src="full-page-screenshot-extension/shot_3.png" alt="Visible Area — capture everything on screen, no scrolling">
+        <img src="full-page-screenshot-extension/shot_5.png" alt="Capture Mode settings — pick your default mode">
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="wrap">
+      <div class="kicker">Privacy first</div>
+      <h2>Everything stays on your device</h2>
+      <div class="privacy-box">
+        <div class="shield">🛡️</div>
+        <p><b style="color: var(--text)">Zero data collection, zero tracking, zero analytics.</b><br>
+        Your screenshots go to your Downloads folder and your clipboard — nowhere else. No account, no sign-up, no cloud upload. Ever.</p>
+        <p><a href="privacy-policy.html">Read the full privacy policy →</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="kicker">Honesty matters</div>
+      <h2>What it doesn't do (yet)</h2>
+      <div class="honest">
+        <div class="item"><span class="x">✘</span><span>PDF files opened in the browser: Chrome blocks extensions there, so full-page capture of PDFs isn't possible — no extension can. Visible capture works.</span></div>
+        <div class="item"><span class="x">✘</span><span>Browser internal pages (chrome://, the Web Store): Chrome blocks capture there by design.</span></div>
+        <div class="item"><span class="x">✘</span><span>No image editor built in (annotations, arrows, blur) — it's on the roadmap.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <h2>If it helps you, it's doing its job</h2>
+      <p class="lead">If a page captures wrong, report it and it gets fixed — recent updates added support for webmail, web apps with internal scrolling, and sites where the body handles the scroll.</p>
+      <a class="btn" href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj" target="_blank" rel="noopener">Add to Chrome — it's free</a>
+      <div class="note">If I helped you, <a href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj/reviews" target="_blank" rel="noopener" style="color: var(--cyan)">leave a star or a comment</a> — it's how other people find this extension.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>© 2026 Axagon79 · Full Page Screenshot v9.9</span>
+    <a href="https://chromewebstore.google.com/detail/napeefngooaeinknhnngbnokkadmmomj" target="_blank" rel="noopener">Chrome Web Store</a>
+    <a href="privacy-policy.html">Privacy Policy</a>
+    <a href="https://github.com/Axagon79/full-page-screenshot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>
