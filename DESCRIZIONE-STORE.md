@@ -26,7 +26,7 @@ geometria ("areas taller than the screen" non diceva niente a chi legge),
 e c'è la firma dell'autore in fondo.
 
 ```
-Full Page Screenshot — capture entire web pages, precise areas, or pieces from several tabs, with a single click. Every capture is also copied straight to your clipboard, ready to paste with Ctrl+V.
+Full Page Screenshot — capture entire web pages, precise areas, or pieces from several tabs, then annotate them in a built-in editor. Every capture is also copied straight to your clipboard, ready to paste with Ctrl+V.
 
 FOUR CAPTURE MODES
 
@@ -34,6 +34,19 @@ FOUR CAPTURE MODES
 ✔ Select Area — drag a rectangle around what you need. Doesn't all fit on the screen? Just keep dragging: the page scrolls by itself and your selection keeps growing, so you can grab a long article or a whole conversation in one clean shot. That's scroll selection — almost no other extension does it.
 ✔ Visible Only — captures exactly what you see on screen, instantly.
 ✔ Multi Snip (NEW) — grab several pieces one after another, even from different tabs: the collector follows you as you switch. Then save everything as one stitched image or as separate files. Perfect for research, comparisons, receipts and anything scattered across pages.
+
+BUILT-IN EDITOR (NEW)
+
+Close a Multi Snip session and an editor opens. Arrange and crop the pieces, then:
+
+- Redact sensitive data — solid fill or blur. The cover stays locked to the piece it hides, so moving things around never uncovers what you hid.
+- Highlight, draw lines and arrows, add text
+- 37 shapes: arrows, stars, hearts, shields, speech and thought bubbles
+- Numbered steps that count themselves — delete one and the rest renumber
+- Zoom callouts: drag over a detail and it appears magnified alongside, joined by leader lines
+- A background frame: gradient backdrop, shadow, rounded corners, forced aspect ratio (1:1, 16:9, 4:3) and an optional watermark
+- Undo/redo, workspace zoom, and a Copy button that puts your work on the clipboard without saving a file
+- Export as PNG, JPG, WEBP or PDF
 
 FEATURES
 

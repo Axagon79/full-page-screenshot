@@ -3,6 +3,8 @@
 var CHANGELOG = {
   '9.9': [
     'New: Multi Snip — grab several pieces one after another, even from different tabs, then save them as one stitched image or as separate files.',
+    'New: the Multi Snip editor — arrange and crop the pieces, then redact (solid or blurred), highlight, and add arrows, 37 shapes with speech bubbles, numbered steps, zoom callouts and a background frame with gradients and shadow.',
+    'New: in the editor — undo/redo, workspace zoom, a Copy button to send your work without saving a file, and WEBP export.',
     'New: Pixel magnifier — a zoom lens with a pixel grid while you select an area, so you can land on the exact edge.',
     'New: Quick panel — clicking the icon opens the mode panel; turn it off in settings to capture instantly with your saved mode.',
     'Fixed: webmail now captures properly — Gmail, Yahoo and Libero, where the message list scrolls inside its own panel.',
