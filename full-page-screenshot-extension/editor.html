@@ -111,6 +111,78 @@
       margin: 0 4px;
     }
 
+    /* Studio dello sfondo: la cornice che trasforma uno screenshot in
+       un'immagine da presentazione. Si vede dal vivo, non solo al salvataggio. */
+    #sfondoPanel {
+      display: none;
+      position: fixed;
+      z-index: 1200;
+      width: 268px;
+      background: #16162a;
+      border: 1px solid rgba(0,212,255,0.4);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.6);
+      max-height: 72vh;
+      overflow-y: auto;
+    }
+    #sfondoPanel.aperto { display: block; }
+    .sf-riga {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #cfd6e4;
+      margin: 9px 0;
+    }
+    .sf-titolo { margin: 0 0 10px; font-size: 13px; }
+    .sf-riga input[type=text], .sf-riga select {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #eee;
+      border-radius: 6px;
+      padding: 5px 7px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    #sfCorpo { opacity: 0.35; pointer-events: none; }
+    #sfCorpo.acceso { opacity: 1; pointer-events: auto; }
+    .sf-modi { display: flex; gap: 6px; margin-bottom: 9px; }
+    .sf-modo {
+      flex: 1;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: transparent;
+      color: #8b8ba3;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px;
+      border-radius: 7px;
+      cursor: pointer;
+    }
+    .sf-modo.attivo { background: #00d4ff; color: #0d1220; border-color: #00d4ff; }
+    .sf-griglia { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    .sf-tinta {
+      height: 32px;
+      border-radius: 7px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+    }
+    .sf-tinta.scelta { border-color: #00d4ff; box-shadow: 0 0 0 2px rgba(0,212,255,0.3); }
+    .sf-slider {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 4px 8px;
+      font-size: 11.5px;
+      color: #8b8ba3;
+      margin: 10px 0;
+    }
+    .sf-slider span { color: #00d4ff; font-weight: 700; }
+    .sf-slider input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #00d4ff; }
+
     /* Pannellino delle forme: si apre sotto il bottone, si prende una forma
        e lo strumento resta armato per disegnarne quante se ne vuole. */
     #formePanel {
@@ -474,6 +546,30 @@
 </head>
 <body>
   <div id="formePanel"><div id="formeGriglia"></div></div>
+  <div id="sfondoPanel">
+    <label class="sf-riga sf-titolo"><input type="checkbox" id="sfAttivo"><b>Background &amp; frame</b></label>
+    <div id="sfCorpo">
+      <div class="sf-modi">
+        <button class="sf-modo attivo" data-tinta="sfumatura">Gradient</button>
+        <button class="sf-modo" data-tinta="solido">Solid</button>
+      </div>
+      <div class="sf-griglia" id="sfGriglia"></div>
+      <label class="sf-slider">Padding <span id="sfMargineV">60</span><input type="range" id="sfMargine" min="0" max="260" value="60"></label>
+      <label class="sf-slider">Shadow <span id="sfOmbraV">28</span><input type="range" id="sfOmbra" min="0" max="90" value="28"></label>
+      <label class="sf-slider">Outer radius <span id="sfREsternoV">18</span><input type="range" id="sfREsterno" min="0" max="80" value="18"></label>
+      <label class="sf-slider">Inner radius <span id="sfRInternoV">10</span><input type="range" id="sfRInterno" min="0" max="60" value="10"></label>
+      <label class="sf-riga">Aspect
+        <select id="sfProporzioni">
+          <option value="originale">Original</option>
+          <option value="1">1:1</option>
+          <option value="1.7778">16:9</option>
+          <option value="1.3333">4:3</option>
+          <option value="0.8">4:5</option>
+        </select>
+      </label>
+      <label class="sf-riga">Watermark <input type="text" id="sfFiligrana" placeholder="optional text" maxlength="60"></label>
+    </div>
+  </div>
   <div class="topbar">
     <div class="brand">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><path d="M9 21h10a2 2 0 0 0 2-2V9"/></svg>
@@ -491,6 +587,7 @@
     <div class="spacer"></div>
     <button class="btn" id="btnAggiungi">+ Add piece</button>
     <button class="btn spento" id="btnFit" title="Shrink/grow the canvas to fit the pieces">Fit canvas</button>
+    <button class="btn spento" id="btnSfondo" title="Background &amp; frame — gradient backdrop, shadow, rounded corners, watermark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><rect x="7" y="9" width="10" height="6" rx="1.5"/></svg> Backdrop</button>
     <div class="sep"></div>
     <button class="btn icona spento" id="btnUndo" title="Undo (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></button>
     <button class="btn icona spento" id="btnRedo" title="Redo (Ctrl+Shift+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/></svg></button>

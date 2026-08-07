@@ -178,7 +178,8 @@ function istantanea() {
     }),
     note: note,
     cw: canvasW,
-    ch: canvasH
+    ch: canvasH,
+    sf: sfondo
   });
 }
 
@@ -199,6 +200,7 @@ function ripristina(s) {
   note = d.note || [];
   canvasW = d.cw;
   canvasH = d.ch;
+  if (d.sf) { sfondo = d.sf; aggiornaPannelloSfondo(); }
   selezionato = -1;
   selNota = -1;
   ritaglioIdx = -1;
@@ -552,6 +554,21 @@ function render() {
     cornice.style.marginBottom = '0';
   }
 
+  // Sfondo acceso: la cornice si vede DAL VIVO attorno all'area di lavoro,
+  // non solo al salvataggio, così si regola guardando invece che indovinando.
+  if (sfondo.attivo) {
+    var telaio = document.createElement('div');
+    telaio.style.cssText = 'display:inline-block;box-sizing:border-box;' +
+      'padding:' + Math.round(sfondo.margine * viewK) + 'px;' +
+      'border-radius:' + Math.round(sfondo.raggioEsterno * viewK) + 'px;' +
+      'background:' + sfondoCss() + ';';
+    telaio.appendChild(cornice);
+    var centro = document.createElement('div');
+    centro.style.cssText = 'text-align:center;';
+    centro.appendChild(telaio);
+    palco.appendChild(centro);
+    return;
+  }
   palco.appendChild(cornice);
 }
 
@@ -1057,6 +1074,126 @@ var FORME = [
   { id: 'fumettoPensiero', nome: 'Thought bubble', d: 'M50 8C27 8 10 21 10 37C10 51 22 61 39 63L33 76L52 63C75 61 90 51 90 37C90 21 73 8 50 8Z M24 78A8 8 0 1 0 24 94A8 8 0 1 0 24 78Z M10 88A5 5 0 1 0 10 98A5 5 0 1 0 10 88Z' },
   { id: 'fumettoUrlo', nome: 'Burst bubble', d: 'M50 3L60 21L80 13L76 33L96 39L80 51L94 67L74 69L76 89L58 79L50 97L42 79L24 89L26 69L6 67L20 51L4 39L24 33L20 13L40 21Z' }
 ];
+
+// ---- SFONDO E CORNICE ----
+// La cornice che trasforma uno screenshot in un'immagine da presentazione:
+// sfondo (tinta o sfumatura), margine, ombra, angoli arrotondati, formato
+// forzato e filigrana. Si applica IN CODA alla composizione, quindi non
+// tocca nulla di come sono montati i pezzi.
+var SFONDI = [
+  { id: 'menta', da: '#7ee8b2', a: '#22d3ee' },
+  { id: 'oceano', da: '#38bdf8', a: '#2563eb' },
+  { id: 'lilla', da: '#c4b5fd', a: '#7c3aed' },
+  { id: 'rosa', da: '#fda4af', a: '#e11d48' },
+  { id: 'tramonto', da: '#fbbf24', a: '#f43f5e' },
+  { id: 'lime', da: '#bef264', a: '#16a34a' },
+  { id: 'corallo', da: '#fb923c', a: '#db2777' },
+  { id: 'ghiaccio', da: '#e0f2fe', a: '#93c5fd' },
+  { id: 'crema', da: '#fef3c7', a: '#fcd34d' },
+  { id: 'ardesia', da: '#64748b', a: '#0f172a' },
+  { id: 'notte', da: '#334155', a: '#020617' },
+  { id: 'carta', da: '#ffffff', a: '#d1d5db' }
+];
+
+var sfondo = {
+  attivo: false,
+  tinta: 'sfumatura',      // 'sfumatura' | 'solido'
+  preset: 'menta',
+  margine: 60,
+  ombra: 28,
+  raggioEsterno: 18,
+  raggioInterno: 10,
+  proporzioni: 'originale',
+  filigrana: ''
+};
+
+function sfondoPreset() {
+  for (var i = 0; i < SFONDI.length; i++) if (SFONDI[i].id === sfondo.preset) return SFONDI[i];
+  return SFONDI[0];
+}
+
+function sfondoCss(p, tinta) {
+  p = p || sfondoPreset();
+  tinta = tinta || sfondo.tinta;
+  return (tinta === 'solido') ? p.da : ('linear-gradient(135deg,' + p.da + ',' + p.a + ')');
+}
+
+// Rettangolo con gli angoli arrotondati: serve sia al riquadro esterno sia
+// all'immagine dentro.
+function percorsoArrotondato(c, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.arcTo(x + w, y, x + w, y + r, r);
+  c.lineTo(x + w, y + h - r);
+  c.arcTo(x + w, y + h, x + w - r, y + h, r);
+  c.lineTo(x + r, y + h);
+  c.arcTo(x, y + h, x, y + h - r, r);
+  c.lineTo(x, y + r);
+  c.arcTo(x, y, x + r, y, r);
+  c.closePath();
+}
+
+// Passo finale dell'export: prende la composizione già pronta e la posa
+// sullo sfondo. Se non è acceso, restituisce l'originale intatto.
+function applicaSfondo(canvas) {
+  if (!sfondo.attivo || !canvas) return canvas;
+  var m = Math.round(sfondo.margine);
+  var W = canvas.width + m * 2, H = canvas.height + m * 2;
+  if (sfondo.proporzioni !== 'originale') {
+    var r = parseFloat(sfondo.proporzioni);
+    if (r > 0) {
+      if (W / H < r) W = Math.round(H * r);
+      else H = Math.round(W / r);
+    }
+  }
+  // Stessi limiti del canvas di Chrome: meglio niente cornice che un export
+  // che fallisce in silenzio.
+  if (W > 32000 || H > 32000 || W * H > 240000000) return canvas;
+  var out = document.createElement('canvas');
+  out.width = W;
+  out.height = H;
+  var c = out.getContext('2d');
+  var p = sfondoPreset();
+  if (sfondo.tinta === 'solido') {
+    c.fillStyle = p.da;
+  } else {
+    var g = c.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, p.da);
+    g.addColorStop(1, p.a);
+    c.fillStyle = g;
+  }
+  percorsoArrotondato(c, 0, 0, W, H, sfondo.raggioEsterno);
+  c.fill();
+  var ix = Math.round((W - canvas.width) / 2), iy = Math.round((H - canvas.height) / 2);
+  if (sfondo.ombra > 0) {
+    c.save();
+    c.shadowColor = 'rgba(0,0,0,0.45)';
+    c.shadowBlur = sfondo.ombra;
+    c.shadowOffsetY = Math.round(sfondo.ombra * 0.35);
+    percorsoArrotondato(c, ix, iy, canvas.width, canvas.height, sfondo.raggioInterno);
+    c.fillStyle = '#ffffff';
+    c.fill();
+    c.restore();
+  }
+  c.save();
+  percorsoArrotondato(c, ix, iy, canvas.width, canvas.height, sfondo.raggioInterno);
+  c.clip();
+  c.drawImage(canvas, ix, iy);
+  c.restore();
+  if (sfondo.filigrana) {
+    var fs = Math.max(12, Math.round(W * 0.013));
+    c.font = '600 ' + fs + "px 'Segoe UI', sans-serif";
+    c.textAlign = 'center';
+    c.textBaseline = 'bottom';
+    c.fillStyle = 'rgba(0,0,0,0.28)';
+    c.fillText(sfondo.filigrana, W / 2 + 1, H - Math.max(8, m * 0.28) + 1);
+    c.fillStyle = 'rgba(255,255,255,0.85)';
+    c.fillText(sfondo.filigrana, W / 2, H - Math.max(8, m * 0.28));
+  }
+  return out;
+}
 
 function formaDaId(id) {
   for (var i = 0; i < FORME.length; i++) if (FORME[i].id === id) return FORME[i];
@@ -1892,7 +2029,7 @@ async function componi() {
       });
     }
   });
-  return canvas;
+  return applicaSfondo(canvas);
 }
 
 // A capo del testo: rispetta i newline manuali e spezza le righe troppo
@@ -2093,6 +2230,103 @@ document.addEventListener('mousedown', function(e) {
   if (p.contains(e.target) || $('btnForme').contains(e.target)) return;
   chiudiPannelloForme();
 });
+
+// ---- PANNELLO DELLO SFONDO ----
+function costruisciGrigliaSfondi() {
+  var g = $('sfGriglia');
+  if (!g || g.childNodes.length) return;
+  SFONDI.forEach(function(p) {
+    var b = document.createElement('button');
+    b.className = 'sf-tinta';
+    b.title = p.id;
+    b.setAttribute('data-sfondo', p.id);
+    b.addEventListener('click', function() {
+      sfondo.preset = p.id;
+      aggiornaPannelloSfondo();
+      render();
+      salvaStato();
+    });
+    g.appendChild(b);
+  });
+}
+
+function aggiornaPannelloSfondo() {
+  if (!$('sfAttivo')) return;
+  costruisciGrigliaSfondi();
+  $('sfAttivo').checked = sfondo.attivo;
+  $('sfCorpo').classList.toggle('acceso', sfondo.attivo);
+  $('btnSfondo').classList.toggle('attivo', sfondo.attivo);
+  Array.prototype.forEach.call($('sfGriglia').children, function(c) {
+    var id = c.getAttribute('data-sfondo'), p = null;
+    for (var i = 0; i < SFONDI.length; i++) if (SFONDI[i].id === id) p = SFONDI[i];
+    c.style.background = sfondoCss(p, sfondo.tinta);
+    c.classList.toggle('scelta', id === sfondo.preset);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.sf-modo'), function(b) {
+    b.classList.toggle('attivo', b.getAttribute('data-tinta') === sfondo.tinta);
+  });
+  [['sfMargine', 'margine'], ['sfOmbra', 'ombra'],
+   ['sfREsterno', 'raggioEsterno'], ['sfRInterno', 'raggioInterno']].forEach(function(v) {
+    $(v[0]).value = sfondo[v[1]];
+    $(v[0] + 'V').textContent = sfondo[v[1]];
+  });
+  $('sfProporzioni').value = sfondo.proporzioni;
+  $('sfFiligrana').value = sfondo.filigrana;
+}
+
+$('btnSfondo').addEventListener('click', function(e) {
+  e.stopPropagation();
+  var p = $('sfondoPanel');
+  if (p.classList.contains('aperto')) { p.classList.remove('aperto'); return; }
+  aggiornaPannelloSfondo();
+  p.classList.add('aperto');
+  var r = $('btnSfondo').getBoundingClientRect();
+  p.style.left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - p.offsetWidth - 8)) + 'px';
+  p.style.top = (r.bottom + 8) + 'px';
+});
+
+document.addEventListener('mousedown', function(e) {
+  var p = $('sfondoPanel');
+  if (!p || !p.classList.contains('aperto')) return;
+  if (p.contains(e.target) || $('btnSfondo').contains(e.target)) return;
+  p.classList.remove('aperto');
+});
+
+$('sfAttivo').addEventListener('change', function() {
+  sfondo.attivo = this.checked;
+  aggiornaPannelloSfondo();
+  render();
+  salvaStato();
+});
+
+Array.prototype.forEach.call(document.querySelectorAll('.sf-modo'), function(b) {
+  b.addEventListener('click', function() {
+    sfondo.tinta = this.getAttribute('data-tinta');
+    aggiornaPannelloSfondo();
+    render();
+    salvaStato();
+  });
+});
+
+// I cursori aggiornano dal vivo mentre li trascini; nella cronologia entra
+// solo il valore finale, altrimenti un trascinamento riempirebbe l'undo.
+[['sfMargine', 'margine'], ['sfOmbra', 'ombra'],
+ ['sfREsterno', 'raggioEsterno'], ['sfRInterno', 'raggioInterno']].forEach(function(v) {
+  $(v[0]).addEventListener('input', function() {
+    sfondo[v[1]] = parseInt(this.value, 10) || 0;
+    $(v[0] + 'V').textContent = sfondo[v[1]];
+    render();
+  });
+  $(v[0]).addEventListener('change', salvaStato);
+});
+
+$('sfProporzioni').addEventListener('change', function() {
+  sfondo.proporzioni = this.value;
+  render();
+  salvaStato();
+});
+$('sfFiligrana').addEventListener('input', function() { sfondo.filigrana = this.value; });
+$('sfFiligrana').addEventListener('change', salvaStato);
 
 // ---- ZOOM DELL'AREA DI LAVORO ----
 // Il "100%" al centro è anche un bottone: riporta all'adatta-alla-finestra.
