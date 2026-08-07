@@ -33,14 +33,27 @@
         display: grid;
         grid-template-columns: 320px 1fr;
         column-gap: 48px;
-        align-items: start;
+        /* stretch, non start: le due colonne prendono la stessa altezza e
+           possono allineare quello che hanno in fondo. */
+        align-items: stretch;
       }
       .brand {
         grid-column: 1 / -1;
       }
+      .col-left {
+        grid-column: 1;
+        grid-row: 2;
+        display: flex;
+        flex-direction: column;
+      }
+      /* Il bottone di conferma scende in fondo alla colonna: le due colonne
+         chiudono allo stesso livello e lo spazio sopra il Salva si legge come
+         voluto — è dove sta il pulsante di conferma in qualunque pannello —
+         invece che come un vuoto capitato per caso. */
+      .col-left .btn-save { margin-top: auto; }
       .col-right {
         grid-column: 2;
-        grid-row: 2 / span 4;
+        grid-row: 2;
         /* Linea verticale che separa i controlli dalla guida, invece del
            semplice spazio vuoto: rende esplicito che sono due sezioni diverse
            (impostazioni a sinistra, spiegazione a destra), non due colonne
@@ -412,6 +425,7 @@
       </div>
     </div>
 
+    <div class="col-left">
     <div class="card">
       <div class="card-title">Preferences</div>
       <div class="switch-row">
@@ -491,6 +505,7 @@
 
     <button class="btn-save" id="btnSave">Save</button>
     <div class="saved" id="saved">Saved!</div>
+    </div>
 
     <div class="col-right">
       <div class="news" id="news">
