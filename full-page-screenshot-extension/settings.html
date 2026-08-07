@@ -24,7 +24,9 @@
        a destra la guida. Stesso identico contenuto, solo il layout cambia,
        cosi' l'intera pagina sta senza scroll invece di allungarsi in verticale. */
     @media (min-width: 780px) {
-      body { padding: 56px 40px; }
+      /* Margini contenuti: la pagina deve stare in uno schermo senza far
+         scattare lo scroll, non "respirare" fino a traboccare. */
+      body { padding: 36px 40px 28px; }
       .container {
         width: 100%;
         max-width: 980px;
@@ -66,8 +68,8 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      margin: 0 0 26px 0;
-      padding-bottom: 18px;
+      margin: 0 0 20px 0;
+      padding-bottom: 14px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
     }
     .brand-icona {
@@ -343,17 +345,17 @@
        vuoto tra la fine della guida e la striscia a tutta larghezza. */
     .footer {
       margin-top: 6px;
-      padding: 16px 18px;
+      padding: 12px 16px;
       border-radius: 14px;
       background: rgba(0,212,255,0.06);
       border: 1px solid rgba(0,212,255,0.25);
       text-align: center;
     }
     .footer-testo {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 600;
       color: #dde;
-      margin-bottom: 12px;
+      margin-bottom: 9px;
     }
     .footer-bottoni {
       display: flex;
@@ -363,7 +365,7 @@
     }
     .footer-btn {
       display: inline-block;
-      padding: 8px 16px;
+      padding: 7px 15px;
       border-radius: 8px;
       background: #00d4ff;
       color: #0d1220;
@@ -382,10 +384,10 @@
     /* Firma dell'autore: chi ha scritto l'estensione ha un nome, e chi la
        usa deve poterlo leggere. Discreta, sotto i bottoni. */
     .autore {
-      margin-top: 14px;
-      padding-top: 12px;
+      margin-top: 10px;
+      padding-top: 9px;
       border-top: 1px solid rgba(255,255,255,0.08);
-      font-size: 12px;
+      font-size: 11.5px;
       color: #7a8394;
     }
     .autore b {
