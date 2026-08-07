@@ -114,8 +114,46 @@ Serve dove il testo NON è selezionabile: immagini, PDF scansionati, pagine che 
 **Locale, non cloud**: l'AI vision in cloud darebbe qualità superiore ma tradirebbe il posizionamento "privacy first, everything stays on your device" — e gli utenti sono USA su Windows/ChromeOS (scuole), dove la privacy è requisito, non vezzo.
 Nota tecnica 17/07: il pacchetto cresce di ~15MB (WASM + dati lingua inglese inclusi, niente download esterni). Sui Chromebook scolastici sarà lento ma funzionante.
 
-### 4. Editor avanzato
+### 4. Editor avanzato — PRIMO GIRO FATTO 07/08, quattro pezzi grossi ancora aperti
 Annotazioni, frecce, blur sopra lo screenshot. Era voce roadmap Pro, mai dettagliata. Il più grosso dei quattro (canvas, strumenti, undo).
+
+**Collaudo 07/08 dell'editor Multi Snip — otto difetti trovati e CORRETTI** (commit e46661a):
+la toppa non seguiva il pezzo (buco di privacy: spostando la foto il dato
+riemergeva), oscuramento solo coprente, strumenti one-shot, stato armato
+poco visibile, manina invece del mirino, niente annulla/ripeti, linea alta
+3px impossibile da riprendere, Fit canvas senza ritorno.
+
+**Restano aperti — quattro pezzi grossi, candidati alla 9.10 o alla 9.11**
+(tutti nati dal collaudo del 07/08, l'utente li ha chiesti a voce uno dietro
+l'altro guardando l'editor):
+
+- **14. Libreria di forme (~30 oggetti).** Quadrato, rettangolo, cerchio,
+  triangolo, stella, mezzaluna, frecce di ogni verso, **fumetti/callout**.
+  Impianto: un tipo di nota `forma` con un nome, disegnata come path — a
+  schermo in SVG, nell'export con `Path2D` sullo stesso canvas. Le ~30 forme
+  sono in gran parte una tabella di path, il costo vero è l'interfaccia di
+  scelta (pannellino a griglia) e il riuso dei gesti già esistenti
+  (sposta/ridimensiona/colore/ancoraggio al pezzo).
+- **15. Contatori numerati.** Click su un punto → pallino "1", click
+  successivo → "2", e via progredendo da solo. È lo strumento delle guide
+  passo-passo, e nessuno dei concorrenti diretti censiti ce l'ha.
+  Attenzione: serve una rinumerazione automatica quando se ne cancella uno
+  in mezzo.
+- **16. Studio dello sfondo / cornice** (modello dichiarato dall'utente:
+  Handy Screenshot). Sfondo a tinta unita o **sfumatura** da una tavolozza
+  di preset, dimensione del margine, **ombra** portata, **angoli
+  arrotondati** (esterni e interni), proporzioni forzate (1:1, 16:9,
+  Original) e **filigrana** opzionale. È la funzione che trasforma uno
+  screenshot in un'immagine da social/presentazione: alto impatto visivo,
+  costo medio (è tutto disegno sul canvas dell'export + un pannello di
+  controlli).
+- **17. Lente di richiamo (zoom callout).** Selezioni una regione piccola e
+  l'editor ne piazza una copia INGRANDITA a fianco, collegata all'originale
+  da due linee di richiamo (l'effetto "dettaglio" delle recensioni e dei
+  tutorial). Impianto: una nota che tiene il rettangolo sorgente nello
+  spazio naturale del pezzo (l'ancoraggio del 07/08 serve già a questo) più
+  un fattore di ingrandimento; l'export ridisegna quella regione con
+  `drawImage` a 9 argomenti.
 
 ### 5. Changelog / what's-new dentro l'estensione — FATTO 17/07 (nel codice, non ancora pubblicato)
 Avviso novità dopo un update, così le feature non escono in silenzio.
