@@ -1787,8 +1787,21 @@ async function doAreaCapture(tabId) {
           while (elUnder && elUnder !== document.body && elUnder !== document.documentElement) {
             var pos2 = window.getComputedStyle(elUnder).position;
             if (pos2 === 'fixed' || pos2 === 'sticky') {
-              elUnder.setAttribute('data-screenshot-start-sticky', 'true');
-              break;
+              // Solo BARRE VERE, con gli stessi criteri di forma usati per
+              // misurarle (larghe almeno mezza finestra, basse meno di un
+              // terzo). Senza questo filtro bastava la SCOCCA dell'app —
+              // sulle web app moderne è spesso un fixed a tutta finestra col
+              // contenuto che scorre dentro — per far credere al motore che
+              // la selezione fosse partita dentro una barra: la difesa contro
+              // l'header in cima si spegneva e l'header mangiava l'inizio
+              // della selezione, in ogni punto della pagina.
+              var rr = elUnder.getBoundingClientRect();
+              if (rr.height > 0 &&
+                  rr.width >= window.innerWidth * 0.5 &&
+                  rr.height < window.innerHeight * 0.3) {
+                elUnder.setAttribute('data-screenshot-start-sticky', 'true');
+                break;
+              }
             }
             elUnder = elUnder.parentElement;
           }
@@ -1974,23 +1987,29 @@ async function doAreaCapture(tabId) {
         // partita DENTRO una barra fissa (data-screenshot-start-sticky)
         // l'utente la vuole nello scatto: nessuna compensazione.
         var topCover = 0;
-        if (!document.querySelector('[data-screenshot-start-sticky]')) {
-          var bordoTop = el ? offsetY : 0;
-          var tutti = document.querySelectorAll('*');
-          for (var k = 0; k < tutti.length; k++) {
-            var pz = window.getComputedStyle(tutti[k]);
-            if (pz.position !== 'fixed' && pz.position !== 'sticky') continue;
-            if (pz.visibility === 'hidden' || pz.display === 'none') continue;
-            var rz = tutti[k].getBoundingClientRect();
-            if (rz.top <= bordoTop + 2 && rz.bottom > bordoTop &&
-                rz.height < window.innerHeight * 0.3 &&
-                rz.width >= window.innerWidth * 0.5) {
-              var fondoBarra = rz.bottom - bordoTop;
-              if (fondoBarra > topCover) topCover = fondoBarra;
-            }
+        // La barra da cui è PARTITA la selezione l'utente la vuole nello
+        // scatto: per quella non si compensa. Ma le ALTRE barre in cima
+        // continuano a coprire l'inizio, quindi vanno contate lo stesso —
+        // prima bastava una barra qualsiasi sotto il punto di partenza per
+        // disattivare la compensazione di tutte.
+        var barraPartenza = document.querySelector('[data-screenshot-start-sticky]');
+        var bordoTop = el ? offsetY : 0;
+        var tutti = document.querySelectorAll('*');
+        for (var k = 0; k < tutti.length; k++) {
+          if (barraPartenza && (tutti[k] === barraPartenza ||
+              tutti[k].contains(barraPartenza) || barraPartenza.contains(tutti[k]))) continue;
+          var pz = window.getComputedStyle(tutti[k]);
+          if (pz.position !== 'fixed' && pz.position !== 'sticky') continue;
+          if (pz.visibility === 'hidden' || pz.display === 'none') continue;
+          var rz = tutti[k].getBoundingClientRect();
+          if (rz.top <= bordoTop + 2 && rz.bottom > bordoTop &&
+              rz.height < window.innerHeight * 0.3 &&
+              rz.width >= window.innerWidth * 0.5) {
+            var fondoBarra = rz.bottom - bordoTop;
+            if (fondoBarra > topCover) topCover = fondoBarra;
           }
-          topCover = Math.round(topCover);
         }
+        topCover = Math.round(topCover);
 
         return {
           sy: el ? el.scrollTop : window.scrollY,
@@ -2218,7 +2237,8 @@ async function doAreaCapture(tabId) {
       console.log('[AREA slice ' + i + '/' + (numSlices-1) + '] wantedScroll=' + wantedScroll +
         ' realScroll=' + realScroll + ' DELTA(voluto-reale)=' + (wantedScroll - realScroll) +
         ' | area.y_doc=' + area.y_doc + ' offsetY=' + meta.offsetY +
-        ' sliceH=' + sliceH + ' h_doc=' + area.h_doc);
+        ' sliceH=' + sliceH + ' h_doc=' + area.h_doc +
+        ' topCover=' + meta.topCover + ' giaVisibile=' + giaVisibile);
 
       var dataUrl = null;
       for (var retry = 0; retry < 3; retry++) {
