@@ -1852,15 +1852,20 @@ async function doAreaCapture(tabId) {
         }
         window.addEventListener('scroll', onScrollDuringDrag, true);
 
-        // Su app con scroll custom (claude.ai), l'overlay copre il div scrollabile e
-        // blocca la rotellina. Inoltriamo manualmente il wheel al div. Su pagine
-        // normali (scrollTarget null) non facciamo nulla: la rotellina scrolla window.
+        // L'overlay copre la pagina, quindi la rotellina non arriva più allo
+        // scroller sottostante. Va inoltrata SEMPRE, anche PRIMA di iniziare a
+        // trascinare: in modalità Area ci si deve poter posizionare con la
+        // rotella sia nel giro normale sia in Multi Snip.
         overlay.addEventListener('wheel', function(e) {
-          if (dragging && scrollTarget) {
+          resolveScrollTarget(e.clientX, e.clientY);
+          if (scrollTarget) {
             scrollTarget.scrollTop += e.deltaY;
             e.preventDefault();
-            updateBox();
+          } else {
+            window.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: 'instant' });
+            e.preventDefault();
           }
+          if (dragging) updateBox();
         }, { passive: false });
 
         overlay.addEventListener('mouseup', function(e) {

@@ -26,6 +26,18 @@ var ancoraTela = null;      // margini congelati: il lato opposto sta fermo
 var guidaV = null;          // linee guida della calamita durante il drag
 var guidaH = null;
 
+// Font di sistema: nessun download esterno, quindi la resa resta affidabile
+// anche offline e nel canvas dell'export.
+var FONT_TESTO = [
+  { nome: 'Segoe UI', css: "'Segoe UI', sans-serif" },
+  { nome: 'Arial', css: 'Arial, sans-serif' },
+  { nome: 'Verdana', css: 'Verdana, sans-serif' },
+  { nome: 'Georgia', css: 'Georgia, serif' },
+  { nome: 'Trebuchet MS', css: "'Trebuchet MS', sans-serif" },
+  { nome: 'Courier New', css: "'Courier New', monospace" },
+  { nome: 'Impact', css: 'Impact, sans-serif' }
+];
+
 var GAP = 14;        // respiro usato dalla calamita
 var MARGINE = 24;    // margine iniziale attorno ai pezzi
 var DEFAULT_W = 1920;  // la tela e' una SCATOLA: nasce gia' grande (formato
@@ -157,7 +169,25 @@ function sincronizzaNote() {
 // Raggio della sfocatura: generoso di proposito. Una sfocatura leggera su
 // testo piccolo si può ricostruire; a questo raggio no.
 function raggioSfoca(n) {
-  return Math.max(10, Math.min(n.w || 0, n.h || 0) / 4);
+  var base = Math.max(10, Math.min(n.w || 0, n.h || 0) / 4);
+  var intensita = (typeof n.sfocatura === 'number') ? n.sfocatura : 1;
+  // Zero vuol dire davvero nessuna sfocatura: il riquadro torna trasparente.
+  return Math.max(0, Math.min(80, base * intensita));
+}
+
+function fontTesto(n) {
+  return n.font || FONT_TESTO[0].css;
+}
+
+// I controlli del testo devono restare sotto il puntatore mentre cambiano:
+// aggiornamento live del solo div, poi il ✓ fa render e salva lo stato finale.
+function aggiornaTestoLive(j, n) {
+  var el = document.querySelector('[data-editor-note-index="' + j + '"]');
+  if (!el) return;
+  el.style.color = n.colore;
+  el.style.fontFamily = fontTesto(n);
+  el.style.fontSize = (n.fs * viewK) + 'px';
+  el.style.height = Math.round(Math.max(n.h || 0, n.fs * 1.3) * viewK) + 'px';
 }
 
 // ---- CRONOLOGIA (annulla / ripeti) ----
@@ -462,6 +492,10 @@ function render() {
   // tela, anche sopra i pezzi (fase di cattura, prima dei loro handler).
   tela.addEventListener('mousedown', function(e) {
     if (!strumento) return;
+    // I controlli di una nota già esistente devono restare cliccabili anche
+    // se un altro strumento è armato: altrimenti Redact intercetta il click
+    // sul pannellino e disegna una nuova toppa al posto di cambiare il blur.
+    if (e.target.closest && e.target.closest('[data-editor-note], [data-editor-note-toolbar]')) return;
     e.preventDefault();
     e.stopPropagation();
     iniziaCreazioneNota(e, tela);
@@ -1235,7 +1269,7 @@ function iniziaCreazioneNota(e, tela) {
   if (t === 'testo') { strumento = null; aggiornaBarraStrumenti(); }
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
-  else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, fs: 22, colore: PALETTE.testo[0], testo: '' };
+  else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, h: 48, fs: 22, colore: PALETTE.testo[0], font: FONT_TESTO[0].css, testo: '' };
   else if (t === 'lente') n = { tipo: 'lente', x: x0, y: y0, w: 0, h: 0, colore: '#e11d48', zoom: 2 };
   else if (t === 'contatore') {
     // Un click secco lo piazza già bello e pronto; trascinando si decide
@@ -1301,7 +1335,15 @@ function iniziaCreazioneNota(e, tela) {
     } else if (n.tipo === 'testo') {
       testoEdit = selNota;   // si scrive subito, senza altri click
     }
-    if (note[selNota]) ancoraNota(note[selNota]);
+    if (note[selNota]) {
+      ancoraNota(note[selNota]);
+      // L'oscuramento è un gesto di precisione: appena creato si torna alla
+      // manina, così il pannellino Solid/Blur e le maniglie sono subito usabili.
+      if (n.tipo === 'oscura') {
+        strumento = null;
+        aggiornaBarraStrumenti();
+      }
+    }
     render();
   }
   window.addEventListener('mousemove', onMove);
@@ -1313,6 +1355,8 @@ function creaNota(j) {
   var n = note[j];
   var sel = (j === selNota);
   var el = document.createElement('div');
+  el.setAttribute('data-editor-note', '');
+  el.setAttribute('data-editor-note-index', String(j));
   var base = 'position:absolute;z-index:' + (800 + j) + ';';
   if (n.tipo === 'linea') {
     var len = Math.hypot(n.x2 - n.x1, n.y2 - n.y1);
@@ -1335,17 +1379,27 @@ function creaNota(j) {
   } else if (n.tipo === 'testo') {
     el.style.cssText = base +
       'left:' + Math.round(n.x * viewK) + 'px;top:' + Math.round(n.y * viewK) + 'px;' +
-      'width:' + Math.round(n.w * viewK) + 'px;min-height:' + Math.round(n.fs * viewK) + 'px;' +
+      'width:' + Math.round(n.w * viewK) + 'px;height:' + Math.round(Math.max(n.h || 0, n.fs * 1.3) * viewK) + 'px;' +
       'cursor:grab;color:' + n.colore + ';font-weight:600;' +
-      'font-size:' + (n.fs * viewK) + "px;line-height:1.3;font-family:'Segoe UI', sans-serif;" +
-      'white-space:pre-wrap;word-break:break-word;' +
+      'font-size:' + (n.fs * viewK) + 'px;line-height:1.3;font-family:' + fontTesto(n) + ';' +
+      'white-space:pre-wrap;word-break:break-word;overflow:hidden;' +
       (sel || testoEdit === j ? 'outline:1px dashed rgba(0,212,255,0.8);outline-offset:2px;' : '');
     el.textContent = n.testo || '';
     if (testoEdit === j) {
       el.contentEditable = 'true';
       el.style.cursor = 'text';
       el.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-      el.addEventListener('blur', function() {
+      el.addEventListener('input', function() {
+        n.testo = el.innerText.replace(/\n+$/, '');
+        // Durante la scrittura la casella cresce fino al contenuto; dopo il
+        // ✓ le maniglie permettono di impostare con precisione il riquadro.
+        n.h = Math.max(n.fs * 1.3, Math.ceil(el.scrollHeight / viewK));
+        el.style.height = Math.round(n.h * viewK) + 'px';
+      });
+      el.addEventListener('blur', function(e) {
+        // I controlli appartengono alla stessa casella: cliccarli non deve
+        // chiudere l'editing prima che il loro click venga elaborato.
+        if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-editor-note-toolbar]')) return;
         n.testo = el.innerText.replace(/\n+$/, '');
         testoEdit = -1;
         if (!n.testo.trim()) { note.splice(j, 1); selNota = -1; }
@@ -1442,6 +1496,11 @@ function creaNota(j) {
           n.x = o.x + dx;
           n.y = o.y + dy;
         }
+        // Le annotazioni sono ancorate ai pixel naturali del pezzo: aggiorno
+        // l'ancora SUBITO, prima del render. Altrimenti sincronizzaNote()
+        // ripristina a ogni mousemove la posizione precedente e sembra che
+        // una toppa non si possa trascinare.
+        ancoraNota(n);
         render();
       }
       function onUp() {
@@ -1504,7 +1563,7 @@ function creaNota(j) {
         });
         el.appendChild(man);
       });
-    } else if (n.tipo !== 'testo') {
+    } else {
       ['nw', 'ne', 'sw', 'se'].forEach(function(hnd) {
         var man = document.createElement('div');
         man.className = 'man man-' + hnd;
@@ -1529,6 +1588,9 @@ function creaNota(j) {
               if (hnd.indexOf('n') !== -1) n.y = o.y + (o.h - d);
               n.w = d; n.h = d;
             }
+            // Come per lo spostamento, la nuova geometria deve diventare
+            // l'ancora prima che il render riallinei le note al pezzo.
+            ancoraNota(n);
             render();
           }
           function onUp() {
@@ -1550,11 +1612,21 @@ function creaNota(j) {
 function creaBarraNota(j) {
   var n = note[j];
   var bar = document.createElement('div');
+  bar.setAttribute('data-editor-note-toolbar', '');
   var bx = (n.tipo === 'linea') ? Math.min(n.x1, n.x2) : n.x;
   var by = (n.tipo === 'linea') ? Math.min(n.y1, n.y2) : n.y;
-  bar.style.cssText = 'position:absolute;z-index:970;display:flex;gap:5px;align-items:center;' +
-    'left:' + Math.round(bx * viewK) + 'px;top:' + (Math.round(by * viewK) - 34) + 'px;' +
+  var notaH = (n.tipo === 'linea') ? Math.abs(n.y2 - n.y1) : (n.h || n.fs || 0);
+  // Il pannellino non deve mai coprire la nota che si sta regolando. Il blur
+  // ha una levetta alta: riservo più spazio e lo metto completamente sopra;
+  // solo vicino al bordo alto passa sotto al rettangolo.
+  var altezzaPanel = (n.tipo === 'oscura' && n.stile === 'blur') ? 134 : (n.tipo === 'testo' ? 82 : 38);
+  var topSopra = Math.round(by * viewK) - altezzaPanel - 10;
+  var topSotto = Math.round((by + notaH) * viewK) + 10;
+  var topPanel = (topSopra >= 6) ? topSopra : topSotto;
+  bar.style.cssText = 'position:absolute;z-index:970;display:flex;flex-wrap:wrap;gap:5px;align-items:center;max-width:420px;' +
+    'left:' + Math.round(bx * viewK) + 'px;top:' + topPanel + 'px;' +
     'background:#16162a;border:1px solid rgba(0,212,255,0.4);border-radius:7px;padding:4px 6px;';
+  // Il pannello non deve innescare la creazione di una nuova nota sulla tela.
   bar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
   // Col riempimento sfocato il colore non c'entra nulla: i pallini spariscono.
   if (!(n.tipo === 'oscura' && n.stile === 'blur')) {
@@ -1562,7 +1634,12 @@ function creaBarraNota(j) {
       var dot = document.createElement('span');
       dot.style.cssText = 'width:14px;height:14px;border-radius:50%;cursor:pointer;display:inline-block;' +
         'background:' + c + ';border:2px solid ' + (n.colore === c ? '#00d4ff' : 'rgba(255,255,255,0.25)') + ';';
-      dot.addEventListener('click', function() { n.colore = c; render(); salvaStato(); });
+      dot.addEventListener('click', function() {
+        n.colore = c;
+        if (n.tipo === 'testo') aggiornaTestoLive(j, n);
+        else render();
+        salvaStato();
+      });
       bar.appendChild(dot);
     });
   }
@@ -1661,20 +1738,111 @@ function creaBarraNota(j) {
       bt.addEventListener('click', function() { n.stile = v[1]; render(); salvaStato(); });
       bar.appendChild(bt);
     });
+    // Levetta verticale continua: 0% = riquadro trasparente, 100% = blur
+    // normale, fino al 400% per il testo molto piccolo. Durante il drag non
+    // renderizzo l'intera tela (altrimenti la levetta si distruggerebbe sotto
+    // il puntatore); aggiorno solo il filtro live e ridisegno al rilascio.
+    if (n.stile === 'blur') {
+      var livello = (typeof n.sfocatura === 'number') ? n.sfocatura : 1;
+      // La corsa della levetta è quadratica: vicino allo zero e al blur
+      // normale ogni millimetro cambia pochissimo; in cima arriva comunque
+      // al 400% per coprire anche testo minuscolo.
+      var valoreLevetta = Math.round(Math.sqrt(Math.min(4, Math.max(0, livello)) / 4) * 100);
+      var etSf = document.createElement('span');
+      etSf.textContent = 'Blur ' + Math.round(livello * 100) + '%';
+      etSf.style.cssText = 'color:#8b8ba3;font-size:11px;font-weight:700;padding:0 2px;white-space:nowrap;';
+      bar.appendChild(etSf);
+      var levetta = document.createElement('input');
+      levetta.type = 'range';
+      levetta.min = '0';
+      levetta.max = '100';
+      levetta.step = '1';
+      levetta.value = String(valoreLevetta);
+      levetta.title = 'Blur strength — bottom is transparent, top is strongest';
+      levetta.setAttribute('aria-label', 'Blur strength');
+      levetta.style.cssText = 'writing-mode:vertical-lr;direction:rtl;' +
+        'width:18px;height:120px;accent-color:#00d4ff;cursor:pointer;';
+      levetta.addEventListener('input', function() {
+        var corsa = parseInt(this.value, 10) / 100;
+        n.sfocatura = 4 * corsa * corsa;
+        etSf.textContent = 'Blur ' + Math.round(n.sfocatura * 100) + '%';
+        var notaEl = document.querySelector('[data-editor-note-index="' + j + '"]');
+        if (notaEl) {
+          var px = raggioSfoca(n) * viewK;
+          notaEl.style.backdropFilter = 'blur(' + px + 'px)';
+          notaEl.style.webkitBackdropFilter = 'blur(' + px + 'px)';
+        }
+      });
+      levetta.addEventListener('change', function() { render(); salvaStato(); });
+      bar.appendChild(levetta);
+    }
   }
   if (n.tipo === 'testo') {
-    [['A−', -3], ['A+', 3]].forEach(function(v) {
-      var bt = document.createElement('button');
-      bt.textContent = v[0];
-      bt.style.cssText = 'border:none;background:transparent;color:#00d4ff;font-weight:700;cursor:pointer;font-size:12px;padding:0 3px;';
-      bt.addEventListener('click', function() {
-        n.fs = Math.min(120, Math.max(10, n.fs + v[1]));
-        render();
-        salvaStato();
-      });
-      bar.appendChild(bt);
+    var coloreLibero = document.createElement('input');
+    coloreLibero.type = 'color';
+    coloreLibero.value = n.colore;
+    coloreLibero.title = 'Custom text color';
+    coloreLibero.setAttribute('aria-label', 'Custom text color');
+    coloreLibero.style.cssText = 'width:22px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.35);' +
+      'border-radius:50%;background:transparent;cursor:pointer;overflow:hidden;';
+    coloreLibero.addEventListener('input', function() { n.colore = this.value; aggiornaTestoLive(j, n); });
+    coloreLibero.addEventListener('change', salvaStato);
+    bar.appendChild(coloreLibero);
+
+    var sceltaFont = document.createElement('select');
+    sceltaFont.title = 'Font family';
+    sceltaFont.setAttribute('aria-label', 'Font family');
+    sceltaFont.style.cssText = 'max-width:118px;background:#20203c;color:#eee;border:1px solid rgba(255,255,255,0.22);' +
+      'border-radius:5px;padding:3px 5px;font:600 11px Segoe UI,sans-serif;cursor:pointer;';
+    FONT_TESTO.forEach(function(f) {
+      var op = document.createElement('option');
+      op.value = f.css;
+      op.textContent = f.nome;
+      if (fontTesto(n) === f.css) op.selected = true;
+      sceltaFont.appendChild(op);
     });
+    sceltaFont.addEventListener('input', function() { n.font = this.value; aggiornaTestoLive(j, n); });
+    sceltaFont.addEventListener('change', salvaStato);
+    bar.appendChild(sceltaFont);
+
+    var misura = document.createElement('span');
+    misura.textContent = n.fs + ' px';
+    misura.style.cssText = 'color:#8b8ba3;font-size:11px;font-weight:700;white-space:nowrap;';
+    bar.appendChild(misura);
+    var sliderTesto = document.createElement('input');
+    sliderTesto.type = 'range';
+    sliderTesto.min = '10';
+    sliderTesto.max = '120';
+    sliderTesto.step = '1';
+    sliderTesto.value = String(n.fs);
+    sliderTesto.title = 'Text size';
+    sliderTesto.setAttribute('aria-label', 'Text size');
+    sliderTesto.style.cssText = 'width:92px;accent-color:#00d4ff;cursor:pointer;';
+    sliderTesto.addEventListener('input', function() {
+      n.fs = parseInt(this.value, 10);
+      misura.textContent = n.fs + ' px';
+      aggiornaTestoLive(j, n);
+    });
+    sliderTesto.addEventListener('change', salvaStato);
+    bar.appendChild(sliderTesto);
   }
+  // Conferma unica per OGNI pannellino: lascia visibile il risultato mentre
+  // lo si regola, poi ✓ salva e chiude i controlli della nota selezionata.
+  var ok = document.createElement('button');
+  ok.textContent = '✓';
+  ok.title = 'Done — keep these settings and close this panel';
+  ok.style.cssText = 'border:none;background:#00d4ff;color:#0d1220;cursor:pointer;font-size:13px;' +
+    'font-weight:900;line-height:1;padding:3px 6px;border-radius:5px;';
+  ok.addEventListener('click', function() {
+    if (n.tipo === 'testo') testoEdit = -1;
+    ancoraNota(n);
+    selNota = -1;
+    strumento = null;
+    aggiornaBarraStrumenti();
+    render();
+    salvaStato();
+  });
+  bar.appendChild(ok);
   var del = document.createElement('button');
   del.textContent = '\u{1F5D1}';
   del.title = 'Remove';
@@ -2020,13 +2188,21 @@ async function componi() {
       ctx.lineTo(n.x2, n.y2);
       ctx.stroke();
     } else if (n.tipo === 'testo' && n.testo) {
+      // La casella testo e l'export devono avere lo stesso perimetro: il
+      // ridimensionamento con le maniglie non può mostrare più testo qui che
+      // nel file finale.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(n.x, n.y, n.w, Math.max(n.h || 0, n.fs * 1.3));
+      ctx.clip();
       ctx.fillStyle = n.colore;
-      ctx.font = '600 ' + n.fs + "px 'Segoe UI', sans-serif";
+      ctx.font = '600 ' + n.fs + 'px ' + fontTesto(n);
       ctx.textBaseline = 'top';
       var righe = spezzaTesto(ctx, n.testo, n.w);
       righe.forEach(function(r, ri) {
         ctx.fillText(r, Math.round(n.x), Math.round(n.y + ri * n.fs * 1.3));
       });
+      ctx.restore();
     }
   });
   return applicaSfondo(canvas);
@@ -2355,10 +2531,20 @@ $('zoomFit').addEventListener('click', function() { zoomUtente = null; render();
 
 // Ctrl + rotellina: lo zoom come in qualunque programma di disegno.
 document.addEventListener('wheel', function(e) {
-  if (!e.ctrlKey && !e.metaKey) return;
-  if (!blocchi.length) return;
-  e.preventDefault();
-  zoomVerso(e.deltaY < 0);
+  if (e.ctrlKey || e.metaKey) {
+    if (!blocchi.length) return;
+    e.preventDefault();
+    zoomVerso(e.deltaY < 0);
+    return;
+  }
+  // La tela vive in un contenitore con overflow: senza instradamento esplicito
+  // la rotellina a volte muove il palco e altre volte la pagina, a seconda di
+  // dove cade il puntatore. Dentro l'area di lavoro deve scorrere sempre la
+  // pagina, in entrambi i versi; Shift conserva il pan orizzontale.
+  if (e.target.closest && e.target.closest('#palco')) {
+    e.preventDefault();
+    window.scrollBy({ top: e.shiftKey ? 0 : e.deltaY, left: e.shiftKey ? e.deltaY : 0, behavior: 'instant' });
+  }
 }, { passive: false });
 // Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
 $('btnAnteprima').addEventListener('click', async function() {
@@ -2395,6 +2581,17 @@ $('btnAnnulla').addEventListener('click', function() {
   window.close();
 });
 $('btnSalva').addEventListener('click', salva);
+// Il formato è una scelta esplicita, non un dettaglio nascosto nel menu:
+// il pulsante ripete sempre cosa verrà effettivamente creato.
+function aggiornaEtichettaSalva() {
+  var f = $('formato');
+  var b = $('btnSalva');
+  if (!f || !b) return;
+  var nomi = { png: 'PNG', jpeg: 'JPG', webp: 'WEBP', pdf: 'PDF' };
+  b.textContent = 'Save ' + (nomi[f.value] || 'PNG');
+}
+$('formato').addEventListener('change', aggiornaEtichettaSalva);
+aggiornaEtichettaSalva();
 
 // Copia senza salvare: si manda il lavoro in corso su una chat o dentro un
 // documento con Ctrl+V, senza lasciare un file nei Download che poi nessuno
