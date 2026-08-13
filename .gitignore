@@ -7,3 +7,6 @@
 
 # Spazio di lavoro VS Code (impostazioni locali, non fa parte del codice)
 *.code-workspace
+
+# File personale estraneo al progetto
+dialetto-frasi.json
