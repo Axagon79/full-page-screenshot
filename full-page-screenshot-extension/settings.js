@@ -79,9 +79,9 @@ document.getElementById('toggleClipboard').addEventListener('click', function() 
 });
 
 // Interruttore "Pixel magnifier": la lente nella selezione area. Default
-// acceso; chi la trova d'intralcio la spegne qui.
+// spento, per mantenere invariato il comportamento della versione 9.8.
 chrome.storage.local.get('lentePixel', function(data) {
-  var enabled = (data.lentePixel === undefined) ? true : data.lentePixel;
+  var enabled = (data.lentePixel === undefined) ? false : data.lentePixel;
   setLenteActive(enabled);
 });
 document.getElementById('toggleLente').addEventListener('click', function() {
@@ -127,7 +127,7 @@ function aggiornaQuickPanel(mode) {
     return;
   }
   chrome.storage.local.get('mostraPannello', function(d) {
-    setPannelloActive((d.mostraPannello === undefined) ? true : d.mostraPannello);
+    setPannelloActive((d.mostraPannello === undefined) ? false : d.mostraPannello);
   });
 }
 

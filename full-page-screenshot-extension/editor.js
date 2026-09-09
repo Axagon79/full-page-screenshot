@@ -190,6 +190,33 @@ function aggiornaTestoLive(j, n) {
   el.style.height = Math.round(Math.max(n.h || 0, n.fs * 1.3) * viewK) + 'px';
 }
 
+// Aggiorna solo il colore: il selettore nativo deve restare nello stesso
+// nodo DOM durante input e change, altrimenti il browser lo chiude.
+function aggiornaColoreNotaLive(j, n) {
+  var el = document.querySelector('[data-editor-note-index="' + j + '"]');
+  if (!el) return;
+  if (n.tipo === 'testo') {
+    aggiornaTestoLive(j, n);
+  } else if (n.tipo === 'linea') {
+    el.firstElementChild.style.backgroundColor = n.colore;
+  } else if (n.tipo === 'forma') {
+    var path = el.querySelector('svg path');
+    if (path) {
+      path.setAttribute('stroke', n.colore);
+      if (path.getAttribute('fill') !== 'none') path.setAttribute('fill', n.colore);
+    }
+  } else if (n.tipo === 'lente') {
+    el.style.borderColor = n.colore;
+    var contorno = document.querySelector('[data-editor-lens-outline="' + j + '"]');
+    if (contorno) contorno.style.borderColor = n.colore;
+    document.querySelectorAll('[data-editor-lens-leaders="' + j + '"] line').forEach(function(linea) {
+      linea.setAttribute('stroke', n.colore);
+    });
+  } else if (!(n.tipo === 'oscura' && n.stile === 'blur')) {
+    el.style.backgroundColor = n.tipo === 'evidenzia' ? n.colore + '66' : n.colore;
+  }
+}
+
 // ---- CRONOLOGIA (annulla / ripeti) ----
 // Le immagini dei pezzi sono data URL da megabyte: tenerle in ogni
 // istantanea farebbe esplodere la memoria. Restano in un registro a parte e
@@ -532,17 +559,19 @@ function render() {
   }
   // Contorno della regione e linee di richiamo delle lenti: stanno SOTTO i
   // riquadri ingranditi e non si possono cliccare (si trascina il riquadro).
-  note.forEach(function(n) {
+  note.forEach(function(n, j) {
     if (n.tipo !== 'lente') return;
     var s = lenteSorgente(n);
     if (!s) return;
     var cont = document.createElement('div');
+    cont.setAttribute('data-editor-lens-outline', String(j));
     cont.style.cssText = 'position:absolute;pointer-events:none;z-index:780;' +
       'left:' + Math.round(s.x * viewK) + 'px;top:' + Math.round(s.y * viewK) + 'px;' +
       'width:' + Math.round(s.w * viewK) + 'px;height:' + Math.round(s.h * viewK) + 'px;' +
       'border:' + Math.max(2, Math.round(2 * viewK)) + 'px solid ' + n.colore + ';box-sizing:border-box;';
     tela.appendChild(cont);
     var sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    sv.setAttribute('data-editor-lens-leaders', String(j));
     sv.setAttribute('style', 'position:absolute;left:0;top:0;width:100%;height:100%;' +
       'pointer-events:none;z-index:779;overflow:visible');
     lenteRichiami(s, n).forEach(function(L) {
@@ -1236,14 +1265,14 @@ function formaDaId(id) {
 
 var formaScelta = 'rettangolo';   // ultima forma presa dal pannellino
 
-// Arma (o disarma) uno strumento della barra. Lo strumento RESTA armato
-// finché non si torna alla manina (bottone Move o Esc): disegnare dieci
-// riquadri di seguito non deve costare dieci click sulla barra.
+// Arma (o disarma) uno strumento della barra. Ogni strumento è one-shot:
+// conclusa una creazione, l'editor torna automaticamente alla manina.
 function armaStrumento(t) {
   strumento = (strumento === t) ? null : t;
   selezionato = -1;
   selNota = -1;
   chiudiRitaglio();
+  chiudiPannelloAnnotazioni();
   aggiornaBarraStrumenti();
   render();
 }
@@ -1257,6 +1286,13 @@ function aggiornaBarraStrumenti() {
   });
   var m = $('btnMano');
   if (m) m.classList.toggle('attivo', !strumento);
+  var menu = $('btnAnnotazioni');
+  if (menu) menu.classList.toggle('attivo', !!strumento);
+  var nome = $('annotazioneNome');
+  if (nome) {
+    var nomi = { oscura:'Redact', evidenzia:'Highlight', linea:'Line', testo:'Text', lente:'Zoom', contatore:'Steps', forma:'Shapes' };
+    nome.textContent = strumento ? (nomi[strumento] || 'Annotate') : 'Annotate';
+  }
 }
 
 function iniziaCreazioneNota(e, tela) {
@@ -1264,9 +1300,6 @@ function iniziaCreazioneNota(e, tela) {
   var x0 = (e.clientX - r.left) / viewK;
   var y0 = (e.clientY - r.top) / viewK;
   var t = strumento;
-  // Lo strumento NON si disarma: resta attivo per il disegno successivo.
-  // Solo il testo torna alla manina, perché subito dopo si scrive.
-  if (t === 'testo') { strumento = null; aggiornaBarraStrumenti(); }
   var n;
   if (t === 'linea') n = { tipo: 'linea', x1: x0, y1: y0, x2: x0, y2: y0, colore: PALETTE.linea[0] };
   else if (t === 'testo') n = { tipo: 'testo', x: x0, y: y0, w: 260, h: 48, fs: 22, colore: PALETTE.testo[0], font: FONT_TESTO[0].css, testo: '' };
@@ -1337,13 +1370,11 @@ function iniziaCreazioneNota(e, tela) {
     }
     if (note[selNota]) {
       ancoraNota(note[selNota]);
-      // L'oscuramento è un gesto di precisione: appena creato si torna alla
-      // manina, così il pannellino Solid/Blur e le maniglie sono subito usabili.
-      if (n.tipo === 'oscura') {
-        strumento = null;
-        aggiornaBarraStrumenti();
-      }
     }
+    // Qualunque creazione termina nella modalità di selezione/spostamento:
+    // il cursore torna alla manina e l'elemento appena creato resta selezionato.
+    strumento = null;
+    aggiornaBarraStrumenti();
     render();
   }
   window.addEventListener('mousemove', onMove);
@@ -1642,6 +1673,25 @@ function creaBarraNota(j) {
       });
       bar.appendChild(dot);
     });
+    // Colore libero: apre il selettore completo nativo del browser
+    // (spettro, tonalità e valori), senza limitare l'utente ai preset.
+    var coloreLibero = document.createElement('input');
+    coloreLibero.type = 'color';
+    coloreLibero.value = n.colore;
+    coloreLibero.title = 'Choose any color';
+    coloreLibero.setAttribute('aria-label', 'Choose any color');
+    coloreLibero.style.cssText = 'width:28px;height:24px;padding:2px;border:1px solid rgba(255,255,255,0.35);' +
+      'border-radius:5px;background:transparent;cursor:pointer;';
+    coloreLibero.addEventListener('input', function() {
+      n.colore = this.value;
+      aggiornaColoreNotaLive(j, n);
+    });
+    coloreLibero.addEventListener('change', function() {
+      n.colore = this.value;
+      aggiornaColoreNotaLive(j, n);
+      salvaStato();
+    });
+    bar.appendChild(coloreLibero);
   }
   // Lente: quanto ingrandire. Il riquadro cresce dal centro, la regione
   // inquadrata resta la stessa.
@@ -1778,17 +1828,6 @@ function creaBarraNota(j) {
     }
   }
   if (n.tipo === 'testo') {
-    var coloreLibero = document.createElement('input');
-    coloreLibero.type = 'color';
-    coloreLibero.value = n.colore;
-    coloreLibero.title = 'Custom text color';
-    coloreLibero.setAttribute('aria-label', 'Custom text color');
-    coloreLibero.style.cssText = 'width:22px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.35);' +
-      'border-radius:50%;background:transparent;cursor:pointer;overflow:hidden;';
-    coloreLibero.addEventListener('input', function() { n.colore = this.value; aggiornaTestoLive(j, n); });
-    coloreLibero.addEventListener('change', salvaStato);
-    bar.appendChild(coloreLibero);
-
     var sceltaFont = document.createElement('select');
     sceltaFont.title = 'Font family';
     sceltaFont.setAttribute('aria-label', 'Font family');
@@ -1985,7 +2024,10 @@ document.addEventListener('keydown', function(e) {
   }
   if (e.key === 'Escape') {
     $('scelta').style.display = 'none';
-    $('anteprima').style.display = 'none';
+    chiudiAnteprima();
+    chiudiPannelloAnnotazioni();
+    chiudiPannelloCanvas();
+    chiudiPannelloExport();
     chiudiPannelloForme();
     if (strumento) { strumento = null; aggiornaBarraStrumenti(); }
     chiudiRitaglio();
@@ -2331,8 +2373,85 @@ $('btnFit').addEventListener('click', function() {
   salvaStato();
   $('btnFit').classList.add('attivo');
 });
-// Strumenti di annotazione: un click arma e lo strumento RESTA armato
-// finché non si torna alla manina (bottone Move o Esc).
+function posizionaMenuToolbar(panel, bottone) {
+  panel.classList.add('aperto');
+  var r = bottone.getBoundingClientRect();
+  var w = panel.offsetWidth;
+  panel.style.left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - w - 8)) + 'px';
+  panel.style.top = (r.bottom + 8) + 'px';
+}
+
+function chiudiPannelloAnnotazioni() {
+  var p = $('annotazioniPanel');
+  if (p) p.classList.remove('aperto');
+}
+
+function apriPannelloAnnotazioni() {
+  var p = $('annotazioniPanel');
+  var b = $('btnAnnotazioni');
+  if (!p || !b) return;
+  chiudiPannelloCanvas();
+  chiudiPannelloExport();
+  posizionaMenuToolbar(p, b);
+}
+
+function chiudiPannelloCanvas() { var p = $('canvasPanel'); if (p) p.classList.remove('aperto'); }
+function chiudiPannelloExport() { var p = $('exportPanel'); if (p) p.classList.remove('aperto'); }
+
+function alternaMenuToolbar(panelId, buttonId, chiudiAltri) {
+  var p = $(panelId), b = $(buttonId);
+  if (!p || !b) return;
+  if (p.classList.contains('aperto')) { p.classList.remove('aperto'); return; }
+  chiudiAltri();
+  posizionaMenuToolbar(p, b);
+}
+
+$('btnCanvas').addEventListener('click', function(e) {
+  e.stopPropagation();
+  alternaMenuToolbar('canvasPanel', 'btnCanvas', function() {
+    chiudiPannelloAnnotazioni(); chiudiPannelloExport();
+  });
+});
+
+$('btnExport').addEventListener('click', function(e) {
+  e.stopPropagation();
+  alternaMenuToolbar('exportPanel', 'btnExport', function() {
+    chiudiPannelloAnnotazioni(); chiudiPannelloCanvas();
+  });
+});
+
+$('btnAnnotazioni').addEventListener('click', function(e) {
+  e.stopPropagation();
+  var p = $('annotazioniPanel');
+  if (p.classList.contains('aperto')) chiudiPannelloAnnotazioni();
+  else apriPannelloAnnotazioni();
+});
+
+document.addEventListener('mousedown', function(e) {
+  var p = $('annotazioniPanel');
+  if (!p || !p.classList.contains('aperto')) return;
+  if (p.contains(e.target) || $('btnAnnotazioni').contains(e.target)) return;
+  chiudiPannelloAnnotazioni();
+});
+
+document.addEventListener('mousedown', function(e) {
+  [['canvasPanel', 'btnCanvas'], ['exportPanel', 'btnExport']].forEach(function(v) {
+    var p = $(v[0]), b = $(v[1]);
+    if (!p || !p.classList.contains('aperto')) return;
+    if (p.contains(e.target) || b.contains(e.target)) return;
+    p.classList.remove('aperto');
+  });
+});
+
+$('canvasPanel').addEventListener('click', function(e) {
+  if (e.target.closest('button')) chiudiPannelloCanvas();
+});
+$('exportPanel').addEventListener('click', function(e) {
+  if (e.target.closest('button')) chiudiPannelloExport();
+});
+
+// Strumenti di annotazione: un click arma una singola creazione; al rilascio
+// del mouse l'editor torna automaticamente alla manina.
 $('btnMano').addEventListener('click', function() { armaStrumento(strumento); });
 $('btnOscura').addEventListener('click', function() { armaStrumento('oscura'); });
 $('btnEvidenzia').addEventListener('click', function() { armaStrumento('evidenzia'); });
@@ -2344,8 +2463,7 @@ $('btnUndo').addEventListener('click', annulla);
 $('btnRedo').addEventListener('click', rifai);
 
 // ---- PANNELLINO DELLE FORME ----
-// Si apre sotto il bottone, si prende una forma, e da lì lo strumento resta
-// armato: se ne disegnano quante se ne vuole senza tornare al pannello.
+// Si apre sotto il bottone; la forma scelta vale per la prossima creazione.
 function costruisciGrigliaForme() {
   var g = $('formeGriglia');
   if (!g || g.childNodes.length) return;
@@ -2394,6 +2512,7 @@ function chiudiPannelloForme() {
 
 $('btnForme').addEventListener('click', function(e) {
   e.stopPropagation();
+  chiudiPannelloAnnotazioni();
   var p = $('formePanel');
   if (p.classList.contains('aperto')) { chiudiPannelloForme(); return; }
   apriPannelloForme();
@@ -2547,16 +2666,38 @@ document.addEventListener('wheel', function(e) {
   }
 }, { passive: false });
 // Anteprima: la STESSA composizione del Save, mostrata pulita a schermo pieno.
+// Finché è aperta la pagina sottostante resta completamente immobile.
+var previewOverflowHtml = '';
+var previewOverflowBody = '';
+function apriAnteprima(src) {
+  previewOverflowHtml = document.documentElement.style.overflow;
+  previewOverflowBody = document.body.style.overflow;
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  $('anteprimaImg').src = src;
+  $('anteprima').style.display = 'flex';
+}
+function chiudiAnteprima() {
+  var p = $('anteprima');
+  if (!p || p.style.display === 'none') return;
+  p.style.display = 'none';
+  document.documentElement.style.overflow = previewOverflowHtml;
+  document.body.style.overflow = previewOverflowBody;
+}
 $('btnAnteprima').addEventListener('click', async function() {
   if (!blocchi.length) return;
   var canvas = await componi();
   if (!canvas) return;
-  $('anteprimaImg').src = canvas.toDataURL('image/png');
-  $('anteprima').style.display = 'flex';
+  apriAnteprima(canvas.toDataURL('image/png'));
 });
 $('anteprima').addEventListener('click', function() {
-  $('anteprima').style.display = 'none';
+  chiudiAnteprima();
 });
+$('anteprima').addEventListener('wheel', function(e) {
+  // L'evento non deve mai raggiungere lo zoom/pan dell'editor sottostante.
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, { passive:false, capture:true });
 // Stampa DALL'anteprima (stile Excel): sulla carta va solo l'immagine finale.
 $('btnStampa').addEventListener('click', function(e) {
   e.stopPropagation();   // non chiudere l'anteprima

@@ -1749,9 +1749,9 @@ async function doAreaCapture(tabId) {
     var inMulti = !!(sessioneMulti && sessioneMulti.active);
     // Foto del viewport per la LENTE di ingrandimento: scattata PRIMA che
     // l'overlay scurisca la pagina, così la lente mostra i pixel veri.
-    // Disattivabile dalle impostazioni (default: accesa).
+    // Attivabile dalle impostazioni (default: spenta).
     var stLente = await chrome.storage.local.get('lentePixel');
-    var lenteAttiva = (stLente.lentePixel === undefined) ? true : !!stLente.lentePixel;
+    var lenteAttiva = (stLente.lentePixel === undefined) ? false : !!stLente.lentePixel;
     var fotoLente = null;
     if (lenteAttiva) {
       try {

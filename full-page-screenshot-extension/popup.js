@@ -141,7 +141,7 @@ chrome.storage.session.get('multi', function(sm) {
     // Quick panel spento: comportamento classico, si parte subito con la
     // modalità salvata senza mostrare il pannello di comando.
     var modo = d.captureMode || 'full';
-    var pannello = (d.mostraPannello === undefined) ? true : d.mostraPannello;
+    var pannello = (d.mostraPannello === undefined) ? false : d.mostraPannello;
     // Multi Snip si porta il pannellino SULLA pagina: aprire anche il quick
     // panel qui sarebbe un doppione e costringerebbe a un click in più a
     // ogni cattura per arrivare comunque allo stesso posto.
@@ -151,6 +151,6 @@ chrome.storage.session.get('multi', function(sm) {
     }
     evidenziaModo(modo);
     setSw('pClip', (d.copyToClipboard === undefined) ? true : d.copyToClipboard);
-    setSw('pLente', (d.lentePixel === undefined) ? true : d.lentePixel);
+    setSw('pLente', (d.lentePixel === undefined) ? false : d.lentePixel);
   });
 });
