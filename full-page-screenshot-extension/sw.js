@@ -1290,12 +1290,26 @@ async function doFullCapture(tabId) {
       var esitoSlice = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(y, custom, row) {
+          function allElementsDeep(root) {
+            var result = [];
+            var scopes = [root];
+            while (scopes.length) {
+              var scope = scopes.shift();
+              var found = scope.querySelectorAll('*');
+              for (var de = 0; de < found.length; de++) {
+                result.push(found[de]);
+                if (found[de].shadowRoot) scopes.push(found[de].shadowRoot);
+              }
+            }
+            return result;
+          }
+
           // Censimento sticky/fixed una sola volta (prima slice), con la
           // visibility originale salvata per il ripristino finale.
           if (row === 0) {
             window.__screenshotHidden = [];
             var scrollAnc = custom ? document.querySelector('[data-screenshot-scroll]') : null;
-            var allEls = document.querySelectorAll('*');
+            var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
               var st = window.getComputedStyle(allEls[k]);
               if (st.position === 'fixed' || st.position === 'sticky') {
@@ -1345,6 +1359,32 @@ async function doFullCapture(tabId) {
                   }
                 }
                 nodeUp = par;
+              }
+            }
+          }
+
+          // Alcuni siti (Transfermarkt) trasformano una barra normale in
+          // position:fixed soltanto dopo lo scroll. Va censita nella stessa
+          // fetta in cui cambia, non solo all'inizio della cattura.
+          function scanDynamicStickiesFP() {
+            var list = window.__screenshotHidden || [];
+            var scrollAncNow = custom ? document.querySelector('[data-screenshot-scroll]') : null;
+            var currentEls = allElementsDeep(document);
+            for (var dk = 0; dk < currentEls.length; dk++) {
+              var dp = window.getComputedStyle(currentEls[dk]).position;
+              if (dp !== 'fixed' && dp !== 'sticky') continue;
+              if (scrollAncNow && currentEls[dk].contains(scrollAncNow)) continue;
+              var dr = currentEls[dk].getBoundingClientRect();
+              if (dr.width >= window.innerWidth * 0.9 && dr.height >= window.innerHeight * 0.9) continue;
+              var known = false;
+              for (var di = 0; di < list.length; di++) {
+                if (list[di].el === currentEls[dk]) { known = true; break; }
+              }
+              if (!known) {
+                list.push({
+                  el: currentEls[dk],
+                  oldVisibility: currentEls[dk].style.visibility
+                });
               }
             }
           }
@@ -1404,6 +1444,7 @@ async function doFullCapture(tabId) {
               lastY = currentY;
               if (Math.abs(currentY - y) < 2 || fermo || checks > 30) {
                 clearInterval(interval);
+                scanDynamicStickiesFP();
                 manageStickiesFP();  // nascondi gli ancorati a QUESTA slice
                 // Il chiamante compone per POSIZIONE REALE: si riporta dove
                 // lo scroll si è davvero fermato (non dove doveva arrivare).
@@ -2435,6 +2476,19 @@ async function doAreaCapture(tabId) {
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(targetScroll, hasCustomScroll, idx, lastIdx, selectedWidth) {
+          function allElementsDeep(root) {
+            var result = [];
+            var scopes = [root];
+            while (scopes.length) {
+              var scope = scopes.shift();
+              var found = scope.querySelectorAll('*');
+              for (var de = 0; de < found.length; de++) {
+                result.push(found[de]);
+                if (found[de].shadowRoot) scopes.push(found[de].shadowRoot);
+              }
+            }
+            return result;
+          }
 
           // Posizione naturale di un elemento nel documento (somma offsetTop).
           // Per gli sticky resta la posizione di flusso anche da incollati.
@@ -2460,11 +2514,12 @@ async function doAreaCapture(tabId) {
                 oldVis: el.style.visibility,
                 diretto: diretto,
                 parentIdx: -1,
+                classified: false,
                 bottomRoot: false,
                 bottomGroup: false
               });
             }
-            var allEls = document.querySelectorAll('*');
+            var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
               if (allEls[k].id === '__screenshot_area_overlay') continue;
               var p = window.getComputedStyle(allEls[k]).position;
@@ -2530,6 +2585,62 @@ async function doAreaCapture(tabId) {
             }
           }
 
+          // Alcuni siti applicano position:fixed solo DOPO il primo scroll
+          // (Transfermarkt lo fa con la barra di navigazione della squadra).
+          // Il censimento iniziale quindi non basta: a ogni fetta aggiungiamo
+          // gli elementi che nel frattempo sono diventati fixed/sticky.
+          function scanDynamicStickies() {
+          var scrollAncNow = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
+          var currentEls = allElementsDeep(document);
+          var addedNow = false;
+          for (var dk = 0; dk < currentEls.length; dk++) {
+            if (currentEls[dk].id === '__screenshot_area_overlay') continue;
+            var dp = window.getComputedStyle(currentEls[dk]).position;
+            if (dp !== 'fixed' && dp !== 'sticky') continue;
+            if (scrollAncNow && currentEls[dk].contains(scrollAncNow)) continue;
+            var dr = currentEls[dk].getBoundingClientRect();
+            if (dr.width >= window.innerWidth * 0.9 && dr.height >= window.innerHeight * 0.9) continue;
+            var known = false;
+            for (var di = 0; di < window.__screenshotStickies.length; di++) {
+              if (window.__screenshotStickies[di].el === currentEls[dk]) { known = true; break; }
+            }
+            if (known) continue;
+            window.__screenshotStickies.push({
+              el: currentEls[dk],
+              oldVis: currentEls[dk].style.visibility,
+              diretto: true,
+              parentIdx: -1,
+              classified: false,
+              bottomRoot: false,
+              bottomGroup: false
+            });
+            addedNow = true;
+          }
+
+          // Un nuovo contenitore fixed può diventare il padre di elementi già
+          // censiti: in quel caso ricostruiamo i gruppi prima di nasconderli.
+          if (addedNow) {
+            for (var ri = 0; ri < window.__screenshotStickies.length; ri++) {
+              window.__screenshotStickies[ri].parentIdx = -1;
+              var dynamicParent = window.__screenshotStickies[ri].el.parentElement;
+              while (dynamicParent) {
+                var dynamicParentIdx = -1;
+                for (var dpi = 0; dpi < window.__screenshotStickies.length; dpi++) {
+                  if (window.__screenshotStickies[dpi].el === dynamicParent) {
+                    dynamicParentIdx = dpi;
+                    break;
+                  }
+                }
+                if (dynamicParentIdx >= 0) {
+                  window.__screenshotStickies[ri].parentIdx = dynamicParentIdx;
+                  break;
+                }
+                dynamicParent = dynamicParent.parentElement;
+              }
+            }
+          }
+          }
+
           // Gestione robusta indipendente dal solo CSS: un micro-scroll distingue
           // ciò che scorre col contenuto da ciò che resta ancorato al viewport.
           // Gli ancorati in alto compaiono nella prima fetta, quelli in basso
@@ -2570,10 +2681,9 @@ async function doAreaCapture(tabId) {
             // La classificazione avviene sui contenitori radice, non sui singoli
             // pulsanti: così una voce in fondo a una sidebar non viene scambiata
             // per una barra inferiore autonoma.
-            if (idx === 0) {
-              for (var rIdx = 0; rIdx < window.__screenshotStickies.length; rIdx++) {
-                var rootItem = window.__screenshotStickies[rIdx];
-                if (rootItem.parentIdx >= 0 || !anchoredNow[rIdx]) continue;
+            for (var rIdx = 0; rIdx < window.__screenshotStickies.length; rIdx++) {
+              var rootItem = window.__screenshotStickies[rIdx];
+              if (rootItem.parentIdx >= 0 || rootItem.classified || !anchoredNow[rIdx]) continue;
                 var rootEl = rootItem.el;
                 var rr = rects1[rIdx];
                 var usaScroller = scrollEl && scrollEl.contains(rootEl);
@@ -2592,15 +2702,15 @@ async function doAreaCapture(tabId) {
                 var barraOrizzontale = rr.width > rr.height * 1.5 &&
                   rr.width >= Math.min(larghezzaVista * 0.35, selectedWidth * 0.5);
                 rootItem.bottomRoot = vicinoAlFondo && (rootItem.diretto || barraOrizzontale);
+                rootItem.classified = true;
+            }
+            for (var gIdx = 0; gIdx < window.__screenshotStickies.length; gIdx++) {
+              var rootIdx = gIdx;
+              while (window.__screenshotStickies[rootIdx].parentIdx >= 0) {
+                rootIdx = window.__screenshotStickies[rootIdx].parentIdx;
               }
-              for (var gIdx = 0; gIdx < window.__screenshotStickies.length; gIdx++) {
-                var rootIdx = gIdx;
-                while (window.__screenshotStickies[rootIdx].parentIdx >= 0) {
-                  rootIdx = window.__screenshotStickies[rootIdx].parentIdx;
-                }
-                window.__screenshotStickies[gIdx].bottomGroup =
-                  window.__screenshotStickies[rootIdx].bottomRoot === true;
-              }
+              window.__screenshotStickies[gIdx].bottomGroup =
+                window.__screenshotStickies[rootIdx].bottomRoot === true;
             }
 
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
@@ -2632,6 +2742,7 @@ async function doAreaCapture(tabId) {
               lastCy = cy;
               if (reachedTarget || stuck || checks > 30) {
                 clearInterval(interval);
+                scanDynamicStickies();
                 manageStickies(cy, hasCustomScroll);
                 resolve(cy);
               }
