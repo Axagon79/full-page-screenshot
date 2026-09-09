@@ -837,6 +837,255 @@ async function registraCatturaRiuscita(tabId) {
 }
 
 // === FULL PAGE ===
+async function cleanupMultiPaneCapture(tabId, panesData) {
+  await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function(savedPanes) {
+      var fixed = window.__screenshotMultiFixed || [];
+      for (var f = 0; f < fixed.length; f++) fixed[f].el.style.visibility = fixed[f].oldVisibility;
+      window.__screenshotMultiFixed = null;
+      for (var i = 0; i < savedPanes.length; i++) {
+        var pane = document.querySelector('[data-screenshot-pane="' + savedPanes[i].index + '"]');
+        if (!pane) continue;
+        pane.scrollTop = savedPanes[i].oldScroll;
+        pane.removeAttribute('data-screenshot-pane');
+      }
+    },
+    args: [panesData || []]
+  });
+}
+
+async function doMultiPaneFullCapture(tabId, d) {
+  var positions = [0];
+  for (var y = d.stepH; y < d.maxScroll; y += d.stepH) positions.push(y);
+  if (d.maxScroll > 0 && positions[positions.length - 1] !== d.maxScroll) positions.push(d.maxScroll);
+
+  var captures = [];
+  var paneScrolls = [];
+
+  for (var row = 0; row < positions.length; row++) {
+    var pct = Math.round(((row + 1) / positions.length) * 85) + 5;
+    sendProgress('Cattura ' + (row + 1) + ' di ' + positions.length + '...', pct);
+
+    var moved = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(targetY, rowIndex) {
+        var panes = Array.prototype.slice.call(document.querySelectorAll('[data-screenshot-pane]'));
+        panes.sort(function(a, b) {
+          return Number(a.getAttribute('data-screenshot-pane')) - Number(b.getAttribute('data-screenshot-pane'));
+        });
+
+        if (rowIndex === 0) {
+          window.__screenshotMultiFixed = [];
+          var all = document.querySelectorAll('*');
+          for (var k = 0; k < all.length; k++) {
+            var css = window.getComputedStyle(all[k]);
+            if (css.position !== 'fixed' && css.position !== 'sticky') continue;
+            var contienePane = false;
+            for (var pa = 0; pa < panes.length; pa++) {
+              if (all[k].contains(panes[pa])) { contienePane = true; break; }
+            }
+            if (contienePane) continue;
+            var r = all[k].getBoundingClientRect();
+            if (r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.9) continue;
+            if (r.width <= 0 || r.height <= 0) continue;
+
+            var paneIndex = -1;
+            var bestOverlap = 0;
+            var isBottom = false;
+            for (var p = 0; p < panes.length; p++) {
+              var pr = panes[p].getBoundingClientRect();
+              var overlap = Math.max(0, Math.min(r.right, pr.right) - Math.max(r.left, pr.left));
+              if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                paneIndex = p;
+                isBottom = Math.abs(pr.bottom - r.bottom) < Math.abs(r.top - pr.top);
+              }
+            }
+            window.__screenshotMultiFixed.push({
+              el: all[k],
+              oldVisibility: all[k].style.visibility,
+              paneIndex: paneIndex,
+              bottom: bestOverlap > 0 && isBottom
+            });
+          }
+        }
+
+        var fixed = window.__screenshotMultiFixed || [];
+        for (var f = 0; f < fixed.length; f++) {
+          fixed[f].el.style.visibility = fixed[f].oldVisibility;
+          if (fixed[f].bottom || rowIndex > 0) fixed[f].el.style.visibility = 'hidden';
+        }
+
+        for (var i = 0; i < panes.length; i++) {
+          panes[i].scrollTop = Math.min(targetY, Math.max(0, panes[i].scrollHeight - panes[i].clientHeight));
+        }
+
+        return new Promise(function(resolve) {
+          var last = [];
+          var stable = 0;
+          var checks = 0;
+          var timer = setInterval(function() {
+            var now = [];
+            var same = true;
+            for (var j = 0; j < panes.length; j++) {
+              now.push(panes[j].scrollTop);
+              if (typeof last[j] !== 'number' || Math.abs(last[j] - now[j]) >= 1) same = false;
+            }
+            stable = same ? stable + 1 : 0;
+            last = now;
+            checks++;
+            if (stable >= 2 || checks > 30) {
+              clearInterval(timer);
+              resolve(now);
+            }
+          }, 50);
+        });
+      },
+      args: [positions[row], row]
+    });
+
+    paneScrolls.push(moved[0].result);
+    await sleep(350);
+    var shot = null;
+    for (var retry = 0; retry < 3; retry++) {
+      try {
+        shot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+        break;
+      } catch (captureErr) {
+        if (retry < 2 && captureErr.message.indexOf('MAX_CAPTURE') !== -1) {
+          await sleep(600);
+        } else {
+          throw captureErr;
+        }
+      }
+    }
+    captures.push(shot);
+  }
+
+  // Ripresa separata delle barre inferiori, con ogni pannello al proprio fondo.
+  var bottomMetaResult = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function() {
+      var panes = Array.prototype.slice.call(document.querySelectorAll('[data-screenshot-pane]'));
+      panes.sort(function(a, b) {
+        return Number(a.getAttribute('data-screenshot-pane')) - Number(b.getAttribute('data-screenshot-pane'));
+      });
+      var fixed = window.__screenshotMultiFixed || [];
+      var tops = [];
+      for (var p = 0; p < panes.length; p++) tops.push(null);
+      for (var f = 0; f < fixed.length; f++) {
+        if (!fixed[f].bottom) continue;
+        fixed[f].el.style.visibility = fixed[f].oldVisibility;
+        var r = fixed[f].el.getBoundingClientRect();
+        var idx = fixed[f].paneIndex;
+        if (idx >= 0 && (tops[idx] === null || r.top < tops[idx])) tops[idx] = Math.max(0, r.top - 64);
+      }
+      return new Promise(function(resolve) {
+        requestAnimationFrame(function() { requestAnimationFrame(function() { resolve(tops); }); });
+      });
+    }
+  });
+  var bottomTops = bottomMetaResult[0].result;
+  var hasBottom = bottomTops.some(function(v) { return typeof v === 'number'; });
+  var bottomShot = null;
+  if (hasBottom) {
+    await sleep(350);
+    for (var bottomRetry = 0; bottomRetry < 3; bottomRetry++) {
+      try {
+        bottomShot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+        break;
+      } catch (bottomErr) {
+        if (bottomRetry < 2 && bottomErr.message.indexOf('MAX_CAPTURE') !== -1) {
+          await sleep(600);
+        } else {
+          throw bottomErr;
+        }
+      }
+    }
+  }
+
+  sendProgress('Composizione...', 92);
+  var compResult = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function(imgs, panes, scrolls, viewH, outputH, bg, bottomImg, bottomTops) {
+      function loadImg(src) {
+        return new Promise(function(resolve, reject) {
+          var img = new Image();
+          img.onload = function() { resolve(img); };
+          img.onerror = reject;
+          img.src = src;
+        });
+      }
+      var sources = imgs.slice();
+      if (bottomImg) sources.push(bottomImg);
+      return Promise.all(sources.map(loadImg)).then(function(loaded) {
+        var bottom = bottomImg ? loaded.pop() : null;
+        var k = loaded[0].height / viewH;
+        var canvas = document.createElement('canvas');
+        canvas.width = loaded[0].width;
+        canvas.height = Math.max(loaded[0].height, Math.round(outputH * k));
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(loaded[0], 0, 0);
+
+        for (var p = 0; p < panes.length; p++) {
+          var pane = panes[p];
+          var sx = Math.round(pane.left * k);
+          var sy = Math.round(pane.top * k);
+          var sw = Math.round(pane.width * k);
+          var sh = Math.round(pane.height * k);
+          if (sx + sw > loaded[0].width) sw = loaded[0].width - sx;
+          if (sy + sh > loaded[0].height) sh = loaded[0].height - sy;
+          for (var frame = 0; frame < loaded.length; frame++) {
+            var real = scrolls[frame] && typeof scrolls[frame][p] === 'number' ? scrolls[frame][p] : 0;
+            var dy = Math.round((pane.top + real) * k);
+            var drawH = Math.min(sh, canvas.height - dy);
+            if (sw > 0 && drawH > 0) ctx.drawImage(loaded[frame], sx, sy, sw, drawH, sx, dy, sw, drawH);
+          }
+
+          if (bottom && typeof bottomTops[p] === 'number') {
+            var stripTop = Math.max(pane.top, bottomTops[p]);
+            var stripBottom = pane.top + pane.height;
+            var stripY = Math.round(stripTop * k);
+            var stripH = Math.round((stripBottom - stripTop) * k);
+            var destBottom = Math.round((pane.top + pane.scrollHeight) * k);
+            if (stripY + stripH > bottom.height) stripH = bottom.height - stripY;
+            if (destBottom > canvas.height) destBottom = canvas.height;
+            if (stripH > 0) {
+              ctx.drawImage(bottom, sx, stripY, sw, stripH, sx, destBottom - stripH, sw, stripH);
+            }
+          }
+        }
+        return canvas.toDataURL('image/png');
+      });
+    },
+    args: [captures, d.panes, paneScrolls, d.vh, d.outputH, d.bg, bottomShot, bottomTops]
+  });
+
+  var multi = await multiSessione();
+  var rejected = false;
+  if (multi && multi.active) {
+    rejected = (await multiAggiungiPezzo(compResult[0].result, tabId, 'full')) === false;
+  } else {
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    chrome.downloads.download({
+      url: compResult[0].result,
+      filename: 'screenshots/screenshot_' + ts + '.png',
+      saveAs: false
+    });
+    await copyToClipboard(compResult[0].result, tabId);
+  }
+
+  await cleanupMultiPaneCapture(tabId, d.panes);
+
+  await resumeCssAnims(tabId);
+  if (rejected) sendError('Piece too large for the session (10 MB limit)');
+  else sendSuccess();
+  if (!(multi && multi.active)) await registraCatturaRiuscita(tabId);
+}
+
 async function doFullCapture(tabId) {
   try {
     sendProgress('Preparazione...', 5);
@@ -866,15 +1115,100 @@ async function doFullCapture(tabId) {
 
         if (!windowScrolls) {
           var all = document.querySelectorAll('*');
+          var bestVisibleArea = -1;
+          var bestScrollHeight = -1;
+          var paneCandidates = [];
           for (var j = 0; j < all.length; j++) {
             var el = all[j];
             var style = window.getComputedStyle(el);
             var ov = style.overflowY;
             if ((ov === 'auto' || ov === 'scroll') && el.scrollHeight > el.clientHeight + 10) {
-              if (!scrollEl || el.scrollHeight > scrollEl.scrollHeight) {
+              var rect = el.getBoundingClientRect();
+              var visibleW = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
+              var visibleH = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+              var visibleArea = visibleW * visibleH;
+              if (visibleH >= window.innerHeight * 0.45 &&
+                  visibleW >= 80 && visibleArea >= window.innerWidth * window.innerHeight * 0.04) {
+                paneCandidates.push({
+                  el: el,
+                  left: Math.max(0, rect.left + (el.clientLeft || 0)),
+                  top: Math.max(0, rect.top + (el.clientTop || 0)),
+                  width: visibleW,
+                  height: visibleH,
+                  area: visibleArea
+                });
+              }
+              // Nelle web app possono scorrere sia il contenuto principale sia
+              // una sidebar molto più lunga. La Full Page deve seguire la zona
+              // visibile più ampia, non quella con più cronologia (ChatGPT).
+              if (visibleArea > bestVisibleArea ||
+                  (visibleArea === bestVisibleArea && el.scrollHeight > bestScrollHeight)) {
                 scrollEl = el;
+                bestVisibleArea = visibleArea;
+                bestScrollHeight = el.scrollHeight;
               }
             }
+          }
+
+          // Più pannelli alti e non sovrapposti (es. cronologia + chat):
+          // vengono catturati come scroller indipendenti e ricomposti affiancati.
+          paneCandidates.sort(function(a, b) { return b.area - a.area; });
+          var panes = [];
+          for (var pc = 0; pc < paneCandidates.length && panes.length < 4; pc++) {
+            var cand = paneCandidates[pc];
+            var separato = true;
+            for (var ps = 0; ps < panes.length; ps++) {
+              var gia = panes[ps];
+              var iw = Math.max(0, Math.min(cand.left + cand.width, gia.left + gia.width) - Math.max(cand.left, gia.left));
+              var ih = Math.max(0, Math.min(cand.top + cand.height, gia.top + gia.height) - Math.max(cand.top, gia.top));
+              if (iw * ih > Math.min(cand.area, gia.area) * 0.2) {
+                separato = false;
+                break;
+              }
+            }
+            if (separato) panes.push(cand);
+          }
+
+          if (panes.length >= 2) {
+            panes.sort(function(a, b) { return a.left - b.left; });
+            var paneData = [];
+            var maxScroll = 0;
+            var minStep = window.innerHeight;
+            var outputH = window.innerHeight;
+            for (var pi = 0; pi < panes.length; pi++) {
+              var pane = panes[pi];
+              var oldScroll = pane.el.scrollTop;
+              pane.el.setAttribute('data-screenshot-pane', String(pi));
+              pane.el.scrollTop = 0;
+              var maxPaneScroll = Math.max(0, pane.el.scrollHeight - pane.el.clientHeight);
+              if (maxPaneScroll > maxScroll) maxScroll = maxPaneScroll;
+              if (pane.height < minStep) minStep = pane.height;
+              if (pane.top + pane.el.scrollHeight > outputH) outputH = pane.top + pane.el.scrollHeight;
+              paneData.push({
+                index: pi,
+                left: pane.left,
+                top: pane.top,
+                width: pane.width,
+                height: pane.height,
+                scrollHeight: pane.el.scrollHeight,
+                oldScroll: oldScroll
+              });
+            }
+            var bg = window.getComputedStyle(document.body).backgroundColor;
+            if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') {
+              bg = window.getComputedStyle(document.documentElement).backgroundColor;
+            }
+            return {
+              multiPane: true,
+              panes: paneData,
+              maxScroll: maxScroll,
+              stepH: minStep,
+              outputH: outputH,
+              vh: window.innerHeight,
+              vw: window.innerWidth,
+              dpr: window.devicePixelRatio || 1,
+              bg: bg || '#ffffff'
+            };
           }
         }
 
@@ -935,6 +1269,10 @@ async function doFullCapture(tabId) {
     });
 
     var d = results[0].result;
+    if (d.multiPane) {
+      await doMultiPaneFullCapture(tabId, d);
+      return;
+    }
     // Passo di avanzamento: l'altezza VISIBILE del contenitore scrollato
     // (per lo scroll di finestra coincide con l'altezza del viewport).
     var stepH = d.hasCustomScroll ? d.ch : d.vh;
@@ -1267,6 +1605,9 @@ async function doFullCapture(tabId) {
 
   } catch (err) {
     console.error('Screenshot error:', err);
+    if (typeof d !== 'undefined' && d && d.multiPane) {
+      try { await cleanupMultiPaneCapture(tabId, d.panes); } catch (cleanupErr) {}
+    }
     await resumeCssAnims(tabId);
     // FALLBACK: su pagine non iniettabili (chrome://, errore) catturo il visibile.
     if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
