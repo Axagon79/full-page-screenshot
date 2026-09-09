@@ -2056,6 +2056,8 @@ async function doAreaCapture(tabId) {
     var deltas = [];  // di quanto lo scroll è rimasto indietro rispetto al voluto (per slice)
     var realScrolls = [];  // scroll reale (frazionario) raggiunto da ogni slice: serve
                            // per ancorare ogni slice alla sua POSIZIONE assoluta in cucitura
+    var bottomOverlay = null;
+    var bottomOverlayTop = null;
 
     sendProgress('Cattura area...', 5);
 
@@ -2068,17 +2070,30 @@ async function doAreaCapture(tabId) {
       // Su window scroll offsetY=0, quindi invariato.
       // Se la selezione è già tutta visibile, lo scroll voluto è quello ATTUALE
       // (meta.sy): non muovo la pagina, catturo dov'è.
-      var basePos = giaVisibile ? meta.sy : ((area.y_doc - meta.offsetY) + i * sliceH);
+      var startPos = area.y_doc - meta.offsetY;
+      var ultimaSlice = !giaVisibile && numSlices > 1 && i === numSlices - 1;
+      var basePos = giaVisibile ? meta.sy : (startPos + i * sliceH);
+      // L'ultima fetta parte abbastanza indietro da portare il fondo della
+      // selezione sul fondo del viewport. Oltre a creare un overlap misurabile
+      // con la fetta precedente, questo mantiene le barre ancorate in basso
+      // (composer delle chat, footer mobili) nel loro bordo reale: il fondo.
+      if (ultimaSlice) {
+        basePos = Math.max(0, startPos + area.h_doc - sliceH);
+      }
       // BARRA FISSA IN CIMA (header Facebook e simili): si scrolla ARRETRATI
       // del suo spessore. Prima fetta: la barra è visibile e coprirebbe
       // l'inizio della selezione — il delta risultante fa partire il ritaglio
       // subito SOTTO la barra. Fette successive: la barra è già nascosta dal
       // censimento sticky, ma l'arretramento uniforme tiene le fette contigue.
       var coverTop = giaVisibile ? 0 : (meta.topCover || 0);
-      var wantedScroll = coverTop ? Math.max(0, basePos - coverTop) : basePos;
+      // Sull'ultima fetta la top bar è già nascosta: sottrarre ancora coverTop
+      // sposterebbe il fondo selezionato sotto al viewport.
+      var wantedScroll = ultimaSlice
+        ? Math.max(0, basePos)
+        : (coverTop ? Math.max(0, basePos - coverTop) : basePos);
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
-        func: function(targetScroll, hasCustomScroll, idx) {
+        func: function(targetScroll, hasCustomScroll, idx, lastIdx, selectedWidth) {
 
           // Posizione naturale di un elemento nel documento (somma offsetTop).
           // Per gli sticky resta la posizione di flusso anche da incollati.
@@ -2092,6 +2107,22 @@ async function doAreaCapture(tabId) {
           if (!window.__screenshotStickies) {
             window.__screenshotStickies = [];
             var scrollAnc = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
+            function aggiungiSticky(el, diretto) {
+              for (var a = 0; a < window.__screenshotStickies.length; a++) {
+                if (window.__screenshotStickies[a].el === el) {
+                  if (diretto) window.__screenshotStickies[a].diretto = true;
+                  return;
+                }
+              }
+              window.__screenshotStickies.push({
+                el: el,
+                oldVis: el.style.visibility,
+                diretto: diretto,
+                parentIdx: -1,
+                bottomRoot: false,
+                bottomGroup: false
+              });
+            }
             var allEls = document.querySelectorAll('*');
             for (var k = 0; k < allEls.length; k++) {
               if (allEls[k].id === '__screenshot_area_overlay') continue;
@@ -2104,7 +2135,7 @@ async function doAreaCapture(tabId) {
                 if (scrollAnc && allEls[k].contains(scrollAnc)) continue;
                 var rc = allEls[k].getBoundingClientRect();
                 if (rc.width >= window.innerWidth * 0.9 && rc.height >= window.innerHeight * 0.9) continue;
-                window.__screenshotStickies.push({ el: allEls[k], oldVis: allEls[k].style.visibility });
+                aggiungiSticky(allEls[k], true);
               }
             }
 
@@ -2129,22 +2160,40 @@ async function doAreaCapture(tabId) {
                   var ih = Math.min(sr.bottom, cr.bottom) - Math.max(sr.top, cr.top);
                   if (iw > 8 && ih > 8) continue;
                   for (var w = 0; w < sib.children.length; w++) {
-                    window.__screenshotStickies.push({
-                      el: sib.children[w],
-                      oldVis: sib.children[w].style.visibility
-                    });
+                    aggiungiSticky(sib.children[w], false);
                   }
                 }
                 nodeUp = par;
               }
             }
+
+            // Collega ogni candidato al candidato antenato più vicino. La barra
+            // viene classificata come un unico blocco: un pulsante in fondo a una
+            // sidebar non deve trascinare tutta la sidebar a fondo immagine.
+            for (var c = 0; c < window.__screenshotStickies.length; c++) {
+              var padre = window.__screenshotStickies[c].el.parentElement;
+              while (padre) {
+                var trovato = -1;
+                for (var pIdx = 0; pIdx < window.__screenshotStickies.length; pIdx++) {
+                  if (window.__screenshotStickies[pIdx].el === padre) {
+                    trovato = pIdx;
+                    break;
+                  }
+                }
+                if (trovato >= 0) {
+                  window.__screenshotStickies[c].parentIdx = trovato;
+                  break;
+                }
+                padre = padre.parentElement;
+              }
+            }
           }
 
-          // Gestione robusta indipendente dal CSS: per capire se un elemento è
-          // ancorato al viewport (da nascondere) o sta scorrendo (da mostrare),
-          // faccio un micro-scroll di test e guardo se l'elemento si muove.
-          // Non si muove -> ancorato (fixed o sticky incollato) -> nascondi.
-          // L'elemento di partenza è forzato visibile nella prima slice.
+          // Gestione robusta indipendente dal solo CSS: un micro-scroll distingue
+          // ciò che scorre col contenuto da ciò che resta ancorato al viewport.
+          // Gli ancorati in alto compaiono nella prima fetta, quelli in basso
+          // nell'ultima. L'elemento da cui è partita la selezione resta invece
+          // nella prima fetta, perché è stato incluso volontariamente dall'utente.
           function manageStickies(scrollNow, hasCustomScroll) {
             var scrollEl = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
             function getS() { return scrollEl ? scrollEl.scrollTop : window.scrollY; }
@@ -2153,10 +2202,14 @@ async function doAreaCapture(tabId) {
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
               window.__screenshotStickies[s].el.style.visibility = window.__screenshotStickies[s].oldVis;
             }
+            // Una sola fetta rappresenta già esattamente ciò che è a schermo.
+            if (lastIdx === 0) return;
+
             var base = getS();
-            var tops1 = [];
+            var rects1 = [];
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
-              tops1.push(window.__screenshotStickies[s].el.getBoundingClientRect().top);
+              var r1 = window.__screenshotStickies[s].el.getBoundingClientRect();
+              rects1.push({ top: r1.top, bottom: r1.bottom });
             }
             // micro-scroll di test (indietro se possibile, sennò avanti)
             var probe = (base > 20) ? base - 12 : base + 12;
@@ -2168,19 +2221,52 @@ async function doAreaCapture(tabId) {
             }
             setS(base); // ripristina lo scroll esatto della slice
             var scrollMoved = Math.abs(realProbe - base) > 1;
+            var anchoredNow = [];
+            for (var aNow = 0; aNow < window.__screenshotStickies.length; aNow++) {
+              anchoredNow.push(scrollMoved && (Math.abs(rects1[aNow].top - tops2[aNow]) < 2));
+            }
+
+            // La classificazione avviene sui contenitori radice, non sui singoli
+            // pulsanti: così una voce in fondo a una sidebar non viene scambiata
+            // per una barra inferiore autonoma.
+            if (idx === 0) {
+              for (var rIdx = 0; rIdx < window.__screenshotStickies.length; rIdx++) {
+                var rootItem = window.__screenshotStickies[rIdx];
+                if (rootItem.parentIdx >= 0 || !anchoredNow[rIdx]) continue;
+                var rootEl = rootItem.el;
+                var rr = rects1[rIdx];
+                var usaScroller = scrollEl && scrollEl.contains(rootEl);
+                var bordoTop = 0;
+                var bordoBottom = window.innerHeight;
+                var larghezzaVista = window.innerWidth;
+                if (usaScroller) {
+                  var sr = scrollEl.getBoundingClientRect();
+                  var rawTop = sr.top + (scrollEl.clientTop || 0);
+                  var rawBottom = rawTop + scrollEl.clientHeight;
+                  bordoTop = Math.max(0, rawTop);
+                  bordoBottom = Math.min(window.innerHeight, rawBottom);
+                  larghezzaVista = scrollEl.clientWidth;
+                }
+                var vicinoAlFondo = Math.abs(bordoBottom - rr.bottom) < Math.abs(rr.top - bordoTop);
+                var barraOrizzontale = rr.width > rr.height * 1.5 &&
+                  rr.width >= Math.min(larghezzaVista * 0.35, selectedWidth * 0.5);
+                rootItem.bottomRoot = vicinoAlFondo && (rootItem.diretto || barraOrizzontale);
+              }
+              for (var gIdx = 0; gIdx < window.__screenshotStickies.length; gIdx++) {
+                var rootIdx = gIdx;
+                while (window.__screenshotStickies[rootIdx].parentIdx >= 0) {
+                  rootIdx = window.__screenshotStickies[rootIdx].parentIdx;
+                }
+                window.__screenshotStickies[gIdx].bottomGroup =
+                  window.__screenshotStickies[rootIdx].bottomRoot === true;
+              }
+            }
+
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
-              var E = window.__screenshotStickies[s].el;
-              // PRIMA SLICE: non nascondo MAI gli sticky. In cima alla pagina top-bar
-              // e barre tipo "Oggi/Domani/Dopodomani" sono al loro posto reale e vanno
-              // tenute. La duplicazione degli sticky (che giustifica il nascondere) si
-              // verifica solo dalle slice successive, quando lo scroll li reincolla.
-              // Senza questo, su selezioni che restano nella prima schermata quelle
-              // barre sparivano per sbaglio (il micro-scroll di test le marcava
-              // ancorate e le nascondeva).
-              if (idx === 0) continue;
-              // ancorato = lo scroll è cambiato ma la posizione dell'elemento no
-              var anchored = scrollMoved && (Math.abs(tops1[s] - tops2[s]) < 2);
-              if (anchored) E.style.visibility = 'hidden';
+              var item = window.__screenshotStickies[s];
+              if (item.bottomGroup || (idx > 0 && anchoredNow[s])) {
+                item.el.style.visibility = 'hidden';
+              }
             }
           }
 
@@ -2211,7 +2297,7 @@ async function doAreaCapture(tabId) {
             }, 50);
           });
         },
-        args: [wantedScroll, area.hasCustomScroll, i]
+        args: [wantedScroll, area.hasCustomScroll, i, numSlices - 1, area.w]
       });
       var realScroll = scrollResult[0].result;
 
@@ -2269,13 +2355,88 @@ async function doAreaCapture(tabId) {
       captures.push(dataUrl);
     }
 
+    // Le barre inferiori non partecipano alle fette normali: altererebbero dedup
+    // e overlap. Per renderle stabili anche quando la selezione finisce prima,
+    // questa ripresa separata viene fatta al fondo REALE dello scroller.
+    var bottomInfoResult = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(hasCustomScroll) {
+        var list = window.__screenshotStickies || [];
+        var haBarraBassa = false;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].bottomRoot) haBarraBassa = true;
+        }
+        if (!haBarraBassa) return null;
+
+        var scrollEl = hasCustomScroll
+          ? document.querySelector('[data-screenshot-area-scroll]')
+          : null;
+        function leggiScroll() { return scrollEl ? scrollEl.scrollTop : window.scrollY; }
+        if (scrollEl) {
+          scrollEl.scrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+        } else {
+          window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+        }
+
+        return new Promise(function(resolve) {
+          var ultimo = -1;
+          var fermo = 0;
+          var giri = 0;
+          var timer = setInterval(function() {
+            var corrente = leggiScroll();
+            fermo = Math.abs(corrente - ultimo) < 1 ? fermo + 1 : 0;
+            ultimo = corrente;
+            giri++;
+            if (fermo < 2 && giri < 20) return;
+            clearInterval(timer);
+
+            var minTop = Infinity;
+            for (var j = 0; j < list.length; j++) {
+              if (list[j].bottomGroup) list[j].el.style.visibility = list[j].oldVis;
+            }
+            requestAnimationFrame(function() {
+              requestAnimationFrame(function() {
+                for (var k = 0; k < list.length; k++) {
+                  if (!list[k].bottomRoot) continue;
+                  var r = list[k].el.getBoundingClientRect();
+                  if (r.height > 0 && r.width > 0) minTop = Math.min(minTop, r.top);
+                }
+                // Include avviso, distanza e ombra insieme al campo.
+                resolve(minTop < Infinity
+                  ? { top: Math.max(0, Math.floor(minTop - 64)) }
+                  : null);
+              });
+            });
+          }, 50);
+        });
+      },
+      args: [area.hasCustomScroll]
+    });
+    var bottomInfo = bottomInfoResult && bottomInfoResult[0] && bottomInfoResult[0].result;
+    if (bottomInfo && typeof bottomInfo.top === 'number') {
+      await sleep(350);
+      for (var overlayRetry = 0; overlayRetry < 3; overlayRetry++) {
+        try {
+          bottomOverlay = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          bottomOverlayTop = bottomInfo.top;
+          break;
+        } catch (overlayErr) {
+          if (overlayRetry < 2 && overlayErr.message.indexOf('MAX_CAPTURE') !== -1) {
+            await sleep(600);
+          } else {
+            throw overlayErr;
+          }
+        }
+      }
+    }
+
     sendProgress('Composizione...', 92);
 
     // Cuci le slice in un canvas finale, croppato sui bound X
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -2285,7 +2446,11 @@ async function doAreaCapture(tabId) {
           });
         }
 
-        return Promise.all(imgs.map(loadImg)).then(function(loaded) {
+        var sorgenti = imgs.slice();
+        if (bottomOverlay) sorgenti.push(bottomOverlay);
+        return Promise.all(sorgenti.map(loadImg)).then(function(tutteLeImmagini) {
+          var overlayImg = bottomOverlay ? tutteLeImmagini.pop() : null;
+          var loaded = tutteLeImmagini;
           var total = loaded.length;
           var realRatio = loaded[0].height / viewH;
 
@@ -2467,7 +2632,26 @@ async function doAreaCapture(tabId) {
           var out = document.createElement('canvas');
           out.width = sw;
           out.height = finalH;
-          out.getContext('2d').drawImage(canvas, 0, 0);
+          var outCtx = out.getContext('2d');
+          outCtx.drawImage(canvas, 0, 0);
+
+          // La cattura separata è allineata al fondo della selezione. Copiando
+          // la sua fascia inferiore sul fondo del risultato, il composer resta
+          // intero e non viene troncato dall'overlap dell'ultima fetta.
+          if (overlayImg && typeof bottomOverlayTop === 'number') {
+            var bandBottomCss = offsetY + contH;
+            var overlayTopCss = Math.max(offsetY, Math.min(bottomOverlayTop, bandBottomCss));
+            var srcY = Math.round(overlayTopCss * realRatio);
+            var srcBottom = Math.min(overlayImg.height, Math.round(bandBottomCss * realRatio));
+            var srcH = srcBottom - srcY;
+            if (srcH > finalH) {
+              srcY += srcH - finalH;
+              srcH = finalH;
+            }
+            if (srcH > 0) {
+              outCtx.drawImage(overlayImg, sx, srcY, sw, srcH, 0, finalH - srcH, sw, srcH);
+            }
+          }
           return out.toDataURL('image/png');
         });
       },
@@ -2476,7 +2660,7 @@ async function doAreaCapture(tabId) {
       // perché la cattura è alta quanto la finestra. Con un contenitore più
       // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
       // e il ritaglio usciva spostato rispetto alla selezione.
-      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH]
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop]
     });
 
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
