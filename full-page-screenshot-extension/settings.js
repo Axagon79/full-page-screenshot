@@ -2,7 +2,9 @@
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
   '9.10': [
-    'Fixed: Select Area no longer mistakes tall sticky content for a bottom bar, preventing unrelated posts from appearing in Facebook captures.'
+    'Fixed: Select Area no longer mistakes tall sticky content for a bottom bar, preventing unrelated posts from appearing in Facebook captures.',
+    'Fixed: selecting inside a comments popup scrolls that popup instead of the page behind it, including automatic scrolling near its edges.',
+    'Improved: custom scrollbars in the selected panel are hidden during capture and restored afterwards, preventing repeated bars in the screenshot.'
   ],
   '9.9': [
     'New: Multi Snip — grab several pieces one after another, even from different tabs, then save them as one stitched image or as separate files.',

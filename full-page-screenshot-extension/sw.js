@@ -1740,7 +1740,54 @@ async function doVisibleCapture(tabId) {
 }
 
 // === AREA SELECTION (Step 1 + 2 + 3) ===
+async function hideAreaCustomScrollbars(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function() {
+      var scroller = document.querySelector('[data-screenshot-area-scroll]');
+      if (!scroller) return;
+      var frame = scroller.getBoundingClientRect();
+      var scope = scroller.closest('dialog[open], [role="dialog"], [aria-modal="true"]') || scroller.parentElement || scroller;
+      var style = document.getElementById('__screenshot_area_scrollbars');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = '__screenshot_area_scrollbars';
+        // Opacity non cambia dimensioni, scroll o disposizione del contenuto.
+        style.textContent = '[data-screenshot-area-scrollbar]{opacity:0 !important;}';
+        (document.head || document.documentElement).appendChild(style);
+      }
+      scope.querySelectorAll('*').forEach(function(el) {
+        if (el === scroller || el.contains(scroller)) return;
+        if (el.hasAttribute('data-screenshot-area-scrollbar')) return;
+        var r = el.getBoundingClientRect();
+        // Solo la sottile fascia verticale sul bordo destro dello scroller.
+        if (r.width <= 0 || r.width > 20 || r.height < 24 || r.height < r.width * 2 ||
+            r.left < frame.right - 24 || r.right > frame.right + 4 ||
+            r.top < Math.max(0, frame.top) - 2 ||
+            r.bottom > Math.min(window.innerHeight, frame.bottom) + 2) return;
+        // Non nascondere testo, immagini o controlli del post.
+        if (el.textContent.trim() || el.matches('img,svg,canvas,video,input,textarea,button,a,[contenteditable="true"]') ||
+            el.querySelector('img,svg,canvas,video,input,textarea,button,a,[contenteditable="true"],[role="button"]')) return;
+        var css = window.getComputedStyle(el);
+        var semantic = el.getAttribute('role') === 'scrollbar';
+        var floating = css.position === 'absolute' || css.position === 'fixed';
+        if (!floating && el.parentElement) {
+          var parentCss = window.getComputedStyle(el.parentElement);
+          var parentRect = el.parentElement.getBoundingClientRect();
+          floating = (parentCss.position === 'absolute' || parentCss.position === 'fixed') && parentRect.width <= 24;
+        }
+        // Le barre personalizzate hanno un cursore stretto e arrotondato;
+        // le semplici linee decorative non vanno considerate scrollbar.
+        var thumb = floating && parseFloat(css.borderTopLeftRadius) >= 2 &&
+          css.backgroundColor !== 'transparent' && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        if (semantic || thumb) el.setAttribute('data-screenshot-area-scrollbar', 'true');
+      });
+    }
+  });
+}
+
 async function doAreaCapture(tabId) {
+  var areaScrollbarsHidden = false;
   try {
     // (le animazioni JS sono già congelate dal listener startCapture)
     // In sessione Multi Snip l'overlay mostra un testo dedicato, così si
@@ -2013,8 +2060,56 @@ async function doAreaCapture(tabId) {
         var scrollTargetResolved = false;
 
         function resolveScrollTarget(mx, my) {
-          if (scrollTargetResolved) return;
+          // Durante il drag conserva lo scroller scelto al punto iniziale.
+          // Prima del drag la rotella segue il contenuto sotto il mouse.
+          if (scrollTargetResolved && dragging) return;
           scrollTargetResolved = true;
+          var prevPE = overlay.style.pointerEvents;
+          overlay.style.pointerEvents = 'none';
+          var hit;
+          try { hit = document.elementFromPoint(mx, my); }
+          finally { overlay.style.pointerEvents = prevPE; }
+
+          function scrollabile(el) {
+            var st = window.getComputedStyle(el);
+            return (st.overflowY === 'auto' || st.overflowY === 'scroll') &&
+              el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 10;
+          }
+
+          // Il contenuto in primo piano precede la pagina dietro, anche
+          // quando lo sfondo puo ancora essere scrollato via JavaScript.
+          var dialog = hit && hit.closest('dialog[open], [role="dialog"], [aria-modal="true"]');
+          var el = hit;
+          while (el && el !== document.body && el !== document.documentElement) {
+            if (scrollabile(el)) {
+              scrollTarget = el;
+              return;
+            }
+            if (el === dialog) break;
+            el = el.parentElement;
+          }
+
+          if (dialog) {
+            // Titolo e bordi del popup usano il suo scroller interno.
+            // Se non ce n'e uno, non si deve muovere la pagina dietro.
+            var inside = dialog.querySelectorAll('*');
+            var bestInside = null;
+            var bestArea = 0;
+            var dialogRect = dialog.getBoundingClientRect();
+            for (var d = 0; d < inside.length; d++) {
+              if (!scrollabile(inside[d])) continue;
+              var ir = inside[d].getBoundingClientRect();
+              var visibleW = Math.max(0, Math.min(ir.right, dialogRect.right, window.innerWidth) - Math.max(ir.left, dialogRect.left, 0));
+              var visibleH = Math.max(0, Math.min(ir.bottom, dialogRect.bottom, window.innerHeight) - Math.max(ir.top, dialogRect.top, 0));
+              var visibleArea = visibleW * visibleH;
+              if (window.getComputedStyle(inside[d]).visibility !== 'hidden' && visibleArea > bestArea) {
+                bestInside = inside[d];
+                bestArea = visibleArea;
+              }
+            }
+            scrollTarget = bestInside || dialog;
+            return;
+          }
           // Se la finestra scrolla DAVVERO, usa window (pagine normali). Prova
           // pratica invece del confronto di altezze: sui siti col BODY-scroller
           // (es. betexplorer) il documento è alto ma window è inchiodata — lì
@@ -2031,28 +2126,16 @@ async function doAreaCapture(tabId) {
             scrollTarget = null;
             return;
           }
-          // App con scroll custom (claude.ai, Notion, Gmail): parti dall'elemento
-          // sotto il punto di partenza del mouse e risali fino al PRIMO contenitore
-          // scrollabile. Questo becca il contenitore reale, non lo "spacer" fantasma.
-          var prevPE = overlay.style.pointerEvents;
-          overlay.style.pointerEvents = 'none';
-          var el = document.elementFromPoint(mx, my);
-          overlay.style.pointerEvents = prevPE;
-          while (el && el !== document.body && el !== document.documentElement) {
-            var st = window.getComputedStyle(el);
-            var ov = st.overflowY;
-            if ((ov === 'auto' || ov === 'scroll') && el.scrollHeight > el.clientHeight + 10) {
-              scrollTarget = el;
-              return;
-            }
-            el = el.parentElement;
-          }
-          // Fallback: il div con scrollHeight più grande (vecchio metodo)
+          // Fallback per le app: solo contenitori sotto il punto selezionato,
+          // senza deviare verso un popup o una colonna altrove.
           var all = document.querySelectorAll('*');
           var best = null;
           for (var j = 0; j < all.length; j++) {
             var e2 = all[j];
             if (e2.id === '__screenshot_area_overlay') continue;
+            var fallbackRect = e2.getBoundingClientRect();
+            if (mx < fallbackRect.left || mx >= fallbackRect.right ||
+                my < fallbackRect.top || my >= fallbackRect.bottom) continue;
             var s2 = window.getComputedStyle(e2);
             var o2 = s2.overflowY;
             if ((o2 === 'auto' || o2 === 'scroll') && e2.scrollHeight > e2.clientHeight + 10) {
@@ -2095,10 +2178,18 @@ async function doAreaCapture(tabId) {
           if (!dragging) { scrollRAF = null; return; }
           resolveScrollTarget(currentX, currentMouseY_vp);
 
-          var vh = window.innerHeight;
+          var scrollTopEdge = 0;
+          var scrollBottomEdge = window.innerHeight;
+          if (scrollTarget) {
+            var scrollRect = scrollTarget.getBoundingClientRect();
+            var contentTop = scrollRect.top + scrollTarget.clientTop;
+            scrollTopEdge = Math.max(0, contentTop);
+            scrollBottomEdge = Math.min(window.innerHeight, contentTop + scrollTarget.clientHeight);
+          }
+          var triggerZone = Math.min(SCROLL_TRIGGER_ZONE, Math.max(1, (scrollBottomEdge - scrollTopEdge) / 3));
           // Aggiorna i flag: il mouse è "uscito" da una zona quando si trova fuori da essa
-          if (lastMouseY >= SCROLL_TRIGGER_ZONE) leftTopZone = true;
-          if (lastMouseY <= vh - SCROLL_TRIGGER_ZONE) leftBottomZone = true;
+          if (lastMouseY >= scrollTopEdge + triggerZone) leftTopZone = true;
+          if (lastMouseY <= scrollBottomEdge - triggerZone) leftBottomZone = true;
           var speed = 0;
           // TURBO: nell'ultima fascia vicino al bordo (30px) si corre forte;
           // nel resto della zona la velocita' resta dolce come prima, per
@@ -2106,19 +2197,20 @@ async function doAreaCapture(tabId) {
           // mouse non ci stava mai dentro e il turbo non partiva.
           var TURBO_ZONE = 30;
           var TURBO_SPEED = 50;
-          if (leftBottomZone && lastMouseY > vh - SCROLL_TRIGGER_ZONE) {
-            var distFromBottom = vh - lastMouseY;
+          if (leftBottomZone && lastMouseY > scrollBottomEdge - triggerZone) {
+            var distFromBottom = scrollBottomEdge - lastMouseY;
             if (distFromBottom <= TURBO_ZONE) {
               speed = TURBO_SPEED;
             } else {
-              var ratio = 1 - (distFromBottom / SCROLL_TRIGGER_ZONE);
+              var ratio = 1 - (distFromBottom / triggerZone);
               speed = SCROLL_SPEED_MIN + ratio * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN);
             }
-          } else if (leftTopZone && lastMouseY < SCROLL_TRIGGER_ZONE) {
-            if (lastMouseY <= TURBO_ZONE) {
+          } else if (leftTopZone && lastMouseY < scrollTopEdge + triggerZone) {
+            var distFromTop = lastMouseY - scrollTopEdge;
+            if (distFromTop <= TURBO_ZONE) {
               speed = -TURBO_SPEED;
             } else {
-              var ratio2 = 1 - (lastMouseY / SCROLL_TRIGGER_ZONE);
+              var ratio2 = 1 - (distFromTop / triggerZone);
               speed = -(SCROLL_SPEED_MIN + ratio2 * (SCROLL_SPEED_MAX - SCROLL_SPEED_MIN));
             }
           }
@@ -2156,7 +2248,8 @@ async function doAreaCapture(tabId) {
             lastEvX = e.clientX;
             lastEvY = e.clientY;
           }
-          resolveScrollTarget(e.clientX, e.clientY);
+          resolveScrollTarget(virtX, virtY);
+          lastMouseY = e.clientY;
           if (scrollTarget) scrollTarget.addEventListener('scroll', onScrollDuringDrag);
           // Rileva se la selezione parte dentro un elemento sticky/fixed (es. top bar):
           // in tal caso quell'elemento andrà incluso nella prima slice.
@@ -2240,6 +2333,7 @@ async function doAreaCapture(tabId) {
         // rotella sia nel giro normale sia in Multi Snip.
         overlay.addEventListener('wheel', function(e) {
           resolveScrollTarget(e.clientX, e.clientY);
+          e.stopPropagation();
           if (scrollTarget) {
             scrollTarget.scrollTop += e.deltaY;
             e.preventDefault();
@@ -2762,6 +2856,10 @@ async function doAreaCapture(tabId) {
       var realScroll = scrollResult[0].result;
 
       await sleep(350);
+      if (area.hasCustomScroll) {
+        areaScrollbarsHidden = true;
+        await hideAreaCustomScrollbars(tabId);
+      }
 
       // Rilettura NELL'ISTANTE dello scatto: certe liste (webmail) si
       // ri-agganciano a multipli di riga DURANTE l'attesa post-assestamento
@@ -2875,6 +2973,7 @@ async function doAreaCapture(tabId) {
     var bottomInfo = bottomInfoResult && bottomInfoResult[0] && bottomInfoResult[0].result;
     if (bottomInfo && typeof bottomInfo.top === 'number') {
       await sleep(350);
+      if (area.hasCustomScroll) await hideAreaCustomScrollbars(tabId);
       for (var overlayRetry = 0; overlayRetry < 3; overlayRetry++) {
         try {
           bottomOverlay = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
@@ -3187,5 +3286,22 @@ async function doAreaCapture(tabId) {
     if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
     sendError(err.message);
     await showBollino(tabId, false, err.message);
+  } finally {
+    // Ripristina le barre anche se la cattura fallisce. Nessuna modifica
+    // permanente allo stile del sito o al comportamento del suo scroller.
+    if (areaScrollbarsHidden) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: function() {
+            document.querySelectorAll('[data-screenshot-area-scrollbar]').forEach(function(el) {
+              el.removeAttribute('data-screenshot-area-scrollbar');
+            });
+            var style = document.getElementById('__screenshot_area_scrollbars');
+            if (style) style.remove();
+          }
+        });
+      } catch (closedTab) {}
+    }
   }
 }
