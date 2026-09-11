@@ -2,6 +2,9 @@
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
   '9.10': [
+    'New: hold Space during area selection to pause scrolling while you draw. Release it to resume, with no settings to change.',
+    'Improved: area selection recognizes a scrolling panel when at least 85% of the rectangle is inside it, allowing a small margin outside its border.',
+    'Fixed: selection dimensions stay visible while scrolling, and custom scrollbars in side columns are excluded from captures.',
     'Fixed: Select Area no longer mistakes tall sticky content for a bottom bar, preventing unrelated posts from appearing in Facebook captures.',
     'Fixed: selecting inside a comments popup scrolls that popup instead of the page behind it, including automatic scrolling near its edges.',
     'Improved: custom scrollbars in the selected panel are hidden during capture and restored afterwards, preventing repeated bars in the screenshot.'

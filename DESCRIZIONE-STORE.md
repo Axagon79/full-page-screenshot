@@ -1,9 +1,8 @@
 # Descrizione Chrome Web Store — Full Page Screenshot
 
 Fonte versionata dei testi della scheda store. La descrizione BREVE vive nel
-`manifest.json` (va live col pacchetto, 9.9); la LUNGA si incolla a mano
-nella dashboard sviluppatore → "Scheda dello Store" (live subito, nessun
-pacchetto richiesto).
+`manifest.json` (versione 9.10); la LUNGA si incolla a mano
+nella dashboard sviluppatore → "Scheda dello Store".
 
 ---
 
@@ -18,7 +17,49 @@ scroll selection, clipboard. Promessa privacy in chiusura.)
 
 ---
 
-## Descrizione lunga — VERSIONE 9.9 (07/08) ← QUESTA si incolla per la 9.9
+## Descrizione lunga — VERSIONE 9.10 (11/09/2026) — testo da usare
+
+Testo della 9.9 concordato in chat, aggiornato con la pausa dello
+scorrimento tramite Spazio. La scheda online va aggiornata manualmente.
+
+```text
+Full Page Screenshot — capture entire web pages, visible screens, or precise scrolling selections. Combine multiple captures and edit them with the built-in editor.
+
+Four capture modes:
+
+- Full Page — automatically scrolls and stitches the page into one image, including supported scrollable containers.
+- Visible Only — captures exactly what you see on screen.
+- Select Area — drag to select a region. Keep dragging near the screen edge to extend your selection with auto-scroll.
+- Multi Snip — collect multiple captures, even from different tabs, and arrange them together in the editor.
+
+Built-in editor:
+
+- Move, resize, crop, and arrange your captures on a flexible canvas.
+- Cover sensitive information with solid redaction or blur.
+- Add highlights, text, lines, shapes, and numbered steps.
+- Choose custom colors and magnify details with zoom callouts.
+- Add backgrounds, frames, shadows, rounded corners, and a watermark.
+- Adjust zoom and undo or redo changes.
+- Preview, copy, print, or export as PNG, JPG, WEBP, or PDF.
+
+Everyday features:
+
+- Pause scrolling with Space — hold Space before or during area selection to keep the page still while you draw. Release it to resume scrolling. No settings to open.
+- Copy to clipboard — enabled by default, ready to paste with Ctrl+V. You can turn it off in settings.
+- Save captures locally in the "screenshots" folder inside Downloads.
+- Capture progress indicator.
+- Smart handling of fixed and sticky elements to reduce repeated headers and overlapping content.
+- Optional pixel magnifier for precise area selection.
+- Optional quick panel for choosing a capture mode when clicking the extension icon.
+
+Privacy first: no data collection, tracking, or analytics. Captures are processed locally on your device. No account or cloud upload required.
+
+Right-click the extension icon to open settings and choose your default capture mode.
+```
+
+---
+
+## Descrizione lunga — bozza storica 9.9 (07/08), superata dal testo sopra
 
 Novità rispetto alla 05/08: c'è **Multi Snip** (la funzione titolo della
 9.9), la scroll selection è spiegata con lo scenario invece che con la
@@ -160,7 +201,7 @@ If I helped you, leave a star or a comment — it's how other people find this e
 
 ## Note operative
 
-- La breve è già nel manifest (pronta per la 9.9).
+- La breve è già nel manifest della 9.10.
 - La lunga: dashboard → l'estensione → Scheda dello Store → campo
   Descrizione → incolla → Salva bozza → Invia. Le modifiche alla sola
   scheda passano una revisione leggera, di solito rapida.

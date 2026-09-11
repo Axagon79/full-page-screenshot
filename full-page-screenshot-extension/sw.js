@@ -1747,7 +1747,26 @@ async function hideAreaCustomScrollbars(tabId) {
       var scroller = document.querySelector('[data-screenshot-area-scroll]');
       if (!scroller) return;
       var frame = scroller.getBoundingClientRect();
-      var scope = scroller.closest('dialog[open], [role="dialog"], [aria-modal="true"]') || scroller.parentElement || scroller;
+      var scope = scroller.closest('dialog[open], [role="dialog"], [aria-modal="true"]');
+      if (!scope) {
+        // Nelle colonne laterali la barra puo essere esterna allo scroller,
+        // accanto a uno dei suoi contenitori, anziche dentro il suo parent.
+        scope = scroller;
+        for (var level = 0; level < 4 && scope.parentElement; level++) {
+          scope = scope.parentElement;
+          if (scope === document.body || scope.getBoundingClientRect().width > frame.width + 64) break;
+        }
+      }
+      var frameRight = Math.min(window.innerWidth, frame.right);
+      var frameTop = Math.max(0, frame.top);
+      var frameBottom = Math.min(window.innerHeight, frame.bottom);
+      function roundedFill(css) {
+        return Math.max(parseFloat(css.borderTopLeftRadius) || 0,
+          parseFloat(css.borderTopRightRadius) || 0,
+          parseFloat(css.borderBottomLeftRadius) || 0,
+          parseFloat(css.borderBottomRightRadius) || 0) >= 2 &&
+          css.backgroundColor !== 'transparent' && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+      }
       var style = document.getElementById('__screenshot_area_scrollbars');
       if (!style) {
         style = document.createElement('style');
@@ -1761,10 +1780,11 @@ async function hideAreaCustomScrollbars(tabId) {
         if (el.hasAttribute('data-screenshot-area-scrollbar')) return;
         var r = el.getBoundingClientRect();
         // Solo la sottile fascia verticale sul bordo destro dello scroller.
+        // Alcuni siti disegnano il cursore appena FUORI dal bordo, oppure
+        // lo tagliano al viewport: si considera anche questa fascia esterna.
         if (r.width <= 0 || r.width > 20 || r.height < 24 || r.height < r.width * 2 ||
-            r.left < frame.right - 24 || r.right > frame.right + 4 ||
-            r.top < Math.max(0, frame.top) - 2 ||
-            r.bottom > Math.min(window.innerHeight, frame.bottom) + 2) return;
+            r.left < frameRight - 24 || r.right > frameRight + 24 ||
+            Math.min(r.bottom, frameBottom) - Math.max(r.top, frameTop) < 24) return;
         // Non nascondere testo, immagini o controlli del post.
         if (el.textContent.trim() || el.matches('img,svg,canvas,video,input,textarea,button,a,[contenteditable="true"]') ||
             el.querySelector('img,svg,canvas,video,input,textarea,button,a,[contenteditable="true"],[role="button"]')) return;
@@ -1778,8 +1798,16 @@ async function hideAreaCustomScrollbars(tabId) {
         }
         // Le barre personalizzate hanno un cursore stretto e arrotondato;
         // le semplici linee decorative non vanno considerate scrollbar.
-        var thumb = floating && parseFloat(css.borderTopLeftRadius) >= 2 &&
-          css.backgroundColor !== 'transparent' && css.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        var paintedThumb = roundedFill(css);
+        if (floating && !paintedThumb) {
+          // Il cursore puo essere dipinto con ::before/::after: nascondere
+          // il suo elemento resta reversibile e non sposta i contatti.
+          ['::before', '::after'].forEach(function(pseudo) {
+            var pseudoCss = window.getComputedStyle(el, pseudo);
+            if (pseudoCss.content !== 'none' && pseudoCss.content !== 'normal' && roundedFill(pseudoCss)) paintedThumb = true;
+          });
+        }
+        var thumb = floating && paintedThumb;
         if (semantic || thumb) el.setAttribute('data-screenshot-area-scrollbar', 'true');
       });
     }
@@ -1835,8 +1863,30 @@ async function doAreaCapture(tabId) {
           : 'Trascina per selezionare l\'area';
         overlay.appendChild(info);
 
+        var scrollPaused = false;
+        var scrollHint = document.createElement('div');
+        scrollHint.style.cssText = 'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);' +
+          'max-width:calc(100% - 24px);box-sizing:border-box;text-align:center;z-index:2;' +
+          'font:600 12px/1.4 Segoe UI,sans-serif;padding:7px 12px;border-radius:7px;' +
+          'color:#fff;background:#202027;box-shadow:0 2px 8px rgba(0,0,0,0.35);pointer-events:none;';
+        overlay.appendChild(scrollHint);
+        function showScrollPause() {
+          scrollHint.textContent = scrollPaused
+            ? (inMulti ? 'Scrolling paused — release Space to resume' : 'Scorrimento in pausa — rilascia Spazio per riprendere')
+            : (inMulti ? 'Hold Space to pause scrolling' : 'Tieni premuto Spazio per fermare lo scorrimento');
+          scrollHint.style.background = scrollPaused ? '#ffe3a3' : '#202027';
+          scrollHint.style.color = scrollPaused ? '#342400' : '#fff';
+        }
+        showScrollPause();
+
         var startX = 0, startY_doc = 0, dragging = false;
         var currentX = 0, currentMouseY_vp = 0;
+        function syncSelectionPointer() {
+          // In pausa il puntatore puo uscire dalla finestra, ma il rettangolo
+          // si ferma al bordo: non crea una coda vuota oltre lo schermo.
+          currentX = scrollPaused ? Math.max(0, Math.min(window.innerWidth, virtX)) : virtX;
+          currentMouseY_vp = scrollPaused ? Math.max(0, Math.min(window.innerHeight, virtY)) : virtY;
+        }
 
         // === FRENO DI PRECISIONE ===
         // Quando il mouse striscia (pochi px tra un evento e l'altro), la
@@ -2022,16 +2072,19 @@ async function doAreaCapture(tabId) {
             var vBox = box.style.display;
             var vInfo = info.style.display;
             var vDim = dim.style.display;
+            var vScrollHint = scrollHint.style.display;
             overlay.style.transition = 'none';
             overlay.style.background = 'transparent';
             box.style.display = 'none';
             info.style.display = 'none';
             dim.style.display = 'none';
+            scrollHint.style.display = 'none';
             function ripristina() {
               overlay.style.background = vBg;
               box.style.display = vBox;
               info.style.display = vInfo;
               dim.style.display = vDim;
+              scrollHint.style.display = vScrollHint;
               overlay.style.transition = vTr;
             }
             try {
@@ -2058,9 +2111,93 @@ async function doAreaCapture(tabId) {
         var scrollRAF = null;
         var scrollTarget = null;
         var scrollTargetResolved = false;
+        var selectionScrollLocked = false;
+        var initialScrollTarget = null;
+        var selectionStartY = 0;
+        var scrollCandidates = [];
+        var MIN_SCROLL_OVERLAP = 0.85;
+
+        function collectScrollCandidates() {
+          scrollCandidates = [];
+          document.querySelectorAll('*').forEach(function(el) {
+            if (el === document.body || el === document.documentElement || overlay.contains(el)) return;
+            if (el.scrollHeight <= el.clientHeight + 10 || el.clientHeight < 40) return;
+            var css = window.getComputedStyle(el);
+            if ((css.overflowY === 'auto' || css.overflowY === 'scroll') &&
+                css.visibility === 'visible' && css.display !== 'none') scrollCandidates.push(el);
+          });
+        }
+
+        function chooseScrollFromSelection() {
+          if (!dragging || selectionScrollLocked) return;
+          if (Math.abs(getScrollY() - (startY_doc - selectionStartY)) > 0.01) {
+            selectionScrollLocked = true;
+            return;
+          }
+          var left = Math.min(startX, currentX), right = Math.max(startX, currentX);
+          var top = Math.min(selectionStartY, currentMouseY_vp);
+          var bottom = Math.max(selectionStartY, currentMouseY_vp);
+          if (right - left < 10 || bottom - top < 10) return;
+          var selectionArea = (right - left) * (bottom - top);
+          var chosen = initialScrollTarget;
+          var smallestArea = Infinity;
+          var oldPointerEvents = overlay.style.pointerEvents;
+          overlay.style.pointerEvents = 'none';
+          try {
+            scrollCandidates.forEach(function(el) {
+              if (!el.isConnected) return;
+              var r = el.getBoundingClientRect();
+              var x1 = Math.max(0, r.left), x2 = Math.min(window.innerWidth, r.right);
+              var y1 = Math.max(0, r.top), y2 = Math.min(window.innerHeight, r.bottom);
+              // Escludi le porzioni nascoste da contenitori esterni.
+              for (var parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+                var pc = window.getComputedStyle(parent);
+                var pr = parent.getBoundingClientRect();
+                if (/^(auto|scroll|hidden|clip)$/.test(pc.overflowX)) {
+                  x1 = Math.max(x1, pr.left); x2 = Math.min(x2, pr.right);
+                }
+                if (/^(auto|scroll|hidden|clip)$/.test(pc.overflowY)) {
+                  y1 = Math.max(y1, pr.top); y2 = Math.min(y2, pr.bottom);
+                }
+              }
+              var ix1 = Math.max(left, x1), ix2 = Math.min(right, x2);
+              var iy1 = Math.max(top, y1), iy2 = Math.min(bottom, y2);
+              var overlap = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
+              if (overlap / selectionArea + 0.000001 < MIN_SCROLL_OVERLAP) return;
+              // Non scegliere una colonna coperta da un popup in primo piano.
+              var hit = document.elementFromPoint((ix1 + ix2) / 2, (iy1 + iy2) / 2);
+              if (!hit || !el.contains(hit)) return;
+              var visibleArea = (x2 - x1) * (y2 - y1);
+              // Tra contenitori annidati qualificati preferisci quello piu
+              // specifico, non il grande contenitore che comprende la pagina.
+              if (visibleArea < smallestArea) {
+                chosen = el;
+                smallestArea = visibleArea;
+              }
+            });
+          } finally { overlay.style.pointerEvents = oldPointerEvents; }
+          if (chosen === scrollTarget) return;
+          if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
+          scrollTarget = chosen;
+          if (scrollTarget) scrollTarget.addEventListener('scroll', onScrollDuringDrag);
+          // Lo stesso punto a schermo deve restare fermo anche se la colonna
+          // scelta era gia scrollata: cambia solo il riferimento documento.
+          startY_doc = selectionStartY + getScrollY();
+          var edgeTop = 0, edgeBottom = window.innerHeight;
+          if (scrollTarget) {
+            var targetRect = scrollTarget.getBoundingClientRect();
+            var targetTop = targetRect.top + scrollTarget.clientTop;
+            edgeTop = Math.max(0, targetTop);
+            edgeBottom = Math.min(window.innerHeight, targetTop + scrollTarget.clientHeight);
+          }
+          var edgeZone = Math.min(SCROLL_TRIGGER_ZONE, Math.max(1, (edgeBottom - edgeTop) / 3));
+          leftTopZone = selectionStartY >= edgeTop + edgeZone;
+          leftBottomZone = selectionStartY <= edgeBottom - edgeZone;
+        }
 
         function resolveScrollTarget(mx, my) {
-          // Durante il drag conserva lo scroller scelto al punto iniziale.
+          // Durante il drag la scelta passa al rettangolo, poi resta bloccata
+          // appena si muove lo scroller. Qui gestiamo solo il punto iniziale.
           // Prima del drag la rotella segue il contenuto sotto il mouse.
           if (scrollTargetResolved && dragging) return;
           scrollTargetResolved = true;
@@ -2164,19 +2301,30 @@ async function doAreaCapture(tabId) {
           box.style.width = w + 'px';
           box.style.height = height + 'px';
 
-          // Etichetta dimensioni: arrotonda a interi e posiziona sopra il box
-          // (o sotto, se troppo vicino al bordo alto della finestra).
+          // Le dimensioni seguono il bordo del box, ma restano a schermo
+          // anche quando l'inizio della selezione scorre fuori dal viewport.
           dim.textContent = Math.round(w) + ' × ' + Math.round(height) + ' px';
           dim.style.display = 'block';
-          var labelTop = top_vp - 26;            // sopra il rettangolo
+          var labelTop = top_vp - dim.offsetHeight - 6;
           if (labelTop < 4) labelTop = top_vp + 6; // niente spazio sopra -> dentro/sotto
-          dim.style.left = x + 'px';
-          dim.style.top = labelTop + 'px';
+          dim.style.left = Math.max(4, Math.min(x, window.innerWidth - dim.offsetWidth - 4)) + 'px';
+          dim.style.top = Math.max(4, Math.min(labelTop, window.innerHeight - dim.offsetHeight - 4)) + 'px';
         }
 
         function autoScrollLoop() {
           if (!dragging) { scrollRAF = null; return; }
+          if (scrollPaused) {
+            scrollRAF = requestAnimationFrame(autoScrollLoop);
+            return;
+          }
           resolveScrollTarget(currentX, currentMouseY_vp);
+          // Prima di scegliere serve un rettangolo reale, non un primo
+          // movimento di pochi pixel che bloccherebbe subito lo sfondo.
+          if (!selectionScrollLocked && (Math.abs(currentX - startX) < 10 ||
+              Math.abs(currentMouseY_vp - selectionStartY) < 10)) {
+            scrollRAF = requestAnimationFrame(autoScrollLoop);
+            return;
+          }
 
           var scrollTopEdge = 0;
           var scrollBottomEdge = window.innerHeight;
@@ -2215,6 +2363,7 @@ async function doAreaCapture(tabId) {
             }
           }
           if (speed !== 0) {
+            var beforeScroll = getScrollY();
             // behavior 'instant': su siti con CSS scroll-behavior:smooth ogni
             // scrollBy per-frame diventerebbe un'animazione che riparte da capo,
             // strozzando la velocita' reale qualunque sia il passo richiesto.
@@ -2223,6 +2372,7 @@ async function doAreaCapture(tabId) {
             } else {
               window.scrollBy({ top: speed, left: 0, behavior: 'instant' });
             }
+            if (Math.abs(getScrollY() - beforeScroll) > 0.01) selectionScrollLocked = true;
             updateBox();
           }
           scrollRAF = requestAnimationFrame(autoScrollLoop);
@@ -2249,6 +2399,10 @@ async function doAreaCapture(tabId) {
             lastEvY = e.clientY;
           }
           resolveScrollTarget(virtX, virtY);
+          initialScrollTarget = scrollTarget;
+          selectionStartY = virtY;
+          selectionScrollLocked = false;
+          collectScrollCandidates();
           lastMouseY = e.clientY;
           if (scrollTarget) scrollTarget.addEventListener('scroll', onScrollDuringDrag);
           // Rileva se la selezione parte dentro un elemento sticky/fixed (es. top bar):
@@ -2313,9 +2467,9 @@ async function doAreaCapture(tabId) {
           disegnaLenteRaf();
           if (!dragging) return;
           lastMouseY = e.clientY;   // la zona turbo legge il mouse REALE
-          currentX = virtX;
-          currentMouseY_vp = virtY;
+          syncSelectionPointer();
           if (!scrollRAF) scrollRAF = requestAnimationFrame(autoScrollLoop);
+          chooseScrollFromSelection();
           updateBox();
         });
 
@@ -2323,7 +2477,10 @@ async function doAreaCapture(tabId) {
         // Sul window per le pagine normali; sul div scrollabile (agganciato nel
         // mousedown) per le app con scroll custom tipo claude.ai.
         function onScrollDuringDrag() {
-          if (dragging) updateBox();
+          if (dragging) {
+            if (Math.abs(getScrollY() - (startY_doc - selectionStartY)) > 0.01) selectionScrollLocked = true;
+            updateBox();
+          }
         }
         window.addEventListener('scroll', onScrollDuringDrag, true);
 
@@ -2332,8 +2489,15 @@ async function doAreaCapture(tabId) {
         // trascinare: in modalità Area ci si deve poter posizionare con la
         // rotella sia nel giro normale sia in Multi Snip.
         overlay.addEventListener('wheel', function(e) {
+          if (scrollPaused) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+          }
+          if (dragging) chooseScrollFromSelection();
           resolveScrollTarget(e.clientX, e.clientY);
           e.stopPropagation();
+          var beforeScroll = getScrollY();
           if (scrollTarget) {
             scrollTarget.scrollTop += e.deltaY;
             e.preventDefault();
@@ -2341,19 +2505,24 @@ async function doAreaCapture(tabId) {
             window.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: 'instant' });
             e.preventDefault();
           }
-          if (dragging) updateBox();
+          if (dragging) {
+            if (Math.abs(getScrollY() - beforeScroll) > 0.01) selectionScrollLocked = true;
+            updateBox();
+          }
         }, { passive: false });
 
         overlay.addEventListener('mouseup', function(e) {
           if (!dragging) return;
+          aggiornaVirtuale(e);
+          syncSelectionPointer();
+          chooseScrollFromSelection();
           dragging = false;
           window.removeEventListener('scroll', onScrollDuringDrag, true);
           if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
           // La fine della selezione è la punta VIRTUALE (col freno di
           // precisione attivo può stare qualche px indietro dal cursore).
-          aggiornaVirtuale(e);
-          var endY_doc = virtY + getScrollY();
-          var endX = virtX;
+          var endY_doc = currentMouseY_vp + getScrollY();
+          var endX = currentX;
           var y_doc = Math.min(startY_doc, endY_doc);
           var h_doc = Math.abs(endY_doc - startY_doc);
           var x = Math.min(endX, startX);
@@ -2363,6 +2532,7 @@ async function doAreaCapture(tabId) {
             scrollTarget.setAttribute('data-screenshot-area-scroll', 'true');
           }
 
+          cleanupSelectionInput();
           overlay.remove();
           var nsFine = document.getElementById('__screenshot_noselect');
           if (nsFine) nsFine.remove();
@@ -2383,17 +2553,68 @@ async function doAreaCapture(tabId) {
         });
 
         function onKey(e) {
+          if (!overlay.isConnected) {
+            // Se il mouse e stato rilasciato prima di Spazio, consuma le
+            // ripetizioni del tasto fino al rilascio anche durante lo scatto.
+            if (scrollPaused && (e.code === 'Space' || e.key === ' ')) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+            }
+            cleanupSelectionInput();
+            return;
+          }
+          if ((e.code === 'Space' || e.key === ' ') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!scrollPaused) {
+              scrollPaused = true;
+              showScrollPause();
+              if (dragging) { syncSelectionPointer(); updateBox(); }
+            }
+            return;
+          }
           if (e.key === 'Escape') {
+            cleanupSelectionInput();
             overlay.remove();
             var nsEsc = document.getElementById('__screenshot_noselect');
             if (nsEsc) nsEsc.remove();
             try { window.getSelection().removeAllRanges(); } catch (errSel) {}
             window.removeEventListener('scroll', onScrollDuringDrag, true);
             if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
-            document.removeEventListener('keydown', onKey);
           }
         }
-        document.addEventListener('keydown', onKey);
+        function onKeyUp(e) {
+          if (e.code !== 'Space' && e.key !== ' ') return;
+          if (!scrollPaused) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          scrollPaused = false;
+          if (!overlay.isConnected) { cleanupSelectionInput(); return; }
+          showScrollPause();
+          if (dragging) { syncSelectionPointer(); updateBox(); }
+        }
+        function onSelectionBlur() {
+          // Un rilascio avvenuto fuori dal browser non deve lasciare la pausa
+          // incastrata. Lo scroll riparte solo al successivo movimento mouse.
+          scrollPaused = false;
+          if (!overlay.isConnected) { cleanupSelectionInput(); return; }
+          showScrollPause();
+          if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+        }
+        function cleanupSelectionInput() {
+          dragging = false;
+          if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+          if (!scrollPaused) {
+            document.removeEventListener('keydown', onKey, true);
+            document.removeEventListener('keyup', onKeyUp, true);
+            window.removeEventListener('blur', onSelectionBlur);
+          }
+          window.removeEventListener('scroll', onScrollDuringDrag, true);
+          if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
+        }
+        document.addEventListener('keydown', onKey, true);
+        document.addEventListener('keyup', onKeyUp, true);
+        window.addEventListener('blur', onSelectionBlur);
         // Cintura doppia contro la selezione del testo: per tutta la durata
         // della selezione il testo della pagina non è selezionabile (lo stile
         // viene rimosso alla chiusura dell'overlay, mouseup o Escape).
