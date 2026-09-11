@@ -1744,8 +1744,9 @@ async function hideAreaCustomScrollbars(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId: tabId },
     func: function() {
-      var scroller = document.querySelector('[data-screenshot-area-scroll]');
-      if (!scroller) return;
+      var scrollers = document.querySelectorAll('[data-screenshot-area-scroll], [data-screenshot-area-pane]');
+      scrollers.forEach(function(scroller) {
+      if (scroller === document.scrollingElement) return;
       var frame = scroller.getBoundingClientRect();
       var scope = scroller.closest('dialog[open], [role="dialog"], [aria-modal="true"]');
       if (!scope) {
@@ -1810,8 +1811,189 @@ async function hideAreaCustomScrollbars(tabId) {
         var thumb = floating && paintedThumb;
         if (semantic || thumb) el.setAttribute('data-screenshot-area-scrollbar', 'true');
       });
+      });
     }
   });
+}
+
+// Le colonne hanno coordinate e fine-scroll indipendenti. Il fotogramma
+// intero serve solo per lo sfondo fisso; ogni colonna viene cucita a parte.
+async function captureAreaPanes(tabId, area) {
+  var complete = false;
+  try {
+    if (area.w * area.dpr > 32767 || area.h_doc * area.dpr > 32767) {
+      throw new Error('Area troppo grande: seleziona meno contenuto.');
+    }
+    var prepared = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(data) {
+        function background(el) {
+          for (var node = el; node; node = node.parentElement) {
+            var color = getComputedStyle(node).backgroundColor;
+            if (color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)') return color;
+          }
+          return '#fff';
+        }
+        var panes = data.map(function(p, index) {
+          var el = document.querySelector('[data-screenshot-area-pane="' + index + '"]');
+          if (!el) throw new Error('La pagina ha cambiato le colonne. Ripeti la selezione.');
+          return { el: el, isWindow: !!p.isWindow, origin: p.origin, left: p.left, right: p.right,
+            top: p.top, bottom: p.bottom, bg: background(el), topInset: 0, bottomInset: 0 };
+        });
+        window.__screenshotAreaPanes = panes;
+        panes.forEach(function(p) {
+          (p.isWindow ? window : p.el).scrollTo({ top: p.origin,
+            left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
+          p.el.querySelectorAll('*').forEach(function(el) {
+            var css = getComputedStyle(el);
+            if (css.position !== 'sticky' && css.position !== 'fixed') return;
+            var r = el.getBoundingClientRect();
+            if (r.width < (p.right - p.left) * 0.6 || r.height <= 0 ||
+                r.height > (p.bottom - p.top) * 0.3 || css.visibility === 'hidden') return;
+            if (Math.abs(r.top - p.top) <= 2 && css.top !== 'auto') {
+              p.topInset = Math.max(p.topInset, r.bottom - p.top);
+            }
+            if (Math.abs(r.bottom - p.bottom) <= 2 && css.bottom !== 'auto') {
+              p.bottomInset = Math.max(p.bottomInset, p.bottom - r.top);
+            }
+          });
+        });
+        return { vh: innerHeight, bg: background(document.body), panes: panes.map(function(p) {
+          return { left: p.left, right: p.right, top: p.top, bottom: p.bottom,
+            topInset: p.topInset, bottomInset: p.bottomInset, bg: p.bg };
+        }) };
+      },
+      args: [area.panes]
+    });
+    var layout = prepared[0].result;
+    var frames = [];
+    var shifts = [];
+    async function shotAt(offset) {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: function(y) {
+          var panes = window.__screenshotAreaPanes;
+          if (!panes || panes.some(function(p) { return !p.el.isConnected; })) {
+            throw new Error('La pagina ha cambiato le colonne. Ripeti la selezione.');
+          }
+          panes.forEach(function(p) {
+            (p.isWindow ? window : p.el).scrollTo({ top: p.origin + y,
+              left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
+          });
+          return new Promise(function(resolve) {
+            var previous = [], stable = 0, count = 0;
+            var timer = setInterval(function() {
+              var now = panes.map(function(p) { return p.isWindow ? window.scrollY : p.el.scrollTop; });
+              stable = now.every(function(v, i) { return Math.abs(v - previous[i]) < 0.5; }) ? stable + 1 : 0;
+              previous = now;
+              if (stable >= 3 || ++count >= 30) { clearInterval(timer); resolve(); }
+            }, 50);
+          });
+        },
+        args: [offset]
+      });
+      await sleep(350);
+      await hideAreaCustomScrollbars(tabId);
+      for (var retry = 0; retry < 3; retry++) {
+        var position = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: function() {
+            return window.__screenshotAreaPanes.map(function(p) {
+              if (!p.el.isConnected) throw new Error('La pagina ha cambiato le colonne. Ripeti la selezione.');
+              return (p.isWindow ? window.scrollY : p.el.scrollTop) - p.origin;
+            });
+          }
+        });
+        try {
+          var shot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          shifts.push(position[0].result);
+          frames.push(shot);
+          return;
+        } catch (err) {
+          if (retry === 2 || String(err.message).indexOf('MAX_CAPTURE') === -1) throw err;
+          await sleep(600);
+        }
+      }
+    }
+    // La foto iniziale conserva una sola volta menu, intestazioni e sfondo.
+    await shotAt(0);
+    var visibleOnly = area.y_doc >= 0 && area.y_doc + area.h_doc <= layout.vh;
+    if (!visibleOnly) {
+      var step = Math.max(40, Math.min.apply(null, layout.panes.map(function(p) {
+        return p.bottom - p.top - p.topInset - p.bottomInset;
+      })) - 40);
+      var first = Math.min(0, area.y_doc - Math.max.apply(null, layout.panes.map(function(p) { return p.top + p.topInset; })));
+      var last = Math.max(0, area.y_doc + area.h_doc - Math.min.apply(null, layout.panes.map(function(p) { return p.bottom - p.bottomInset; })));
+      var count = Math.ceil((last - first) / step) + 1;
+      for (var index = 0; index < count; index++) {
+        sendProgress('Cattura colonne ' + (index + 1) + ' di ' + count + '...', 5 + Math.round(85 * (index + 1) / count));
+        await shotAt(Math.min(last, first + index * step));
+      }
+    }
+    sendProgress('Composizione...', 92);
+    var composed = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(sources, scrolls, layout, area, visibleOnly) {
+        return Promise.all(sources.map(function(src) {
+          return new Promise(function(resolve, reject) {
+            var img = new Image(); img.onload = function() { resolve(img); }; img.onerror = reject; img.src = src;
+          });
+        })).then(function(images) {
+          var k = images[0].height / layout.vh;
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(area.w * k));
+          canvas.height = Math.max(1, Math.round(area.h_doc * k));
+          var ctx = canvas.getContext('2d');
+          if (!ctx || canvas.width > 32767 || canvas.height > 32767) throw new Error('Area troppo grande: seleziona meno contenuto.');
+          var ax = Math.round(area.x * k), ay = Math.round(area.y_doc * k);
+          ctx.fillStyle = layout.bg;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(images[0], -ax, -ay);
+          if (!visibleOnly) layout.panes.forEach(function(p, paneIndex) {
+            var x = Math.round(p.left * k), w = Math.round(p.right * k) - x;
+            var top = Math.round((p.top + p.topInset) * k);
+            var bottom = Math.round((p.bottom - p.bottomInset) * k);
+            var minShift = Math.min.apply(null, scrolls.map(function(row) { return row[paneIndex]; }));
+            var maxShift = Math.max.apply(null, scrolls.map(function(row) { return row[paneIndex]; }));
+            ctx.fillStyle = p.bg;
+            var clearTop = Math.round(top + minShift * k) - ay;
+            ctx.fillRect(x - ax, clearTop, w, canvas.height - clearTop);
+            for (var f = 0; f < images.length; f++) {
+              var destTop = Math.round(top + scrolls[f][paneIndex] * k) - ay;
+              ctx.drawImage(images[f], x, top, w, bottom - top, x - ax, destTop, w, bottom - top);
+            }
+            // La barra inferiore compare una sola volta, al fondo della sua
+            // colonna, non al fondo di quella eventualmente piu lunga.
+            if (p.bottomInset > 0) {
+              var bottomFrame = scrolls.findIndex(function(row) { return row[paneIndex] === maxShift; });
+              var h = Math.round(p.bottom * k) - bottom;
+              ctx.drawImage(images[bottomFrame], x, bottom, w, h,
+                x - ax, Math.round(bottom + maxShift * k) - ay, w, h);
+            }
+          });
+          var result = canvas.toDataURL('image/png');
+          if (result === 'data:,') throw new Error('Area troppo grande: seleziona meno contenuto.');
+          return result;
+        });
+      },
+      args: [frames, shifts, layout, area, visibleOnly]
+    });
+    complete = true;
+    return composed[0].result;
+  } finally {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function(success) {
+        (window.__screenshotAreaPanes || []).forEach(function(p) {
+          (p.isWindow ? window : p.el).scrollTo({ top: success ? 0 : p.origin,
+            left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
+          p.el.removeAttribute('data-screenshot-area-pane');
+        });
+        delete window.__screenshotAreaPanes;
+      },
+      args: [complete]
+    }).catch(function() {});
+  }
 }
 
 async function doAreaCapture(tabId) {
@@ -2115,25 +2297,58 @@ async function doAreaCapture(tabId) {
         var initialScrollTarget = null;
         var selectionStartY = 0;
         var scrollCandidates = [];
+        var scrollCandidateOrigins = new Map();
         var MIN_SCROLL_OVERLAP = 0.85;
+        var selectionPanes = [];
+        var selectionPaneY = 0;
+
+        function scrollSelectionBy(delta) {
+          if (!selectionPanes.length) {
+            (scrollTarget || window).scrollBy({ top: delta, left: 0, behavior: 'instant' });
+            return;
+          }
+          var minY = 0, maxY = 0;
+          selectionPanes.forEach(function(p) {
+            minY = Math.min(minY, -p.origin);
+            maxY = Math.max(maxY, p.el.scrollHeight - (p.isWindow ? window.innerHeight : p.el.clientHeight) - p.origin);
+          });
+          var next = Math.max(minY, Math.min(maxY, selectionPaneY + delta));
+          var moved = false;
+          selectionPanes.forEach(function(p) {
+            var before = p.isWindow ? window.scrollY : p.el.scrollTop;
+            (p.isWindow ? window : p.el).scrollTo({ top: p.origin + next,
+              left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
+            if (Math.abs((p.isWindow ? window.scrollY : p.el.scrollTop) - before) > 0.01) moved = true;
+          });
+          if (moved) selectionPaneY = next;
+        }
 
         function collectScrollCandidates() {
           scrollCandidates = [];
+          scrollCandidateOrigins.clear();
+          scrollCandidateOrigins.set(document.scrollingElement, window.scrollY);
           document.querySelectorAll('*').forEach(function(el) {
             if (el === document.body || el === document.documentElement || overlay.contains(el)) return;
             if (el.scrollHeight <= el.clientHeight + 10 || el.clientHeight < 40) return;
             var css = window.getComputedStyle(el);
             if ((css.overflowY === 'auto' || css.overflowY === 'scroll') &&
-                css.visibility === 'visible' && css.display !== 'none') scrollCandidates.push(el);
+                css.visibility === 'visible' && css.display !== 'none') {
+              scrollCandidates.push(el);
+              scrollCandidateOrigins.set(el, el.scrollTop);
+            }
           });
         }
 
         function chooseScrollFromSelection() {
-          if (!dragging || selectionScrollLocked) return;
+          if (!dragging) return;
           if (Math.abs(getScrollY() - (startY_doc - selectionStartY)) > 0.01) {
             selectionScrollLocked = true;
-            return;
           }
+          var windowRange = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+          // I popup mantengono lo scroller esclusivo. Fuori dai popup si
+          // possono aggiungere colonne, compresa quella della pagina stessa.
+          if (selectionScrollLocked && scrollTarget &&
+              scrollTarget.closest('dialog[open], [role="dialog"], [aria-modal="true"]')) return;
           var left = Math.min(startX, currentX), right = Math.max(startX, currentX);
           var top = Math.min(selectionStartY, currentMouseY_vp);
           var bottom = Math.max(selectionStartY, currentMouseY_vp);
@@ -2141,6 +2356,8 @@ async function doAreaCapture(tabId) {
           var selectionArea = (right - left) * (bottom - top);
           var chosen = initialScrollTarget;
           var smallestArea = Infinity;
+          var columns = [];
+          var activeDialog = initialScrollTarget && initialScrollTarget.closest('dialog[open], [role="dialog"], [aria-modal="true"]');
           var oldPointerEvents = overlay.style.pointerEvents;
           overlay.style.pointerEvents = 'none';
           try {
@@ -2163,10 +2380,22 @@ async function doAreaCapture(tabId) {
               var ix1 = Math.max(left, x1), ix2 = Math.min(right, x2);
               var iy1 = Math.max(top, y1), iy2 = Math.min(bottom, y2);
               var overlap = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
-              if (overlap / selectionArea + 0.000001 < MIN_SCROLL_OVERLAP) return;
+              if (overlap <= 0) return;
               // Non scegliere una colonna coperta da un popup in primo piano.
               var hit = document.elementFromPoint((ix1 + ix2) / 2, (iy1 + iy2) / 2);
               if (!hit || !el.contains(hit)) return;
+              // Selezione di colonne: comprende almeno l'85% della larghezza
+              // di ciascuna. I piccoli widget e i popup estranei non contano.
+              // In verticale confronta la parte piu corta: includere anche
+              // l'intestazione sopra la lista non deve penalizzare una
+              // colonna il cui intero viewport e dentro la selezione.
+              if (x2 - x1 >= 80 && y2 - y1 >= window.innerHeight * 0.5 &&
+                  (ix2 - ix1) / (x2 - x1) >= MIN_SCROLL_OVERLAP &&
+                  (iy2 - iy1) / Math.min(bottom - top, y2 - y1) >= MIN_SCROLL_OVERLAP &&
+                  (!activeDialog || activeDialog.contains(el))) {
+                columns.push({ el: el, left: x1, right: x2, top: y1, bottom: y2 });
+              }
+              if (overlap / selectionArea + 0.000001 < MIN_SCROLL_OVERLAP) return;
               var visibleArea = (x2 - x1) * (y2 - y1);
               // Tra contenitori annidati qualificati preferisci quello piu
               // specifico, non il grande contenitore che comprende la pagina.
@@ -2176,6 +2405,99 @@ async function doAreaCapture(tabId) {
               }
             });
           } finally { overlay.style.pointerEvents = oldPointerEvents; }
+          // Mai muovere insieme un contenitore e un suo figlio.
+          columns = columns.filter(function(p) {
+            return !columns.some(function(q) { return q !== p && p.el.contains(q.el); });
+          }).sort(function(a, b) { return a.left - b.left; });
+          // Caso misto: feed che scorre con window + sidebar indipendente.
+          // La pagina NON e una colonna larga tutto il viewport: ritaglia
+          // soltanto il suo main/feed, separato dai pannelli gia selezionati.
+          if (columns.length && !activeDialog && windowRange >= window.innerHeight * 0.5) {
+            var documentPane = null;
+            var paneWidth = Infinity;
+            var savedEvents = overlay.style.pointerEvents;
+            overlay.style.pointerEvents = 'none';
+            try {
+              document.querySelectorAll('main, [role="main"], [role="feed"]').forEach(function(main) {
+                if (scrollCandidates.some(function(el) { return el === main || el.contains(main); })) return;
+                for (var ancestor = main; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+                  var css = window.getComputedStyle(ancestor);
+                  if (css.position === 'fixed' || css.position === 'sticky' ||
+                      css.visibility !== 'visible' || css.display === 'none') return;
+                }
+                var r = main.getBoundingClientRect();
+                var x1 = Math.max(0, r.left), x2 = Math.min(window.innerWidth, r.right);
+                var y1 = Math.max(0, r.top), y2 = Math.min(window.innerHeight, r.bottom);
+                var width = x2 - x1, height = y2 - y1;
+                if (width < 120 || height < window.innerHeight * 0.5 || width >= paneWidth) return;
+                if (columns.some(function(p) { return Math.min(x2, p.right) - Math.max(x1, p.left) > 2; })) return;
+                var ix1 = Math.max(left, x1), ix2 = Math.min(right, x2);
+                var iy1 = Math.max(top, y1), iy2 = Math.min(bottom, y2);
+                if ((ix2 - ix1) / width < MIN_SCROLL_OVERLAP ||
+                    (iy2 - iy1) / Math.min(bottom - top, height) < MIN_SCROLL_OVERLAP) return;
+                var front = document.elementFromPoint((ix1 + ix2) / 2, (iy1 + iy2) / 2);
+                if (!front || !main.contains(front) || front.closest('dialog[open], [role="dialog"], [aria-modal="true"]')) return;
+                documentPane = { el: document.scrollingElement, isWindow: true,
+                  left: x1, right: x2, top: y1, bottom: y2 };
+                paneWidth = width;
+              });
+            } finally { overlay.style.pointerEvents = savedEvents; }
+            if (documentPane) {
+              columns.push(documentPane);
+              columns.sort(function(a, b) { return a.left - b.left; });
+            }
+          }
+          var separate = columns.every(function(p, index) {
+            return index === 0 || p.left >= columns[index - 1].right - 2;
+          });
+          if (selectionScrollLocked) {
+            var retained = selectionPanes.length ? selectionPanes.map(function(p) { return p.el; }) : [scrollTarget || document.scrollingElement];
+            if (!separate || columns.length <= retained.length || !retained.every(function(el) {
+              return columns.some(function(p) { return p.el === el; });
+            })) return;
+          }
+          // Una colonna + menu fisso: fallback solo se il documento non ha
+          // una vera corsa. Non sottrarre lo scroll al feed di Facebook.
+          var wideAppSelection = columns.length === 1 && smallestArea === Infinity &&
+            windowRange < window.innerHeight * 0.5;
+          if (separate && (columns.length > 1 || wideAppSelection)) {
+            var same = columns.length === selectionPanes.length && columns.every(function(p, index) {
+              return p.el === selectionPanes[index].el;
+            });
+            if (!same) {
+              var oldPanes = selectionPanes;
+              var oldTarget = scrollTarget;
+              var oldOrigin = startY_doc - selectionStartY;
+              var travelled = selectionScrollLocked ? getScrollY() - oldOrigin : 0;
+              if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
+              selectionPanes = columns.map(function(p) {
+                var previous = oldPanes.find(function(old) { return old.el === p.el; });
+                if (previous) p.origin = previous.origin;
+                else if (selectionScrollLocked && p.el === (oldTarget || document.scrollingElement)) p.origin = oldOrigin;
+                else p.origin = selectionScrollLocked && scrollCandidateOrigins.has(p.el)
+                  ? scrollCandidateOrigins.get(p.el) : (p.isWindow ? window.scrollY : p.el.scrollTop);
+                return p;
+              });
+              selectionPaneY = travelled;
+              scrollTarget = columns[0].el;
+              startY_doc = selectionStartY;
+              leftTopZone = selectionStartY >= Math.min.apply(null, columns.map(function(p) { return p.top; })) + SCROLL_TRIGGER_ZONE;
+              leftBottomZone = selectionStartY <= Math.max.apply(null, columns.map(function(p) { return p.bottom; })) - SCROLL_TRIGGER_ZONE;
+              // Mantieni l'inizio della selezione: la nuova colonna segue
+              // la distanza gia percorsa, senza azzerare altezza e ritaglio.
+              if (selectionScrollLocked && !scrollPaused) scrollSelectionBy(0);
+            }
+            return;
+          }
+          if (selectionScrollLocked) return;
+          if (selectionPanes.length) {
+            selectionPanes = [];
+            selectionPaneY = 0;
+            startY_doc = selectionStartY + (chosen ? chosen.scrollTop : window.scrollY);
+            if (chosen === scrollTarget && scrollTarget) {
+              scrollTarget.addEventListener('scroll', onScrollDuringDrag);
+            }
+          }
           if (chosen === scrollTarget) return;
           if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
           scrollTarget = chosen;
@@ -2195,7 +2517,7 @@ async function doAreaCapture(tabId) {
           leftBottomZone = selectionStartY <= edgeBottom - edgeZone;
         }
 
-        function resolveScrollTarget(mx, my) {
+        function resolveScrollTarget(mx, my, fromSelectionStart) {
           // Durante il drag la scelta passa al rettangolo, poi resta bloccata
           // appena si muove lo scroller. Qui gestiamo solo il punto iniziale.
           // Prima del drag la rotella segue il contenuto sotto il mouse.
@@ -2263,6 +2585,38 @@ async function doAreaCapture(tabId) {
             scrollTarget = null;
             return;
           }
+          // Il logo/intestazione di una web app puo stare fuori dallo
+          // scroller, pur essendo nella stessa fascia orizzontale. Solo
+          // all'inizio della selezione cerca la colonna visibile sotto:
+          // la rotella prima del drag continua a seguire il punto reale.
+          if (fromSelectionStart && corsaWin < window.innerHeight * 0.5) {
+            var aligned = null;
+            var nearestTop = Infinity;
+            var narrowest = Infinity;
+            var savedPE = overlay.style.pointerEvents;
+            overlay.style.pointerEvents = 'none';
+            try {
+              document.querySelectorAll('*').forEach(function(candidate) {
+                if (overlay.contains(candidate) || !scrollabile(candidate)) return;
+                var r = candidate.getBoundingClientRect();
+                var left = Math.max(0, r.left), right = Math.min(window.innerWidth, r.right);
+                var bottom = Math.min(window.innerHeight, r.bottom);
+                if (mx < left || mx >= right || my >= r.top || r.top >= window.innerHeight * 0.5 ||
+                    right - left < 80 || bottom - r.top < window.innerHeight * 0.4) return;
+                var css = window.getComputedStyle(candidate);
+                if (css.visibility !== 'visible' || css.display === 'none') return;
+                var front = document.elementFromPoint(mx, (r.top + bottom) / 2);
+                if (!front || !candidate.contains(front) ||
+                    front.closest('dialog[open], [role="dialog"], [aria-modal="true"]')) return;
+                if (r.top < nearestTop || (r.top === nearestTop && right - left < narrowest)) {
+                  aligned = candidate;
+                  nearestTop = r.top;
+                  narrowest = right - left;
+                }
+              });
+            } finally { overlay.style.pointerEvents = savedPE; }
+            if (aligned) { scrollTarget = aligned; return; }
+          }
           // Fallback per le app: solo contenitori sotto il punto selezionato,
           // senza deviare verso un popup o una colonna altrove.
           var all = document.querySelectorAll('*');
@@ -2283,6 +2637,7 @@ async function doAreaCapture(tabId) {
         }
 
         function getScrollY() {
+          if (selectionPanes.length) return selectionPaneY;
           return scrollTarget ? scrollTarget.scrollTop : window.scrollY;
         }
 
@@ -2334,6 +2689,10 @@ async function doAreaCapture(tabId) {
             scrollTopEdge = Math.max(0, contentTop);
             scrollBottomEdge = Math.min(window.innerHeight, contentTop + scrollTarget.clientHeight);
           }
+          if (selectionPanes.length) {
+            scrollTopEdge = Math.min.apply(null, selectionPanes.map(function(p) { return p.top; }));
+            scrollBottomEdge = Math.max.apply(null, selectionPanes.map(function(p) { return p.bottom; }));
+          }
           var triggerZone = Math.min(SCROLL_TRIGGER_ZONE, Math.max(1, (scrollBottomEdge - scrollTopEdge) / 3));
           // Aggiorna i flag: il mouse è "uscito" da una zona quando si trova fuori da essa
           if (lastMouseY >= scrollTopEdge + triggerZone) leftTopZone = true;
@@ -2367,11 +2726,7 @@ async function doAreaCapture(tabId) {
             // behavior 'instant': su siti con CSS scroll-behavior:smooth ogni
             // scrollBy per-frame diventerebbe un'animazione che riparte da capo,
             // strozzando la velocita' reale qualunque sia il passo richiesto.
-            if (scrollTarget) {
-              scrollTarget.scrollBy({ top: speed, left: 0, behavior: 'instant' });
-            } else {
-              window.scrollBy({ top: speed, left: 0, behavior: 'instant' });
-            }
+            scrollSelectionBy(speed);
             if (Math.abs(getScrollY() - beforeScroll) > 0.01) selectionScrollLocked = true;
             updateBox();
           }
@@ -2398,8 +2753,10 @@ async function doAreaCapture(tabId) {
             lastEvX = e.clientX;
             lastEvY = e.clientY;
           }
-          resolveScrollTarget(virtX, virtY);
+          resolveScrollTarget(virtX, virtY, true);
           initialScrollTarget = scrollTarget;
+          selectionPanes = [];
+          selectionPaneY = 0;
           selectionStartY = virtY;
           selectionScrollLocked = false;
           collectScrollCandidates();
@@ -2498,7 +2855,10 @@ async function doAreaCapture(tabId) {
           resolveScrollTarget(e.clientX, e.clientY);
           e.stopPropagation();
           var beforeScroll = getScrollY();
-          if (scrollTarget) {
+          if (dragging && selectionPanes.length) {
+            scrollSelectionBy(e.deltaY);
+            e.preventDefault();
+          } else if (scrollTarget) {
             scrollTarget.scrollTop += e.deltaY;
             e.preventDefault();
           } else {
@@ -2542,12 +2902,17 @@ async function doAreaCapture(tabId) {
             return;
           }
 
+          var paneData = selectionPanes.map(function(p, index) {
+            p.el.setAttribute('data-screenshot-area-pane', String(index));
+            return { origin: p.origin, isWindow: !!p.isWindow, left: p.left, right: p.right, top: p.top, bottom: p.bottom };
+          });
           window.__screenshotArea = {
             x: x,
             y_doc: y_doc,
             w: w,
             h_doc: h_doc,
             hasCustomScroll: !!scrollTarget,
+            panes: paneData,
             dpr: window.devicePixelRatio || 1
           };
         });
@@ -2657,6 +3022,12 @@ async function doAreaCapture(tabId) {
     }
 
     // === Step 3: multi-slice capture ===
+
+    var compResult;
+    if (area.panes && area.panes.length) {
+      areaScrollbarsHidden = true;
+      compResult = [{ result: await captureAreaPanes(tabId, area) }];
+    } else {
 
     // Salva metadata iniziale (scroll attuale, viewport, offset del container scrollabile)
     var metaResult = await chrome.scripting.executeScript({
@@ -3214,7 +3585,7 @@ async function doAreaCapture(tabId) {
 
     // Cuci le slice in un canvas finale, croppato sui bound X
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
-    var compResult = await chrome.scripting.executeScript({
+    compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop) {
         function loadImg(src) {
@@ -3442,6 +3813,7 @@ async function doAreaCapture(tabId) {
       // e il ritaglio usciva spostato rispetto alla selezione.
       args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop]
     });
+    }
 
     // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
     var multiA = await multiSessione();
@@ -3520,6 +3892,10 @@ async function doAreaCapture(tabId) {
             });
             var style = document.getElementById('__screenshot_area_scrollbars');
             if (style) style.remove();
+            document.querySelectorAll('[data-screenshot-area-pane], [data-screenshot-area-scroll]').forEach(function(el) {
+              el.removeAttribute('data-screenshot-area-pane');
+              el.removeAttribute('data-screenshot-area-scroll');
+            });
           }
         });
       } catch (closedTab) {}

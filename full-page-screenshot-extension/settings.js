@@ -2,6 +2,8 @@
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
   '9.10': [
+    'Improved: Select Area captures multiple selected scrolling columns together, each up to its own end, including a page feed alongside an independent sidebar.',
+    'Fixed: area selection can start above a scrolling column, such as the Yahoo Mail logo, without scrolling an unrelated column.',
     'New: hold Space during area selection to pause scrolling while you draw. Release it to resume, with no settings to change.',
     'Improved: area selection recognizes a scrolling panel when at least 85% of the rectangle is inside it, allowing a small margin outside its border.',
     'Fixed: selection dimensions stay visible while scrolling, and custom scrollbars in side columns are excluded from captures.',
