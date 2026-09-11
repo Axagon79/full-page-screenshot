@@ -2661,7 +2661,7 @@ async function doAreaCapture(tabId) {
             var rects1 = [];
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
               var r1 = window.__screenshotStickies[s].el.getBoundingClientRect();
-              rects1.push({ top: r1.top, bottom: r1.bottom });
+              rects1.push({ top: r1.top, bottom: r1.bottom, width: r1.width, height: r1.height });
             }
             // micro-scroll di test (indietro se possibile, sennò avanti)
             var probe = (base > 20) ? base - 12 : base + 12;
@@ -2698,10 +2698,18 @@ async function doAreaCapture(tabId) {
                   bordoBottom = Math.min(window.innerHeight, rawBottom);
                   larghezzaVista = scrollEl.clientWidth;
                 }
-                var vicinoAlFondo = Math.abs(bordoBottom - rr.bottom) < Math.abs(rr.top - bordoTop);
+                // Vicino al fondo non basta: una colonna sticky o un post
+                // molto alto possono essere piu vicini al bordo inferiore.
+                // Solo una vera fascia bassa puo essere ricatturata al fondo
+                // dello scroller, altrimenti si incollano post estranei.
+                var altezzaVista = bordoBottom - bordoTop;
+                var vicinoAlFondo = Math.abs(bordoBottom - rr.bottom) <= 64 &&
+                  Math.abs(bordoBottom - rr.bottom) < Math.abs(rr.top - bordoTop);
                 var barraOrizzontale = rr.width > rr.height * 1.5 &&
                   rr.width >= Math.min(larghezzaVista * 0.35, selectedWidth * 0.5);
-                rootItem.bottomRoot = vicinoAlFondo && (rootItem.diretto || barraOrizzontale);
+                var fasciaBassa = rr.height > 0 && rr.height <= altezzaVista * 0.35 &&
+                  rr.top >= bordoTop && rr.bottom <= bordoBottom + 2;
+                rootItem.bottomRoot = vicinoAlFondo && barraOrizzontale && fasciaBassa;
                 rootItem.classified = true;
             }
             for (var gIdx = 0; gIdx < window.__screenshotStickies.length; gIdx++) {

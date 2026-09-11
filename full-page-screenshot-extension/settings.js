@@ -1,6 +1,9 @@
 // Changelog per versione: solo le voci rivolte all'utente (niente dettagli
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
+  '9.10': [
+    'Fixed: Select Area no longer mistakes tall sticky content for a bottom bar, preventing unrelated posts from appearing in Facebook captures.'
+  ],
   '9.9': [
     'New: Multi Snip — grab several pieces one after another, even from different tabs, then save them as one stitched image or as separate files.',
     'New: the Multi Snip editor — arrange and crop the pieces, then redact (solid or blurred), highlight, and add arrows, 37 shapes with speech bubbles, numbered steps, zoom callouts and a background frame with gradients and shadow.',
