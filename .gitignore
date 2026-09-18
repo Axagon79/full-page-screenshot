@@ -5,6 +5,9 @@
 # Backup temporanei di immagini
 *_original_*.png
 
+# Immagini originali locali usate per la scheda dello Store
+/full-page-screenshot-extension/Nuova cartella/
+
 # Spazio di lavoro VS Code (impostazioni locali, non fa parte del codice)
 *.code-workspace
 
