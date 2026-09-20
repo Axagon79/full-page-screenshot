@@ -4,7 +4,7 @@ Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
 Ultimo aggiornamento: **20 settembre 2026**.
-Riordino delle idee dell'11/09; stato della versione e rimandi aggiornati fino al commit `6cecd13`.
+Riordino delle idee dell'11/09; stato della versione e rimandi aggiornati fino al commit `2db11ed`.
 
 ## Quale documento usare
 
@@ -26,9 +26,32 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 - La 9.11 include il permesso per la copia negli appunti dopo catture lunghe e la quinta immagine Store aggiornata (`f7f0737`).
 - Il pacchetto `full-page-screenshot-extension/9.11.zip` resta la copia preparata per lo Store; sono conservate anche le copie 9.8, 9.9 e 9.10.
 - Il codice del 20/09 include la correzione AI Tarot e i suggerimenti Area in inglese (`6cecd13`), registrati in [IDEE_FATTE.md](IDEE_FATTE.md). Queste modifiche non sono ancora nello ZIP e non sono state pubblicate.
+- Sono inoltre salvati il fix AiScore (`984c1fc`) e lo Stop con pannellino bianco approvato dall'utente, anche in Multi Snip (`2db11ed`). Dettagli e limiti in [IDEE_FATTE.md](IDEE_FATTE.md). Manifest, ZIP e Store non aggiornati.
+- Il bug della recensione sulle colonne laterali tagliate o ripetute resta aperto: le modifiche preliminari già presenti non costituiscono una correzione confermata. Il caso DeepSeek indicato dall'utente resta da verificare in Full Page e Area, anche in Multi Snip.
+- Per le pagine troppo lunghe è ora impedito il download di un'immagine vuota; la suddivisione in più immagini raccolte in ZIP, già richiesta nella chat, non è ancora implementata.
 - Le vecchie diciture «candidata 9.10» erano proposte, non conferme di inclusione. Nessuna delle idee qui sotto è automaticamente assegnata alla 9.10.
 
 ## Idee ancora aperte
+
+### Full Page fino a qui — linea di fine cattura
+
+**Ideata il:** 20/09/2026.
+**Stato:** idea futura; salvataggio approvato dall'utente, non implementata.
+
+Catturare tutta la larghezza della pagina, dall'inizio fino a un punto finale scelto dall'utente.
+Utile quando interessa soltanto una parte di una pagina molto lunga, senza disegnare un rettangolo come in Seleziona area.
+
+Comportamento proposto:
+
+- Opzione attivabile e disattivabile dal menu, normalmente spenta.
+- L'utente scorre la pagina e clicca il punto dove vuole terminare la cattura: compare una linea orizzontale.
+- La linea può essere spostata o cancellata prima di avviare la cattura.
+- Premendo Full Page, la cattura parte dall'inizio e termina alla linea, senza includere la linea nell'immagine salvata.
+
+Da gestire con attenzione: il punto finale deve restare legato al contenuto scelto anche quando la pagina carica nuovi elementi durante lo scorrimento.
+Resta da definire il comportamento sulle pagine con più colonne a scorrimento indipendente.
+È distinta dal comando Stop: sceglie in anticipo dove finire, non annulla una cattura già avviata.
+Nessuna implementazione o assegnazione a una versione è autorizzata dal solo salvataggio dell'idea.
 
 ### Scorciatoia da tastiera per catturare / aggiungere un pezzo
 

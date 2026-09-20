@@ -1,12 +1,29 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **20/09/2026**; ultima correzione registrata nel commit `6cecd13`.
+Aggiornato il **20/09/2026**; ultimo lavoro approvato registrato nel commit `2db11ed`.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 20/09/2026 — Stop e pannellino di avanzamento
+
+**Ideata il:** 20/09/2026, dalla richiesta dell'utente di interrompere le catture lunghe.
+**Realizzata il:** 20/09/2026; soluzione approvata dall'utente con richiesta di commit e push.
+
+- Stop sull'icona dell'estensione con un clic durante Full Page e Area, anche quando aggiungono un pezzo a Multi Snip; disponibile anche Esc. Visible Only mantiene l'icona normale.
+- L'annullamento interrompe gli scatti successivi, ripristina le modifiche temporanee e lo scorrimento della pagina, senza salvare immagini incomplete. Non annulla un'immagine completa già consegnata al salvataggio.
+- In Multi Snip conserva la raccolta, i pezzi precedenti e il cestino; i percorsi dal widget e dall'editor usano lo stesso controllo della cattura.
+- Pannellino bianco compatto in alto a destra, con percentuale e barra semplice, senza coprire Stop. Viene nascosto durante ogni scatto e rimosso alla fine; l'utente ha accettato il possibile lampeggio. Nessuna colonna laterale, finestra separata o percentuale sopra l'icona.
+- I risultati immagine vuoti vengono rifiutati con un messaggio, evitando il download TXT vuoto. La divisione delle pagine enormi in immagini dentro uno ZIP resta da implementare.
+
+Verifiche precedentemente autorizzate: controlli automatici di Stop, salvataggio, ripristino e percorsi Multi Snip superati con chiamate Chrome simulate; controlli della resa reale del pannellino in Edge a larghezze 1280 e 390, su sfondo chiaro e scuro, compresa l'esclusione dallo scatto. Non equivalgono a una prova automatica del clic sulla barra strumenti dell'estensione installata. Gli esperimenti precedenti non riusciti o con aspettative superate sono distinti in `tools/README.md`. Nessun nuovo collaudo eseguito durante il commit.
+
+File: `full-page-screenshot-extension/capture-control.js`, `sw.js`, `popup.js`, `stop_94.png`; strumenti di prova e relative note in `tools/`.
+Commit: `2db11ed`.
+Il bug della recensione sulle colonne laterali **resta aperto**; le modifiche preliminari già presenti non sono dichiarate risolutive. Manifest ancora **9.11**; ZIP e Store non aggiornati.
 
 ## 20/09/2026 — Menu duplicato e sfondo discontinuo su AI Tarot
 
