@@ -342,6 +342,158 @@ async function prepareCaptureSidebars(job) {
   });
 }
 
+// Short sticky ad cards can enter a frame only partially, then be hidden as a
+// repeat before their bottom was captured. Keep identified document ads in flow
+// for Full/Area (including Multi), without expanding, resizing or removing ads.
+async function prepareCaptureAds(job) {
+  if (!job.hasPageControl || !captureHasToolbarStop(job)) return;
+  await chrome.scripting.executeScript({
+    target: { tabId: job.tabId },
+    func: function(id) {
+      var control = window.__shotCaptureControl, doc = document.scrollingElement;
+      var vh = window.innerHeight;
+      if (!control || control.id !== id || control.cancelled || control.adStickies || !doc ||
+          !(vh > 0) || doc.scrollHeight - vh < vh * 0.5) return;
+      if ([document.documentElement, document.body].some(function(el) {
+        return el && /^(hidden|clip)$/.test(getComputedStyle(el).overflowY);
+      })) return;
+      // A sticky side dock may label itself modal (Yahoo). Leave that dock
+      // alone, but do not mistake it for a fixed dialog covering the page.
+      if (Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"]')).some(function(el) {
+        var css = getComputedStyle(el), r = el.getBoundingClientRect();
+        return css.display !== 'none' && css.visibility === 'visible' && r.width > 0 && r.height > 0 &&
+          (el.matches('dialog[open]') || css.position === 'fixed' ||
+            (r.width >= innerWidth * 0.8 && r.height >= vh * 0.8));
+      })) return;
+      var adMarkers = '[data-ad-unit], [data-ad-slot], ins.adsbygoogle, [aria-label="Advertisement" i], iframe[title="Advertisement" i]';
+      var excluded = 'header, footer, nav, dialog, [role="dialog"], [role="navigation"], [role="banner"], [role="contentinfo"], [aria-modal="true"], [role="feed"], .vue-recycle-scroller';
+      var state = { changes: [] }, savedX = scrollX, savedY = scrollY;
+      state.restore = function() {
+        state.changes.forEach(function(rec) {
+          rec.properties.forEach(function(prop) {
+            if (prop.value) rec.el.style.setProperty(prop.name, prop.value, prop.priority);
+            else rec.el.style.removeProperty(prop.name);
+          });
+          if (!rec.hadStyle && !rec.el.style.length) rec.el.removeAttribute('style');
+        });
+        delete control.adStickies;
+      };
+      control.adStickies = state;
+      try {
+        window.scrollTo({ top: 0, left: savedX, behavior: 'instant' });
+        if (window.scrollY !== 0) return;
+        var roots = [];
+        document.querySelectorAll(adMarkers).forEach(function(ad) {
+          if (ad.closest(excluded)) return;
+          var root = null;
+          for (var node = ad; node && node !== document.body && node !== doc; node = node.parentElement) {
+            var css = getComputedStyle(node);
+            if (css.position === 'fixed' || (/^(auto|scroll)$/.test(css.overflowY) && node.scrollHeight > node.clientHeight + 2)) return;
+            if (css.position === 'sticky' && !root) root = node;
+          }
+          if (!root || roots.indexOf(root) !== -1 || root.closest(excluded) ||
+              root.querySelector('main, nav, [role="main"], [role="navigation"], textarea, [contenteditable="true"]')) return;
+          var style = getComputedStyle(root), r = root.getBoundingClientRect();
+          if (style.visibility !== 'visible' || style.display === 'none' || style.top === 'auto' ||
+              style.bottom !== 'auto' || r.width < 80 || r.width > innerWidth * 0.45 ||
+              r.height <= 0 || r.height > vh + 2 || r.right <= 0 || r.left >= innerWidth) return;
+          roots.push(root);
+        });
+        roots.forEach(function(el) {
+          var values = { position: 'relative', top: 'auto', bottom: 'auto',
+            'inset-block-start': 'auto', 'inset-block-end': 'auto' };
+          var rec = { el: el, hadStyle: el.hasAttribute('style'), properties: [] };
+          state.changes.push(rec);
+          Object.keys(values).forEach(function(name) {
+            rec.properties.push({ name: name, value: el.style.getPropertyValue(name), priority: el.style.getPropertyPriority(name) });
+            el.style.setProperty(name, values[name], 'important');
+          });
+        });
+      } catch (error) {
+        state.restore();
+        throw error;
+      } finally {
+        window.scrollTo({ top: savedY, left: savedX, behavior: 'instant' });
+        if (!state.changes.length && control.adStickies === state) delete control.adStickies;
+      }
+    }, args: [job.id]
+  });
+}
+
+// Document Full Page only: independent scrollers and Area keep their own bounds.
+// Ordinary frames only read geometry. At the bottom, wait for a short quiet
+// interval, longer only after growth or visible loading. Never wait for global
+// network idle: ads, video and live updates may keep the network busy forever.
+async function readCaptureDocument(tabId, options) {
+  checkCaptureCancelled();
+  var job = activeCaptureJob;
+  var result = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function(id, opts) {
+      var started = performance.now(), quietSince = started;
+      var lastHeight = opts.height, growing = !!opts.growing, hadLoading = false;
+      function visible(el) {
+        if (el.closest('[data-screenshot-ui], [data-ad-unit], [data-ad-slot], ins.adsbygoogle')) return false;
+        var r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.bottom <= 0 || r.top >= innerHeight ||
+            r.right <= 0 || r.left >= innerWidth) return false;
+        var css = getComputedStyle(el);
+        return css.display !== 'none' && css.visibility === 'visible' && Number(css.opacity) > 0;
+      }
+      function loading() {
+        if (document.readyState === 'loading') return true;
+        var busy = document.querySelectorAll('[aria-busy="true"], [role="progressbar"]:not([aria-valuenow])');
+        for (var i = 0; i < busy.length; i++) if (visible(busy[i])) return true;
+        for (var j = 0; j < document.images.length; j++) {
+          var img = document.images[j];
+          if (!img.complete && (img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset')) && visible(img)) return true;
+        }
+        return false;
+      }
+      return new Promise(function(resolve, reject) {
+        function poll() {
+          try {
+            var control = window.__shotCaptureControl;
+            if (id && (!control || control.id !== id || control.cancelled)) {
+              resolve({ cancelled: true }); return;
+            }
+            var now = performance.now();
+            var height = Math.max(document.body ? document.body.scrollHeight : 0,
+              document.documentElement.scrollHeight, innerHeight);
+            var viewH = window.visualViewport && window.visualViewport.scale === 1
+              ? window.visualViewport.height : innerHeight;
+            var state = { height: height, y: window.scrollY, viewH: viewH, width: innerWidth,
+              dpr: devicePixelRatio || 1, atBottom: window.scrollY + viewH >= height - 1,
+              settled: false, waited: now - started, growing: growing };
+            if (Math.abs(height - lastHeight) > 1) {
+              growing = true; quietSince = now;
+            }
+            lastHeight = height;
+            state.growing = growing;
+            if (!opts.wait || !state.atBottom) { resolve(state); return; }
+            var pending = loading();
+            if (pending) { quietSince = now; hadLoading = true; }
+            var quietMs = growing || hadLoading ? 1200 : 450;
+            if (!pending && now - quietSince >= quietMs) {
+              state.settled = true; resolve(state); return;
+            }
+            if (now - started >= opts.maxWait) {
+              state.timedOut = true; resolve(state); return;
+            }
+            setTimeout(poll, 100);
+          } catch (error) { reject(error); }
+        }
+        poll();
+      });
+    }, args: [job && job.hasPageControl ? job.id : null, options]
+  });
+  checkCaptureCancelled();
+  var state = result && result[0] && result[0].result;
+  if (state && state.cancelled) throw new CaptureCancelledError();
+  if (!state || !(state.height > 0)) throw new Error('Unable to measure the page. Please try again.');
+  return state;
+}
+
 // Updates never change visibility: only the screenshot gate may hide/show HUD.
 async function updateCaptureProgress(job) {
   if (!job || job !== activeCaptureJob || !captureHasToolbarStop(job) || job.phase === 'restoring') return;
@@ -420,6 +572,7 @@ async function cleanupCaptureJob(job, restoreScroll) {
           });
           delete window[key];
         });
+        if (control.adStickies) control.adStickies.restore();
         if (control.sidebars) control.sidebars.restore();
         delete window.__screenshotCaptureMasks;
         delete window.__screenshotArea;
@@ -504,6 +657,8 @@ async function runControlledCapture(job) {
     await pauseCssAnims(job.tabId);
     checkCaptureCancelled(job);
     await prepareCaptureSidebars(job);
+    checkCaptureCancelled(job);
+    await prepareCaptureAds(job);
     checkCaptureCancelled(job);
     await sleep(150); // The launch popup/widget must disappear before the shot.
     if (job.mode === 'full') await doFullCapture(job.tabId);

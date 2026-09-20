@@ -1511,6 +1511,8 @@ async function doFullCapture(tabId) {
           sy: sy,
           ch: ch,
           ot: ot,
+          visualH: window.visualViewport && window.visualViewport.scale === 1
+            ? window.visualViewport.height : window.innerHeight,
           dpr: window.devicePixelRatio || 1,
           hasCustomScroll: !useWindow
         };
@@ -1524,8 +1526,49 @@ async function doFullCapture(tabId) {
     }
     // Passo di avanzamento: l'altezza VISIBILE del contenitore scrollato
     // (per lo scroll di finestra coincide con l'altezza del viewport).
-    var stepH = d.hasCustomScroll ? d.ch : d.vh;
+    // One physical pixel of overlap avoids gaps from rounded viewport sizes
+    // at browser zoom. Internal scrollers retain their existing step/engine.
+    var stepH = d.hasCustomScroll ? d.ch : Math.max(1,
+      Math.min(d.vh, d.visualH || d.vh) - 1 / d.dpr);
     var rows = Math.ceil(d.sh / stepH);
+    var initialRows = rows, initialHeight = d.sh;
+    var documentDone = false, nextDocumentY = 0, documentGrowing = false;
+    var documentRewindY = null;
+    var growthStarted = 0, documentWaitMs = 0, lastProgressPct = 5;
+    function updateDocumentSize(state) {
+      if (Math.abs(state.width - d.vw) > 1 || Math.abs(state.viewH - (d.visualH || d.vh)) > 1 ||
+          Math.abs(state.dpr - d.dpr) > 0.001) {
+        throw new Error('The window size or zoom changed during capture. Please try again.');
+      }
+      if (state.growing || Math.abs(state.height - d.sh) > 1) {
+        documentGrowing = true;
+      }
+      // Start the tail time budget only when we actually reach the old end.
+      // A small early resize must not time out a long, otherwise static page.
+      if (!growthStarted && documentGrowing && state.y + state.viewH >= initialHeight) growthStarted = Date.now();
+      if (state.height > d.sh + 1 && captures.length) {
+        // A footer can already be partly visible in the penultimate frame.
+        // When more content is inserted before it, invalidate the frames that
+        // overlap the old last viewport, not just the shot currently in flight.
+        // Revisit from the first invalid frame so no old footer remains midway.
+        var oldTailTop = Math.max(0, d.sh - (d.visualH || d.vh));
+        for (var tail = 0; tail < realScrolls.length; tail++) {
+          if (realScrolls[tail] + (d.visualH || d.vh) > oldTailTop) {
+            documentRewindY = realScrolls[tail];
+            captures.splice(tail);
+            realScrolls.splice(tail);
+            break;
+          }
+        }
+      }
+      d.sh = state.height;
+      // Bound only the newly discovered tail, not already-loaded long pages.
+      // On a limit, do not silently save a truncated "Full Page" or Multi piece.
+      if (d.sh > initialHeight + 20 * stepH ||
+          (growthStarted && Date.now() - growthStarted > 60000)) {
+        throw new Error('The page keeps adding content. Please capture a selected area instead.');
+      }
+    }
     if (!d.hasCustomScroll && rows > 1) {
       captureBackgrounds = await prepareCaptureBackgrounds(tabId);
     }
@@ -1535,13 +1578,19 @@ async function doFullCapture(tabId) {
     // composizione deve usare le posizioni vere, non quelle richieste.
     var realScrolls = [];
 
-    for (var i = 0; i < rows; i++) {
-      var pct = Math.round(((i + 1) / rows) * 85) + 5;
+    for (var i = 0; d.hasCustomScroll ? i < rows : !documentDone; i++) {
+      checkCaptureCancelled();
+      if (!d.hasCustomScroll && i >= initialRows + 24) {
+        throw new Error('The page keeps changing during capture. Please capture a selected area instead.');
+      }
+      var pct = Math.min(90, Math.round(((i + 1) / rows) * 85) + 5);
+      pct = Math.max(lastProgressPct, pct);
+      lastProgressPct = pct;
       sendProgress('Cattura ' + (i + 1) + ' di ' + rows + '...', pct);
 
       var esitoSlice = await chrome.scripting.executeScript({
         target: { tabId: tabId },
-        func: function(y, custom, row) {
+        func: function(y, custom, row, firstViewport) {
           function allElementsDeep(root) {
             var result = [];
             var scopes = [root];
@@ -1722,7 +1771,7 @@ async function doFullCapture(tabId) {
             // PRIMA slice (row 0): lascia visibili gli header/barre fisse, così
             // compaiono UNA volta in cima (es. barra AI-DESK del sito). Le slice
             // successive li nascondono per non ripeterli.
-            if (row === 0) return;
+            if (row === 0 || firstViewport) return;
 
             function getS() { return custom ? document.querySelector('[data-screenshot-scroll]').scrollTop : window.scrollY; }
             // La lettura segue subito lo spostamento: non deve ereditare lo
@@ -1787,13 +1836,32 @@ async function doFullCapture(tabId) {
             }, 50);
           });
         },
-        args: [i * stepH, d.hasCustomScroll, i]
+        args: [d.hasCustomScroll ? i * stepH : nextDocumentY, d.hasCustomScroll, i,
+          !d.hasCustomScroll && nextDocumentY < 1 / d.dpr]
       });
-      realScrolls.push((esitoSlice && esitoSlice[0] && typeof esitoSlice[0].result === 'number')
+      if (d.hasCustomScroll) realScrolls.push((esitoSlice && esitoSlice[0] && typeof esitoSlice[0].result === 'number')
         ? esitoSlice[0].result
         : i * stepH);
 
       await sleep(350);
+
+      var beforeFrame = null;
+      if (!d.hasCustomScroll) {
+        beforeFrame = await readCaptureDocument(tabId, { wait: true, height: d.sh,
+          growing: documentGrowing, maxWait: Math.max(0, Math.min(6000, 20000 - documentWaitMs)) });
+        documentWaitMs += beforeFrame.waited;
+        updateDocumentSize(beforeFrame);
+        if (beforeFrame.timedOut) {
+          throw new Error('The page is still loading. Please wait for it to finish, then try again.');
+        }
+        if (documentRewindY !== null) {
+          nextDocumentY = documentRewindY;
+          documentRewindY = null;
+          rows = Math.max(rows, i + 1 + Math.ceil((d.sh - nextDocumentY) / stepH));
+          continue;
+        }
+        rows = i + 1 + Math.ceil(Math.max(0, d.sh - beforeFrame.y - beforeFrame.viewH) / stepH);
+      }
 
       var dataUrl = null;
       for (var retry = 0; retry < 3; retry++) {
@@ -1808,6 +1876,42 @@ async function doFullCapture(tabId) {
             throw captureErr;
           }
         }
+      }
+      if (!d.hasCustomScroll) {
+        var afterFrame = await readCaptureDocument(tabId, { wait: false, height: d.sh, growing: documentGrowing });
+        updateDocumentSize(afterFrame);
+        if (documentRewindY !== null) {
+          nextDocumentY = documentRewindY;
+          documentRewindY = null;
+          rows = Math.max(rows, i + 1 + Math.ceil((d.sh - nextDocumentY) / stepH));
+          continue;
+        }
+        if (Math.abs(afterFrame.height - beforeFrame.height) > 1 ||
+            Math.abs(afterFrame.y - beforeFrame.y) > 1 / d.dpr) {
+          // The layout changed while Chrome took the shot: discard this frame
+          // and revisit the same segment, rather than skipping or duplicating it.
+          nextDocumentY = Math.min(nextDocumentY, Math.max(0, d.sh - afterFrame.viewH));
+          continue;
+        }
+        var previousY = realScrolls.length ? realScrolls[realScrolls.length - 1] : -Infinity;
+        if (Math.abs(beforeFrame.y - previousY) < 0.5 / d.dpr) {
+          if (!afterFrame.atBottom) throw new Error('The page stopped scrolling before the end. Please try a selected area.');
+          captures[captures.length - 1] = dataUrl;
+          realScrolls[realScrolls.length - 1] = beforeFrame.y;
+        } else {
+          captures.push(dataUrl);
+          realScrolls.push(beforeFrame.y);
+        }
+        // A tolerance used to recognise fractional scroll limits must not end
+        // a static page one reachable pixel early (e.g. exactly two viewports).
+        var requestedEnd = nextDocumentY >= Math.max(0, beforeFrame.height - beforeFrame.viewH) - 0.001;
+        documentDone = beforeFrame.settled && afterFrame.atBottom &&
+          (requestedEnd || beforeFrame.y + beforeFrame.viewH >= afterFrame.height || afterFrame.height <= d.vh);
+        nextDocumentY = Math.min(beforeFrame.y + stepH, Math.max(0, d.sh - afterFrame.viewH));
+        if (!documentDone && nextDocumentY <= beforeFrame.y + 0.1 && !afterFrame.atBottom) {
+          throw new Error('The page stopped scrolling before the end. Please try a selected area.');
+        }
+        continue;
       }
       // DEDUP PER CONTENUTO: foto identica alla precedente = la vista NON è
       // avanzata davvero (webmail con scroller annidati che "mentono": lo
@@ -1827,11 +1931,8 @@ async function doFullCapture(tabId) {
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot, reali) {
-        // Carica tutte le immagini PRIMA di disegnare, così conosciamo l'altezza
-        // REALE in pixel di ogni slice (img.height). A zoom non-interi (110%,
-        // 150%) viewH*ratio non è intero e impilando per calcolo si perde 1 riga
-        // di pixel nelle giunzioni. Impilando per img.height reale, le slice si
-        // toccano pixel-per-pixel e il buco sparisce.
+        // Load first: physical image sizes and actual scroll positions must
+        // agree, including fractional browser zoom and a newly loaded tail.
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -1897,38 +1998,50 @@ async function doFullCapture(tabId) {
             }
             return canvasC.toDataURL('image/png');
           }
-          // Altezza totale = somma delle altezze reali da disegnare per ogni slice.
-          // L'ultima slice usa solo la parte rimanente (rem), in pixel reali.
-          var lastRemCss = ph - (total - 1) * viewH;   // residuo CSS ultima slice
+          // A growing document can clamp at an old bottom and then extend.
+          // Frame count no longer describes its geometry: use actual positions,
+          // retaining overlaps once and rejecting genuinely missing rows.
+          var exactRatio = ratio > 0 && isFinite(ratio) &&
+            Math.abs(loaded[0].height - viewH * ratio) <= Math.max(1, ratio / 2) + 0.001
+            ? ratio : loaded[0].height / viewH;
           var canvas = document.createElement('canvas');
           canvas.width = cw;
-          // somma: (total-1) slice piene a img.height + ultima a quota proporzionale
-          var fullH = loaded[0].height;
-          var lastH = Math.round(fullH * (lastRemCss / viewH));
-          canvas.height = fullH * (total - 1) + lastH;
+          canvas.height = Math.round(ph * exactRatio);
+          // scrollHeight is rounded to whole CSS pixels, unlike the actual
+          // scroll limit. Only at the confirmed bottom, discard that possible
+          // fractional rounding residue; real missing bands still fail below.
+          var reachedBottom = Math.round(reali[total - 1] * exactRatio) + loaded[total - 1].height;
+          if (canvas.height > reachedBottom && canvas.height - reachedBottom <= Math.max(1, Math.ceil(exactRatio))) {
+            canvas.height = reachedBottom;
+          }
           var ctx = canvas.getContext('2d');
-
-          var destY = 0;   // accumulatore: niente moltiplicazioni che accumulano errore
+          if (!ctx) throw new Error('Image too large to save. Please capture a shorter section.');
+          var covered = 0;
           for (var i = 0; i < total; i++) {
             var img = loaded[i];
-            var last = (i === total - 1);
-            if (last) {
-              // disegna solo la parte bassa dell'ultima cattura (quella nuova)
-              var srcOff = img.height - lastH;
-              ctx.drawImage(img, 0, srcOff, img.width, lastH, 0, destY, img.width, lastH);
-              destY += lastH;
-            } else {
-              ctx.drawImage(img, 0, 0, img.width, img.height, 0, destY, img.width, img.height);
-              destY += img.height;
+            if (img.width !== cw || img.height !== loaded[0].height) {
+              throw new Error('The window size changed during capture. Please try again.');
             }
+            var dest = Math.round(reali[i] * exactRatio);
+            var skip = Math.max(0, -dest, covered - dest);
+            var count = Math.min(img.height - skip, canvas.height - dest - skip);
+            if (count <= 0) continue;
+            if (dest + skip > covered) throw new Error('The page moved during capture. Please try again.');
+            ctx.drawImage(img, 0, skip, cw, count, 0, dest + skip, cw, count);
+            covered = dest + skip + count;
           }
+          if (covered < canvas.height) throw new Error('The page ended before the capture was complete. Please try again.');
           return canvas.toDataURL('image/png');
+        }).catch(function(error) {
+          return { captureError: error && error.message ? error.message : 'Unable to compose the full page. Please try again.' };
         });
       },
       args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot, realScrolls]
     });
 
-    var savedF = await saveCapturedImage(compResult[0].result, tabId, 'full');
+    var composedFull = compResult[0].result;
+    if (composedFull && composedFull.captureError) throw new Error(composedFull.captureError);
+    var savedF = await saveCapturedImage(composedFull, tabId, 'full');
 
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -3390,6 +3503,15 @@ async function doAreaCapture(tabId) {
           // ripiego sul viewport (cattura degradata ma sempre finita).
           if (!(containerH >= 50)) { containerH = window.innerHeight; offsetY = 0; }
         }
+        var unfoldedDocument = !el && !!(window.__shotCaptureControl &&
+          (window.__shotCaptureControl.sidebars || window.__shotCaptureControl.adStickies));
+        if (unfoldedDocument && window.visualViewport && window.visualViewport.scale === 1) {
+          // A rounded-up innerHeight can skip an actual image row at zoom
+          // 125%. Step by the physical viewport minus one pixel, so rounding
+          // cannot leave a gap. The coordinate composer discards the overlap.
+          var pixelRatio = window.devicePixelRatio || 1;
+          containerH = Math.max(1, (Math.round(window.visualViewport.height * pixelRatio) - 1) / pixelRatio);
+        }
         // Spessore della barra fissa incollata al bordo superiore dell'area
         // di scroll (header di Facebook e simili): nella prima fetta resta
         // visibile di proposito e coprirebbe l'inizio della selezione. Si
@@ -3430,7 +3552,7 @@ async function doAreaCapture(tabId) {
           offsetX: offsetX,
           offsetY: offsetY,
           topCover: topCover,
-          unfoldedDocument: !el && !!(window.__shotCaptureControl && window.__shotCaptureControl.sidebars),
+          unfoldedDocument: unfoldedDocument,
           dpr: window.devicePixelRatio || 1
         };
       },
@@ -4068,26 +4190,39 @@ async function doAreaCapture(tabId) {
           // the white space beside a long menu for matching rows and trim text.
           // Custom/independent scrollers retain their existing composition.
           if (unfoldedDocument && visStart < 0) {
+            // innerHeight is rounded to CSS pixels. At browser zoom 110%, a
+            // 911px frame has a viewport of 828.18 CSS px, reported as 828.
+            // Dividing 911/828 accumulates false gaps. Use the captured DPR
+            // when compatible with that rounding; retain the measured fallback
+            // for capture backends with a different image scale.
+            var exactRatio = ratio > 0 && isFinite(ratio) &&
+              Math.abs(loaded[0].height - viewH * ratio) <= Math.max(1, ratio / 2) + 0.001
+              ? ratio : realRatio;
+            // Round absolute edges, then subtract: rounding their difference
+            // separately can also invent a pixel at a half-pixel selection.
+            var originY = Math.round(selectedDocY * exactRatio);
+            var exactX = Math.max(0, Math.round(ax * exactRatio));
+            var exactRight = Math.min(loaded[0].width, Math.round((ax + aw) * exactRatio));
             var exact = document.createElement('canvas');
-            exact.width = sw;
-            exact.height = Math.round(ah_doc * realRatio);
+            exact.width = Math.max(0, exactRight - exactX);
+            exact.height = Math.max(0, Math.round((selectedDocY + ah_doc) * exactRatio) - originY);
             var exactCtx = exact.getContext('2d'), covered = 0;
             loaded.forEach(function(img, idx) {
-              var dest = Math.round((realScrolls[idx] - selectedDocY) * realRatio);
+              var dest = Math.round(realScrolls[idx] * exactRatio) - originY;
               var skip = Math.max(0, -dest, covered - dest);
               var count = Math.min(img.height - skip, exact.height - dest - skip);
               if (count <= 0) return;
               if (dest + skip > covered) throw new Error('The page moved during capture. Please try again.');
-              exactCtx.drawImage(img, sx, skip, sw, count, 0, dest + skip, sw, count);
+              exactCtx.drawImage(img, exactX, skip, exact.width, count, 0, dest + skip, exact.width, count);
               covered = dest + skip + count;
             });
             if (covered < exact.height) throw new Error('The page ended before the selected area. Please try again.');
             if (overlayImg && typeof bottomOverlayTop === 'number') {
-              var exactTop = Math.round(Math.max(0, bottomOverlayTop) * realRatio);
-              var exactBottom = Math.min(overlayImg.height, Math.round(contH * realRatio));
+              var exactTop = Math.round(Math.max(0, bottomOverlayTop) * exactRatio);
+              var exactBottom = Math.min(overlayImg.height, Math.round(contH * exactRatio));
               var exactBand = Math.min(exact.height, exactBottom - exactTop);
-              if (exactBand > 0) exactCtx.drawImage(overlayImg, sx, exactBottom - exactBand,
-                sw, exactBand, 0, exact.height - exactBand, sw, exactBand);
+              if (exactBand > 0) exactCtx.drawImage(overlayImg, exactX, exactBottom - exactBand,
+                exact.width, exactBand, 0, exact.height - exactBand, exact.width, exactBand);
             }
             return exact.toDataURL('image/png');
           }
@@ -4271,6 +4406,10 @@ async function doAreaCapture(tabId) {
             }
           }
           return out.toDataURL('image/png');
+        }).catch(function(error) {
+          // A rejected injected promise may arrive without a result. Preserve
+          // composition errors instead of reporting every failure as too large.
+          return { captureError: error && error.message ? error.message : 'Unable to compose the selected area. Please try again.' };
         });
       },
       // NB: come viewH si passa l'altezza del VIEWPORT (meta.vh), non sliceH:
@@ -4282,7 +4421,9 @@ async function doAreaCapture(tabId) {
     });
     }
 
-    var savedA = await saveCapturedImage(compResult[0].result, tabId, 'area');
+    var composedArea = compResult && compResult[0] && compResult[0].result;
+    if (composedArea && composedArea.captureError) throw new Error(composedArea.captureError);
+    var savedA = await saveCapturedImage(composedArea, tabId, 'area');
 
     // Ripristino: visibility dei fixed/sticky + pagina riportata IN CIMA.
     // (Richiesta esplicita: a fine cattura Area si torna in alto come nella

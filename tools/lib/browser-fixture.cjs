@@ -6,10 +6,20 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function openBrowser(width = 1280, height = 800) {
+async function openBrowser(width = 1280, height = 800, options = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'shot-area-sidebar-'));
+  if (options.zoom !== undefined) {
+    if (!(options.zoom >= 0.25 && options.zoom <= 5)) throw Error('Invalid browser zoom');
+    // Chromium's default storage partition has key "x". This is a fresh test
+    // profile only, never the user's preferences. Unlike emulated DPR, browser
+    // zoom also quantizes scrolling and produces fractional CSS viewport sizes.
+    fs.mkdirSync(path.join(profile, 'Default'));
+    fs.writeFileSync(path.join(profile, 'Default', 'Preferences'), JSON.stringify({
+      partition: { default_zoom_level: { x: Math.log(options.zoom) / Math.log(1.2) } }
+    }));
+  }
   const child = spawn(process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    ['--headless=new', '--remote-debugging-port=0', '--no-first-run', '--user-data-dir=' + profile, 'about:blank'],
+    ['--headless=new', '--remote-debugging-port=0', '--no-first-run', '--window-size=' + width + ',' + (height + 87), '--user-data-dir=' + profile, 'about:blank'],
     { windowsHide: true, stdio: 'ignore' });
   let socket;
   try {
@@ -55,7 +65,18 @@ async function openBrowser(width = 1280, height = 800) {
       return result.result.value;
     };
     await cdp('Page.enable');
-    await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    if (options.zoom === undefined) {
+      await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    } else {
+      // Headless window borders differ across Chromium builds. Calibrate the
+      // physical content viewport, leaving genuine browser zoom untouched.
+      const png = Buffer.from((await cdp('Page.captureScreenshot', {format:'png'})).data, 'base64');
+      const {windowId, bounds} = await cdp('Browser.getWindowForTarget');
+      await cdp('Browser.setWindowBounds', {windowId, bounds: {
+        width: bounds.width + width - png.readUInt32BE(16),
+        height: bounds.height + height - png.readUInt32BE(20)
+      }});
+    }
     return { cdp, evaluate, profile, async close() {
       try { await cdp('Browser.close'); } finally { socket.close(); child.kill(); }
     } };

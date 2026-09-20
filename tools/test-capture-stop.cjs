@@ -229,9 +229,16 @@ function environment(options = {}) {
       if (options.actualFull && source.includes('function manageStickiesFP()')) {
         note('slice.begin', spec.args[0]);
         await callHook('slice', spec.args[0]);
-        page.scrollY = spec.args[0];
+        page.scrollY = Math.min(600, spec.args[0]);
         note('slice.end', spec.args[0]);
         return [{ result: page.scrollY }];
+      }
+      if (options.actualFull && source.includes('quietSince = started')) {
+        // This suite tests control/save boundaries, not adaptive timing. Actual
+        // geometry and waiting are exercised separately in the browser tests.
+        return [{ result: { height: 1200, y: page.scrollY, viewH: 600, width: 800,
+          dpr: 1, atBottom: page.scrollY >= 599, settled: page.scrollY >= 599,
+          waited: 0, growing: false } }];
       }
       if (options.actualFull && source.includes('function loadImg(src)')) {
         note('compose');
@@ -392,7 +399,7 @@ for (const mode of ['full', 'visible']) test(`${mode}: normal completion saves o
   assert.equal(job.cancelled, false);
   assert.equal(e.outputs.downloads.length, 1);
   assert.equal(e.outputs.clipboard.length, 1);
-  assert.equal(e.outputs.captures.length, mode === 'full' ? 2 : 1);
+  assert.equal(e.outputs.captures.length, mode === 'full' ? 3 : 1);
   assert.ok(e.outputs.captures.every(call => call.windowId === 7));
   assert.equal(e.outputs.errors.length, 0);
   restored(e);
