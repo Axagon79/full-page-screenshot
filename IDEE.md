@@ -4,7 +4,7 @@ Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
 Ultimo aggiornamento: **20 settembre 2026**.
-Riordino delle idee dell'11/09; stato della versione e rimandi aggiornati fino al commit `2db11ed`.
+Riordino delle idee dell'11/09; stato del codice e delle prove aggiornato fino al commit `02bd727`.
 
 ## Quale documento usare
 
@@ -27,7 +27,9 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 - Il pacchetto `full-page-screenshot-extension/9.11.zip` resta la copia preparata per lo Store; sono conservate anche le copie 9.8, 9.9 e 9.10.
 - Il codice del 20/09 include la correzione AI Tarot e i suggerimenti Area in inglese (`6cecd13`), registrati in [IDEE_FATTE.md](IDEE_FATTE.md). Queste modifiche non sono ancora nello ZIP e non sono state pubblicate.
 - Sono inoltre salvati il fix AiScore (`984c1fc`) e lo Stop con pannellino bianco approvato dall'utente, anche in Multi Snip (`2db11ed`). Dettagli e limiti in [IDEE_FATTE.md](IDEE_FATTE.md). Manifest, ZIP e Store non aggiornati.
-- Il bug della recensione sulle colonne laterali tagliate o ripetute resta aperto: le modifiche preliminari già presenti non costituiscono una correzione confermata. Il caso DeepSeek indicato dall'utente resta da verificare in Full Page e Area, anche in Multi Snip.
+- La segnalazione «Image too large to save» in Area su MDN è chiusa su conferma dell'utente dopo il ricaricamento dell'estensione: il codice in memoria era diverso da quello delle prove. Dettagli in [IDEE_FATTE.md](IDEE_FATTE.md); nessuna nuova correzione dedicata o pubblicazione.
+- Il fix delle colonne laterali è salvato in `02bd727`: le prove automatiche su Tailwind, DeepSeek e MDN sono passate in Full Page e Area, anche in Multi Snip. Resta da ottenere la conferma finale dell'utente sul problema della recensione; la chiusura dell'errore di salvataggio MDN non chiude questa voce. Risultati e limiti in `tools/README.md`.
+- Su Yahoo la ripetizione del riquadro destro in fondo non compare più nelle prove Area, anche in Multi Snip; restano tagli nei riquadri pubblicitari. Resta inoltre da gestire/verificare il contenuto che si aggiunge durante la cattura: una prova Full ha registrato una pagina cresciuta dopo la misura iniziale. Non dichiarare Yahoo completamente corretto.
 - Per le pagine troppo lunghe è ora impedito il download di un'immagine vuota; la suddivisione in più immagini raccolte in ZIP, già richiesta nella chat, non è ancora implementata.
 - Le vecchie diciture «candidata 9.10» erano proposte, non conferme di inclusione. Nessuna delle idee qui sotto è automaticamente assegnata alla 9.10.
 

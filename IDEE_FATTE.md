@@ -1,12 +1,25 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **20/09/2026**; ultimo lavoro approvato registrato nel commit `2db11ed`.
+Aggiornato il **20/09/2026**; commit e verifiche indicati nelle singole voci.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 20/09/2026 — Errore di salvataggio Area su MDN: chiusura confermata
+
+**Ideata il:** 20/09/2026, dalla segnalazione dell'utente del messaggio «Image too large to save».
+**Realizzata il:** 20/09/2026, verifica e chiusura esplicitamente confermata dall'utente; nessuna nuova correzione dedicata.
+
+- Il confronto ha confermato la stessa cartella del progetto, ma un codice di cattura diverso già caricato nel browser dell'utente.
+- Dopo aver ricaricato l'estensione, l'utente ha riprovato e confermato che l'errore era sparito, approvando la chiusura della segnalazione.
+- L'URL infine precisata dall'utente è `https://developer.mozilla.org/en-US/docs/Web`. Le prove automatiche precedenti erano sulla diversa pagina `/en-US/docs/Web/CSS`: non vanno presentate come prove automatiche della pagina `/Web`.
+- La chiusura riguarda soltanto questo errore di salvataggio, non il bug della recensione sulle colonne né i tagli pubblicitari ancora presenti su Yahoo. Non dimostra una causa specifica nel bordo destro o un limite effettivo delle dimensioni.
+
+File: confronto delle funzioni in `full-page-screenshot-extension/sw.js` e `capture-control.js`; dettagli delle prove in `tools/README.md`. Nessun nuovo test durante l'archiviazione.
+Commit del codice e delle prove confrontate: `02bd727`; nessun nuovo fix dedicato a questo errore. La chiusura è documentale e approvata dall'utente. Manifest, ZIP e Store invariati.
 
 ## 20/09/2026 — Stop e pannellino di avanzamento
 
