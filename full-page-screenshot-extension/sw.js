@@ -3430,6 +3430,7 @@ async function doAreaCapture(tabId) {
           offsetX: offsetX,
           offsetY: offsetY,
           topCover: topCover,
+          unfoldedDocument: !el && !!(window.__shotCaptureControl && window.__shotCaptureControl.sidebars),
           dpr: window.devicePixelRatio || 1
         };
       },
@@ -3823,7 +3824,19 @@ async function doAreaCapture(tabId) {
 
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
               var item = window.__screenshotStickies[s];
-              if (item.bottomGroup || (idx > 0 && anchoredNow[s])) {
+              // A document sidebar releases at its parent's bottom. That does
+              // not make it new content: keep a proven repeat excluded through
+              // the remaining frames (including the final bottom-bar shot).
+              // Do not remember zero-size/hidden/offscreen placeholders, and
+              // retain the existing behavior of independent app scrollers.
+              var repeatRect = rects1[s];
+              if (!hasCustomScroll && idx > 0 && anchoredNow[s] && !item.bottomGroup &&
+                  repeatRect.width > 0 && repeatRect.height > 0 &&
+                  repeatRect.bottom > 0 && repeatRect.top < window.innerHeight &&
+                  window.getComputedStyle(item.el).visibility === 'visible') {
+                item.hiddenAsRepeat = true;
+              }
+              if (item.bottomGroup || (idx > 0 && (anchoredNow[s] || (!hasCustomScroll && item.hiddenAsRepeat)))) {
                 item.el.style.visibility = 'hidden';
                 item.hiddenByCapture = true;
               }
@@ -4013,7 +4026,7 @@ async function doAreaCapture(tabId) {
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop, unfoldedDocument, selectedDocY) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -4050,6 +4063,34 @@ async function doAreaCapture(tabId) {
           // così com'è a video, senza scroll né compensazioni. Una sola slice.
           var visStart = (typeof selTopVpVisibile === 'number' && selTopVpVisibile >= 0)
             ? Math.round(selTopVpVisibile * realRatio) : -1;
+          // Unfolded document navigation has stable document coordinates. Match
+          // those coordinates exactly: the legacy overlap search can mistake
+          // the white space beside a long menu for matching rows and trim text.
+          // Custom/independent scrollers retain their existing composition.
+          if (unfoldedDocument && visStart < 0) {
+            var exact = document.createElement('canvas');
+            exact.width = sw;
+            exact.height = Math.round(ah_doc * realRatio);
+            var exactCtx = exact.getContext('2d'), covered = 0;
+            loaded.forEach(function(img, idx) {
+              var dest = Math.round((realScrolls[idx] - selectedDocY) * realRatio);
+              var skip = Math.max(0, -dest, covered - dest);
+              var count = Math.min(img.height - skip, exact.height - dest - skip);
+              if (count <= 0) return;
+              if (dest + skip > covered) throw new Error('The page moved during capture. Please try again.');
+              exactCtx.drawImage(img, sx, skip, sw, count, 0, dest + skip, sw, count);
+              covered = dest + skip + count;
+            });
+            if (covered < exact.height) throw new Error('The page ended before the selected area. Please try again.');
+            if (overlayImg && typeof bottomOverlayTop === 'number') {
+              var exactTop = Math.round(Math.max(0, bottomOverlayTop) * realRatio);
+              var exactBottom = Math.min(overlayImg.height, Math.round(contH * realRatio));
+              var exactBand = Math.min(exact.height, exactBottom - exactTop);
+              if (exactBand > 0) exactCtx.drawImage(overlayImg, sx, exactBottom - exactBand,
+                sw, exactBand, 0, exact.height - exactBand, sw, exactBand);
+            }
+            return exact.toDataURL('image/png');
+          }
           var sliceCanvases = loaded.map(function(img, idx) {
             var startY;
             if (visStart >= 0) {
@@ -4237,7 +4278,7 @@ async function doAreaCapture(tabId) {
       // perché la cattura è alta quanto la finestra. Con un contenitore più
       // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
       // e il ritaglio usciva spostato rispetto alla selezione.
-      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop]
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop, meta.unfoldedDocument, area.y_doc]
     });
     }
 

@@ -232,6 +232,116 @@ async function createCaptureProgress(job) {
   });
 }
 
+// Document navigation is content, not a repeating viewport decoration. Unfold
+// only sticky navigation scrollers, before Full measures the page or Area lets
+// the user select it. Independent app/feed/dialog scrollers keep their engine.
+async function prepareCaptureSidebars(job) {
+  if (!job.hasPageControl || !captureHasToolbarStop(job)) return;
+  await chrome.scripting.executeScript({
+    target: { tabId: job.tabId },
+    func: function(id) {
+      var control = window.__shotCaptureControl;
+      var vh = window.innerHeight;
+      if (!control || control.id !== id || control.cancelled || control.sidebars || !(vh > 0)) return;
+      var doc = document.scrollingElement;
+      if (!doc || doc.scrollHeight - vh < vh * 0.5) return;
+      if ([document.documentElement, document.body].some(function(el) {
+        return el && /^(hidden|clip)$/.test(getComputedStyle(el).overflowY);
+      })) return;
+      var appOrModal = Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"], [role="feed"]')).some(function(el) {
+        var r = el.getBoundingClientRect(), css = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && css.visibility === 'visible' && css.display !== 'none';
+      });
+      if (appOrModal) return;
+      var state = { changes: [], scrolls: [] };
+      var savedX = window.scrollX, savedY = window.scrollY;
+      state.restore = function() {
+        for (var i = state.changes.length - 1; i >= 0; i--) {
+          var rec = state.changes[i];
+          rec.properties.forEach(function(prop) {
+            if (prop.value) rec.el.style.setProperty(prop.name, prop.value, prop.priority);
+            else rec.el.style.removeProperty(prop.name);
+          });
+          if (!rec.hadStyle && !rec.el.style.length) rec.el.removeAttribute('style');
+        }
+        state.scrolls.forEach(function(rec) {
+          if (rec.el.isConnected) rec.el.scrollTo({ left: rec.x, top: rec.y, behavior: 'instant' });
+        });
+        delete control.sidebars;
+      };
+      control.sidebars = state; // Cleanup can restore even a partially prepared tree.
+      function change(el, values) {
+        var rec = state.changes.find(function(item) { return item.el === el; });
+        if (!rec) {
+          rec = { el: el, hadStyle: el.hasAttribute('style'), properties: [] };
+          state.changes.push(rec);
+        }
+        Object.keys(values).forEach(function(name) {
+          if (!rec.properties.some(function(prop) { return prop.name === name; })) {
+            rec.properties.push({ name: name, value: el.style.getPropertyValue(name), priority: el.style.getPropertyPriority(name) });
+          }
+          el.style.setProperty(name, values[name], 'important');
+        });
+      }
+      try {
+        // Inspect the top even when capture starts near the footer, where a
+        // sticky sidebar can already have been pushed offscreen by its parent.
+        window.scrollTo({ top: 0, left: savedX, behavior: 'instant' });
+        if (window.scrollY !== 0) return;
+        var navigation = 'nav, [role="navigation"], [role="tree"]';
+        var candidates = [];
+        document.querySelectorAll('*').forEach(function(el) {
+          if (el === doc || el === document.body || el === document.documentElement) return;
+          var css = getComputedStyle(el);
+          if (!/^(auto|scroll)$/.test(css.overflowY) || el.scrollHeight <= el.clientHeight + 2) return;
+          if (!(el.matches(navigation) || el.querySelector(navigation) || el.closest(navigation))) return;
+          if (el.closest('dialog, [role="dialog"], [aria-modal="true"], [role="feed"], .vue-recycle-scroller')) return;
+          var root = null, path = [], node = el;
+          while (node && node !== document.body && node !== document.documentElement) {
+            var style = getComputedStyle(node);
+            if (style.position === 'fixed') return;
+            if (node !== el && /^(auto|scroll)$/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2) return;
+            path.push(node);
+            if (style.position === 'sticky') { root = node; break; }
+            node = node.parentElement;
+          }
+          if (!root) return;
+          // An app shell or a feed containing navigation is not a sidebar.
+          if (root.querySelector('main, article, [role="main"], [role="feed"], textarea, [contenteditable="true"], video')) return;
+          for (node = root.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+            var ancestorCss = getComputedStyle(node);
+            if (ancestorCss.position === 'fixed' || (/^(auto|scroll)$/.test(ancestorCss.overflowY) && node.scrollHeight > node.clientHeight + 2)) return;
+          }
+          var r = root.getBoundingClientRect();
+          if (r.width < 80 || r.width > innerWidth * 0.45 || r.height < vh * 0.4 ||
+              r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= innerWidth ||
+              css.visibility !== 'visible' || css.display === 'none') return;
+          candidates.push({ el: el, root: root, path: path });
+        });
+        candidates.forEach(function(candidate) {
+          state.scrolls.push({ el: candidate.el, x: candidate.el.scrollLeft, y: candidate.el.scrollTop });
+          candidate.path.forEach(function(el) {
+            var values = { height: 'auto', 'max-height': 'none', 'block-size': 'auto', 'max-block-size': 'none',
+              'overflow-x': 'visible', 'overflow-y': 'visible' };
+            if (el === candidate.root) {
+              Object.assign(values, { position: 'relative', top: 'auto', bottom: 'auto',
+                'inset-block-start': 'auto', 'inset-block-end': 'auto', 'align-self': 'start' });
+            }
+            change(el, values);
+          });
+          candidate.el.scrollTo({ top: 0, left: candidate.el.scrollLeft, behavior: 'instant' });
+        });
+      } catch (error) {
+        state.restore();
+        throw error;
+      } finally {
+        window.scrollTo({ top: savedY, left: savedX, behavior: 'instant' });
+        if (!state.changes.length && control.sidebars === state) delete control.sidebars;
+      }
+    }, args: [job.id]
+  });
+}
+
 // Updates never change visibility: only the screenshot gate may hide/show HUD.
 async function updateCaptureProgress(job) {
   if (!job || job !== activeCaptureJob || !captureHasToolbarStop(job) || job.phase === 'restoring') return;
@@ -310,6 +420,7 @@ async function cleanupCaptureJob(job, restoreScroll) {
           });
           delete window[key];
         });
+        if (control.sidebars) control.sidebars.restore();
         delete window.__screenshotCaptureMasks;
         delete window.__screenshotArea;
         delete window.__screenshotAreaPanes;
@@ -391,6 +502,8 @@ async function runControlledCapture(job) {
     await createCaptureProgress(job);
     await updateCaptureProgress(job);
     await pauseCssAnims(job.tabId);
+    checkCaptureCancelled(job);
+    await prepareCaptureSidebars(job);
     checkCaptureCancelled(job);
     await sleep(150); // The launch popup/widget must disappear before the shot.
     if (job.mode === 'full') await doFullCapture(job.tabId);
