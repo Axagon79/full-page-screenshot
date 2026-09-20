@@ -597,10 +597,9 @@ function sendError(msg) {
 // romperebbe la cattura):
 //  1) animazioni CSS in pausa (animation-play-state:paused);
 //  2) video in pausa;
-//  3) elementi mossi via JS (transform inline tipo ticker/carosello): si
-//     INTERCETTA la proprietà transform di quell'elemento con defineProperty
-//     (get = valore congelato, set = ignora). Il JS del sito continua a girare
-//     ma le sue scritture su transform cadono nel vuoto → l'elemento resta fermo.
+//  3) transform inline di ticker/caroselli JS congelati con MutationObserver.
+//     Le righe riciclate delle liste virtuali devono invece potersi spostare:
+//     quel movimento serve a mostrare il contenuto, non è un'animazione.
 async function pauseCssAnims(tabId) {
   try {
     await chrome.scripting.executeScript({
@@ -638,6 +637,11 @@ async function pauseCssAnims(tabId) {
         document.querySelectorAll('[style*="transform"]').forEach(function(el) {
           var cur = el.style.transform;
           if (!cur || cur === 'none') return;
+          // Vue Recycle Scroller (anche su AiScore) riusa queste righe e le
+          // posiziona con translateY, parcheggiando fuori schermo quelle inattive.
+          // Congelarle lascia vuoti durante lo scroll. Escludere solo la riga,
+          // non i suoi discendenti: eventuali ticker/caroselli restano in pausa.
+          if (el.classList.contains('vue-recycle-scroller__item-view')) return;
           try {
             var frozenVal = cur;            // valore a cui inchiodare l'elemento
             var obs = new MutationObserver(function() {
