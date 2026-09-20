@@ -3,8 +3,8 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **11 settembre 2026**.
-Stato confrontato con sorgenti e cronologia fino al commit `93f26d9`.
+Ultimo aggiornamento: **20 settembre 2026**.
+Riordino delle idee dell'11/09; stato della versione e rimandi aggiornati fino al commit `6cecd13`.
 
 ## Quale documento usare
 
@@ -20,11 +20,12 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Situazione della versione
 
-- Manifest e pacchetto locale: **9.10**.
-- La 9.9 è stata inviata alla pubblicazione secondo quanto riferito dall'utente; l'esito Store non è stato verificato qui.
+- Manifest e ultimo pacchetto locale: **9.11**.
+- La 9.10 risultava pubblicata nello screenshot dello Store fornito dall'utente; la 9.11 è stata successivamente inviata in revisione secondo la chat. L'esito attuale non è stato verificato qui.
 - La 9.10 comprende i fix confermati dall'utente su Facebook e Yahoo, la selezione di più colonne e la pausa con Spazio.
-- Il pacchetto `full-page-screenshot-extension/9.10.zip` è stato aggiornato dopo `93f26d9`. Le copie 9.8 e 9.9 sono conservate.
-- Questo riordino modifica soltanto la documentazione: nessuna nuova funzione, nessun aggiornamento dello ZIP e nessun invio allo Store.
+- La 9.11 include il permesso per la copia negli appunti dopo catture lunghe e la quinta immagine Store aggiornata (`f7f0737`).
+- Il pacchetto `full-page-screenshot-extension/9.11.zip` resta la copia preparata per lo Store; sono conservate anche le copie 9.8, 9.9 e 9.10.
+- Il codice del 20/09 include la correzione AI Tarot e i suggerimenti Area in inglese (`6cecd13`), registrati in [IDEE_FATTE.md](IDEE_FATTE.md). Queste modifiche non sono ancora nello ZIP e non sono state pubblicate.
 - Le vecchie diciture «candidata 9.10» erano proposte, non conferme di inclusione. Nessuna delle idee qui sotto è automaticamente assegnata alla 9.10.
 
 ## Idee ancora aperte
@@ -88,6 +89,7 @@ L'uscita come testo unico resta collegata all'OCR.
 **Stato:** non implementata come sistema di lingue.
 
 L'interfaccia usa prevalentemente l'inglese, con alcuni messaggi in italiano.
+Dal 20/09 i suggerimenti di selezione e pausa con Spazio sono uniformati in inglese; questo non realizza il sistema multilingue.
 Restano da scegliere le lingue e organizzare la traduzione dei testi.
 La priorità bassa deriva dalla discussione storica: i dati di pubblico di luglio/agosto non sono statistiche aggiornate a oggi.
 

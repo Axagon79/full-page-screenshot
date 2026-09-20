@@ -1,12 +1,30 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **11/09/2026** confrontando sorgenti e cronologia fino a `93f26d9`.
+Aggiornato il **20/09/2026**; ultima correzione registrata nel commit `6cecd13`.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
-Questo riordino non ha eseguito nuovi collaudi.
+Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 20/09/2026 — Menu duplicato e sfondo discontinuo su AI Tarot
+
+**Ideata il:** 20/09/2026, dalla segnalazione e dalle prove dell'utente nella chat.
+**Realizzata il:** 20/09/2026; chiusura confermata dall'utente.
+
+- Nelle catture lunghe Full Page e Area il menu non viene ripetuto quando i suoi discendenti hanno una transizione di visibilità ancora in corso.
+- Gli elementi già esclusi dalla cattura vengono resi trasparenti soltanto durante lo scatto; l'opacità originale viene ripristinata anche se lo scatto fallisce, senza interrompere le transizioni di dimensioni o posizione.
+- Il riconoscimento degli elementi ancorati usa uno spostamento immediato, anche sui siti con scorrimento animato.
+- I fondi decorativi fissi compatibili vengono distribuiti lungo il documento e ripristinati alla fine, evitando le fasce ripetute. Sono esclusi dialoghi, contenitori interattivi e catture di pannelli interni.
+- I suggerimenti di selezione, pausa con Spazio e ripresa sono in inglese sia in Area sia in Multi Snip. Non è un sistema di traduzione dell'interfaccia.
+
+Verifiche: procedure reali Full Page e Area eseguite in un browser di prova sulla pagina pubblica AI Tarot, controllo del ripristino e casi mirati di transizioni/errore; risultato confermato anche dallo screenshot dell'utente. Controllo di sintassi e sei controlli dei testi/stati in Area e Multi Snip superati.
+La diversa segnalazione della recensione sulle colonne laterali sticky più alte dello schermo **non è dichiarata risolta** da questa correzione.
+
+File: `full-page-screenshot-extension/sw.js`.
+Commit: `6cecd13`.
+Manifest ancora **9.11**; ZIP e pubblicazione non aggiornati per questa correzione.
 
 ## 11/09/2026 — Cattura di colonne e correzioni Facebook/Yahoo
 
