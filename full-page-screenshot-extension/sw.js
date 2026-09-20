@@ -1,3 +1,7 @@
+importScripts('capture-control.js');
+
+chrome.action.onClicked.addListener(function() { if (captureHasToolbarStop()) cancelCapture(); });
+
 // Menu contestuale per Capture Mode
 chrome.runtime.onInstalled.addListener(function(details) {
   chrome.contextMenus.removeAll(function() {
@@ -34,41 +38,44 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 // Ricevi messaggio dal popup per avviare cattura
 var ultimaFotoLente = 0;
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+  if (msg.action === 'getCaptureState') { sendResponse(captureState()); return; }
+  if (msg.action === 'cancelCapture') {
+    // Page keyboard messages must belong to the current capture document.
+    if (sender && sender.tab && (!activeCaptureJob || sender.tab.id !== activeCaptureJob.tabId ||
+        msg.jobId !== activeCaptureJob.id)) { sendResponse({ cancelled: false }); return; }
+    sendResponse({ cancelled: cancelCapture(msg.jobId) });
+    return;
+  }
   // La lente dell'overlay area chiede una foto fresca del viewport dopo
   // uno scroll. Rate-limitata: captureVisibleTab regge ~2 chiamate/sec.
   if (msg.action === 'lenteRicattura') {
+    if (!activeCaptureJob || activeCaptureJob.cancelled || !sender.tab ||
+        sender.tab.id !== activeCaptureJob.tabId || activeCaptureJob.mode !== 'area') {
+      sendResponse(null); return;
+    }
     var ora = Date.now();
     if (ora - ultimaFotoLente < 500) { sendResponse(null); return; }
     ultimaFotoLente = ora;
-    chrome.tabs.captureVisibleTab(null, { format: 'png' }, function(dataUrl) {
-      void chrome.runtime.lastError;
+    captureFrame(activeCaptureJob.tabId).then(function(dataUrl) {
       sendResponse(dataUrl ? { img: dataUrl } : null);
-    });
+    }).catch(function() { sendResponse(null); });
     return true;  // risposta asincrona
   }
   if (msg.action === 'clearNewsBadge') {
-    chrome.action.setBadgeText({ text: '' });
+    if (!activeCaptureJob) chrome.action.setBadgeText({ text: '' });
     chrome.storage.local.remove('newsUnread');
     return;
   }
   if (msg.action === 'startCapture') {
-    // Pausa animazioni CSS + video appena clicchi (non tocca il motore JS).
-    pauseCssAnims(msg.tabId).then(function() {
-      if (msg.mode === 'full') {
-        doFullCapture(msg.tabId);
-      } else if (msg.mode === 'visible') {
-        doVisibleCapture(msg.tabId);
-      } else if (msg.mode === 'area') {
-        doAreaCapture(msg.tabId);
-      } else if (msg.mode === 'multi') {
-        // MULTI SNIP: apre (o riprende) la sessione e mostra il WIDGET di
-        // raccolta direttamente SULLA pagina — si scelgono tipo e pezzi
-        // senza mai lasciare la pagina; l'editor si apre solo al "Compose".
-        multiApriSessione(msg.tabId).then(function() {
-          return multiMostraWidget(msg.tabId);
-        });
-      }
-    });
+    if (msg.mode === 'multi' && !activeCaptureJob) {
+      // Opening the collection is not a capture: do not freeze the page.
+      multiApriSessione(msg.tabId).then(function() { return multiMostraWidget(msg.tabId); })
+        .then(function() { sendResponse({ started: true }); })
+        .catch(function(error) { sendResponse({ started: false }); sendError(error.message); });
+      return true;
+    }
+    sendResponse(startControlledCapture(msg.tabId, msg.mode));
+    return;
   }
   // L'editor (o il widget su una scheda qualsiasi) chiede un altro pezzo:
   // si cattura col tipo richiesto e il pezzo arriva in sessione.
@@ -138,6 +145,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // L'editor ha salvato (o annullato): la sessione si chiude. In coda,
   // così una cattura in smaltimento non può risuscitarla riscrivendola.
   if (msg.action === 'multiDone') {
+    if (activeCaptureJob && activeCaptureJob.fromMulti) cancelCapture();
     conSessione(async function() {
       await chrome.storage.session.remove('multi');
       await multiAggiornaBadge();
@@ -183,7 +191,9 @@ var multiTornaAllEditor = false;
 // sessione resta visibile anche cambiando scheda); a sessione chiusa torna
 // il badge "NEW" delle novità, se ancora da leggere, o niente.
 async function multiAggiornaBadge() {
+  if (activeCaptureJob) return;
   var m = await multiSessione();
+  if (activeCaptureJob) return;
   if (m && m.active) {
     chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
     if (chrome.action.setBadgeTextColor) {
@@ -192,6 +202,9 @@ async function multiAggiornaBadge() {
     chrome.action.setBadgeText({ text: String(m.pieces.length) });
   } else {
     var st = await chrome.storage.local.get('newsUnread');
+    if (activeCaptureJob) return;
+    chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
+    if (chrome.action.setBadgeTextColor) chrome.action.setBadgeTextColor({ color: '#1a1a2e' });
     chrome.action.setBadgeText({ text: st.newsUnread ? 'NEW' : '' });
   }
 }
@@ -199,6 +212,7 @@ async function multiAggiornaBadge() {
 async function multiApriSessione(tabId) {
   return conSessione(async function() {
     var m = (await multiSessione()) || { active: true, sourceTabId: tabId, editorTabId: null, pieces: [], trash: [] };
+    if (!m.sessionId) m.sessionId = crypto.randomUUID();
     m.active = true;
     // Se l'icona viene cliccata sulla scheda dell'EDITOR, la sorgente resta
     // quella vecchia: non ha senso catturare l'editor stesso.
@@ -232,36 +246,63 @@ async function multiMostraEditor() {
   });
 }
 
-async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
+async function multiAggiungiPezzo(dataUrl, tabId, tipo, job) {
+  // Lega il pezzo alla cattura che lo ha prodotto, anche mentre aspetta la coda.
+  if (typeof job === 'undefined') job = activeCaptureJob;
   return conSessione(async function() {
+  if (job) checkCaptureCancelled(job);
   var m = await multiSessione();
-  if (!m) return false;
-  // Una nuova cattura azzera il redo (semantica classica) e libera quota —
-  // ma SOLO se l'aggiunta riesce: su fallimento il cestino torna com'era.
-  var cestinoPrima = m.trash || [];
-  m.trash = [];
-  m.nextId = (m.nextId || 0) + 1;
-  m.pieces.push({ img: dataUrl, tipo: tipo, id: m.nextId });
-  m.sourceTabId = tabId;
+  if (job) {
+    checkCaptureCancelled(job);
+    if (!m || !m.active || !job.fromMulti || !job.multiSessionId ||
+        m.sessionId !== job.multiSessionId) throw new CaptureCancelledError();
+  }
+  if (!m || !m.active) return false;
+  // Lavora su una nuova versione: se quota o Stop impediscono la scrittura,
+  // pezzi, cestino e contatore originali restano esattamente come prima.
+  var nextId = (m.nextId || 0) + 1;
+  var nuovoPezzo = { img: dataUrl, tipo: tipo, id: nextId };
+  m = Object.assign({}, m, {
+    trash: [], nextId: nextId, sourceTabId: tabId,
+    pieces: m.pieces.concat([nuovoPezzo])
+  });
+  if (job) commitCapture(job);
   try {
     await chrome.storage.session.set({ multi: m });
   } catch (quotaErr) {
+    if (job) {
+      setCaptureCommitted(job, false);
+      checkCaptureCancelled(job);
+    }
     // storage.session ha un tetto di ~10MB: se il pezzo non ci sta (pagine
     // intere enormi), lo si converte in JPEG di qualità alta e si riprova.
+    var ridotto;
     try {
-      var ridotto = await comprimiInJpeg(dataUrl);
-      m.pieces[m.pieces.length - 1].img = ridotto;
+      ridotto = await comprimiInJpeg(dataUrl);
+    } catch (compressionErr) {
+      if (job) checkCaptureCancelled(job);
+      if (!job) await multiMostraWidget(tabId);
+      return false;
+    }
+    if (job) checkCaptureCancelled(job);
+    nuovoPezzo.img = ridotto;
+    if (job) commitCapture(job);
+    try {
       await chrome.storage.session.set({ multi: m });
     } catch (e2) {
-      // Il pezzo proprio non ci sta: si scarta, il cestino si ripristina e
-      // il widget ricompare (si era tolto da solo prima della cattura).
-      m.pieces.pop();
-      m.trash = cestinoPrima;
-      await chrome.storage.session.set({ multi: m });
-      await multiMostraWidget(tabId);
+      if (job) {
+        setCaptureCommitted(job, false);
+        checkCaptureCancelled(job);
+      }
+      // Una scrittura fallita non modifica lo storage: niente riscritture
+      // di ripristino che possano alterare la sessione precedente.
+      if (!job) await multiMostraWidget(tabId);
       return false;
     }
   }
+  // Durante una cattura controllata widget, badge e ritorno all'editor
+  // aspettano il ripristino della pagina nel finally del controller.
+  if (job) return true;
   await multiAggiornaBadge();
   // Se l'editor è GIÀ aperto si torna lì (fase di composizione); altrimenti
   // si resta sulla pagina e si riaggiorna il widget di raccolta col nuovo
@@ -293,8 +334,9 @@ async function multiAggiungiPezzo(dataUrl, tabId, tipo) {
 // pezzi hai, componi quando decidi tu. Si toglie da solo al click (per non
 // finire dentro lo screenshot) e riappare aggiornato dopo ogni pezzo.
 async function multiMostraWidget(tabId) {
+  if (activeCaptureJob) return;
   var m = await multiSessione();
-  if (!m) return;
+  if (activeCaptureJob || !m || !m.active) return;
   try {
     var ultimo = m.pieces.length ? m.pieces[m.pieces.length - 1].tipo : null;
     var ripristinabile = (m.trash && m.trash.length) ? m.trash[m.trash.length - 1].tipo : null;
@@ -308,12 +350,14 @@ async function multiMostraWidget(tabId) {
       m.pieces.forEach(function(p) { usati += p.img.length; });
       (m.trash || []).forEach(function(p) { usati += p.img.length; });
     }
+    if (activeCaptureJob) return;
     var pctPieno = Math.min(100, Math.round(usati / QUOTA * 100));
     var mbTesto = (usati / 1048576).toFixed(1) + ' / ' + Math.round(QUOTA / 1048576) + ' MB';
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       args: [m.pieces.length, ultimo, ripristinabile, pctPieno, mbTesto],
       func: function(quanti, ultimoTipo, redoTipo, pctPieno, mbTesto) {
+        if (window.__shotCaptureControl) return;
         var old = document.getElementById('__shot_multi_widget');
         if (old) old.remove();
         var w = document.createElement('div');
@@ -454,60 +498,16 @@ async function comprimiInJpeg(dataUrl) {
 }
 
 async function multiAggiungiDaEditor(kind, daTabId) {
-  // La parte che TOCCA la sessione passa dalla coda (niente clobber di
-  // pezzi/cestino concorrenti); la cattura vera resta fuori dalla coda.
-  var m = await conSessione(async function() {
-    var mm = await multiSessione();
-    if (!mm) return null;
-    // Se il click arriva dal widget su una scheda qualunque (pannellino che
-    // segue tra le tab), è QUELLA la pagina da catturare.
-    if (daTabId != null && daTabId !== mm.editorTabId && daTabId !== mm.sourceTabId) {
-      mm.sourceTabId = daTabId;
-      await chrome.storage.session.set({ multi: mm });
-    }
-    return mm;
-  });
-  if (!m) return;
-  multiTornaAllEditor = (daTabId != null && m.editorTabId != null && daTabId === m.editorTabId);
-  try {
-    var tab = await chrome.tabs.get(m.sourceTabId);
-    await chrome.tabs.update(m.sourceTabId, { active: true });
-    if (tab.windowId !== undefined) {
-      await chrome.windows.update(tab.windowId, { focused: true });
-    }
-  } catch (tabSparita) {
-    return; // la pagina di origine non esiste più: niente da catturare
-  }
-  // Il pannellino NON deve finire dentro lo screenshot: via dalla pagina
-  // prima dello scatto (e niente re-iniezioni su QUESTA scheda intanto).
-  multiCatturaTab = m.sourceTabId;
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: m.sourceTabId },
-      func: function() {
-        var el = document.getElementById('__shot_multi_widget');
-        if (el) el.remove();
-      }
-    });
-  } catch (nonIniettabile) {}
-  await sleep(300);  // lascia alla scheda il tempo di tornare a fuoco
-  await pauseCssAnims(m.sourceTabId);
-  try {
-    if (kind === 'full') {
-      await doFullCapture(m.sourceTabId);
-    } else if (kind === 'visible') {
-      await doVisibleCapture(m.sourceTabId);
-    } else {
-      await doAreaCapture(m.sourceTabId);
-    }
-  } finally {
-    multiCatturaTab = null;
-  }
+  // Acquisizione, scelta della sorgente e ripristino passano tutti dal job
+  // unico: widget ed editor non possono avviare due catture sovrapposte.
+  var mode = kind === 'full' || kind === 'visible' ? kind : 'area';
+  return startControlledCapture(null, mode, { multi: true, sourceRequestTabId: daTabId });
 }
 
 // Se l'utente chiude la scheda dell'editor, la sessione muore con lei:
 // le catture successive tornano al normale scarica+copia.
 chrome.tabs.onRemoved.addListener(function(tabId) {
+  if (activeCaptureJob && (tabId === activeCaptureJob.tabId || tabId === activeCaptureJob.editorTabId)) cancelCapture();
   conSessione(async function() {
     var m = await multiSessione();
     if (m && m.editorTabId === tabId) {
@@ -554,6 +554,8 @@ function multiPuoSeguire() {
 // compare da solo sulla scheda nuova (pagine protette: fallisce zitto).
 // Fermo durante le catture: non deve finire dentro lo screenshot.
 chrome.tabs.onActivated.addListener(function(info) {
+  if (activeCaptureJob && activeCaptureJob.phase === 'capturing' &&
+      info.windowId === activeCaptureJob.windowId && info.tabId !== activeCaptureJob.tabId) cancelCapture();
   if (info.tabId === multiCatturaTab) return;
   multiSessione().then(function(m) {
     if (!m || !m.active || info.tabId === m.editorTabId) return;
@@ -566,6 +568,7 @@ chrome.tabs.onActivated.addListener(function(info) {
 // Fine caricamento pagina: il widget non sopravvive alle navigazioni,
 // quindi sulla scheda attiva lo si ripianta (mai durante una cattura).
 chrome.tabs.onUpdated.addListener(function(tabId, change, tab) {
+  if (activeCaptureJob && tabId === activeCaptureJob.tabId && change.status === 'loading') cancelCapture();
   if (change.status !== 'complete' || !tab || !tab.active) return;
   if (tabId === multiCatturaTab) return;
   multiSessione().then(function(m) {
@@ -581,14 +584,32 @@ function sleep(ms) {
 }
 
 function sendProgress(text, percent) {
-  chrome.runtime.sendMessage({ type: 'progress', text: text, percent: percent }).catch(function() {});
+  checkCaptureCancelled();
+  var job = activeCaptureJob;
+  if (job) {
+    job.text = text;
+    job.percent = percent;
+    if (captureHasToolbarStop(job)) {
+      job.progressUpdate = (job.progressUpdate || Promise.resolve()).then(function() {
+        return updateCaptureProgress(job);
+      }).catch(function() {});
+    }
+  }
+  chrome.runtime.sendMessage({ type: 'progress', text: text, percent: percent,
+    tabId: job ? job.tabId : null }).catch(function() {});
 }
 
 function sendSuccess() {
+  checkCaptureCancelled();
   chrome.runtime.sendMessage({ type: 'success' }).catch(function() {});
 }
 
 function sendError(msg) {
+  if (activeCaptureJob) {
+    if (activeCaptureJob.cancelled) return;
+    activeCaptureJob.failed = true;
+    activeCaptureJob.errorMessage = msg;
+  }
   chrome.runtime.sendMessage({ type: 'error', message: msg }).catch(function() {});
 }
 
@@ -849,6 +870,7 @@ async function restoreCaptureBackgrounds(tabId) {
 // azzeriamo l'opacita degli elementi gia esclusi: si oscura
 // l'intero sottalbero (anche shadow DOM), senza alterarne dimensioni o scroll.
 async function captureStitchedFrame(tabId) {
+  checkCaptureCancelled();
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -890,7 +912,7 @@ async function captureStitchedFrame(tabId) {
         });
       }
     });
-    return await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    return await captureFrame(tabId);
   } finally {
     // Anche quota di cattura, errore o cambio pagina devono lasciare il sito
     // com'era. Non si ripristina l'intero style: solo l'opacita toccata.
@@ -1113,6 +1135,7 @@ async function doMultiPaneFullCapture(tabId, d) {
           window.__screenshotMultiFixed = [];
           var all = document.querySelectorAll('*');
           for (var k = 0; k < all.length; k++) {
+            if (all[k].id === '__shot_capture_progress') continue;
             var css = window.getComputedStyle(all[k]);
             if (css.position !== 'fixed' && css.position !== 'sticky') continue;
             var contienePane = false;
@@ -1184,7 +1207,7 @@ async function doMultiPaneFullCapture(tabId, d) {
     var shot = null;
     for (var retry = 0; retry < 3; retry++) {
       try {
-        shot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+        shot = await captureFrame(tabId);
         break;
       } catch (captureErr) {
         if (retry < 2 && captureErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -1216,7 +1239,10 @@ async function doMultiPaneFullCapture(tabId, d) {
         if (idx >= 0 && (tops[idx] === null || r.top < tops[idx])) tops[idx] = Math.max(0, r.top - 64);
       }
       return new Promise(function(resolve) {
-        requestAnimationFrame(function() { requestAnimationFrame(function() { resolve(tops); }); });
+        var frame, timeout;
+        function done() { cancelAnimationFrame(frame); clearTimeout(timeout); resolve(tops); }
+        timeout = setTimeout(done, 250);
+        frame = requestAnimationFrame(function() { frame = requestAnimationFrame(done); });
       });
     }
   });
@@ -1227,7 +1253,7 @@ async function doMultiPaneFullCapture(tabId, d) {
     await sleep(350);
     for (var bottomRetry = 0; bottomRetry < 3; bottomRetry++) {
       try {
-        bottomShot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+        bottomShot = await captureFrame(tabId);
         break;
       } catch (bottomErr) {
         if (bottomRetry < 2 && bottomErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -1298,26 +1324,14 @@ async function doMultiPaneFullCapture(tabId, d) {
     args: [captures, d.panes, paneScrolls, d.vh, d.outputH, d.bg, bottomShot, bottomTops]
   });
 
-  var multi = await multiSessione();
-  var rejected = false;
-  if (multi && multi.active) {
-    rejected = (await multiAggiungiPezzo(compResult[0].result, tabId, 'full')) === false;
-  } else {
-    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    chrome.downloads.download({
-      url: compResult[0].result,
-      filename: 'screenshots/screenshot_' + ts + '.png',
-      saveAs: false
-    });
-    await copyToClipboard(compResult[0].result, tabId);
-  }
+  var saved = await saveCapturedImage(compResult[0].result, tabId, 'full');
 
   await cleanupMultiPaneCapture(tabId, d.panes);
 
   await resumeCssAnims(tabId);
-  if (rejected) sendError('Piece too large for the session (10 MB limit)');
+  if (saved.rejected) sendError('Piece too large for the session (10 MB limit)');
   else sendSuccess();
-  if (!(multi && multi.active)) await registraCatturaRiuscita(tabId);
+  if (!saved.multi) await registraCatturaRiuscita(tabId);
 }
 
 async function doFullCapture(tabId) {
@@ -1535,6 +1549,7 @@ async function doFullCapture(tabId) {
               var scope = scopes.shift();
               var found = scope.querySelectorAll('*');
               for (var de = 0; de < found.length; de++) {
+                if (found[de].id === '__shot_capture_progress') continue;
                 result.push(found[de]);
                 if (found[de].shadowRoot) scopes.push(found[de].shadowRoot);
               }
@@ -1547,6 +1562,43 @@ async function doFullCapture(tabId) {
           if (row === 0) {
             window.__screenshotHidden = [];
             var scrollAnc = custom ? document.querySelector('[data-screenshot-scroll]') : null;
+            var stickyViewH = scrollAnc ? scrollAnc.clientHeight : window.innerHeight;
+            function neutralizeTallSticky(item, el, css, rect) {
+              if (css.position !== 'sticky') return;
+              var hiddenLongContent = false;
+              var descendants = el.querySelectorAll('*');
+              for (var td = 0; td < descendants.length; td++) {
+                var ds = window.getComputedStyle(descendants[td]);
+                if ((ds.overflowY === 'auto' || ds.overflowY === 'scroll') &&
+                    descendants[td].scrollHeight > descendants[td].clientHeight + 2) {
+                  hiddenLongContent = true;
+                  break;
+                }
+              }
+              if (rect.height <= stickyViewH + 2 && !hiddenLongContent) return;
+              item.tallSticky = true;
+              item.oldPosition = el.style.getPropertyValue('position');
+              item.oldPositionPriority = el.style.getPropertyPriority('position');
+              item.oldTop = el.style.getPropertyValue('top');
+              item.oldTopPriority = el.style.getPropertyPriority('top');
+              item.oldBottom = el.style.getPropertyValue('bottom');
+              item.oldBottomPriority = el.style.getPropertyPriority('bottom');
+              item.oldInsetBlockStart = el.style.getPropertyValue('inset-block-start');
+              item.oldInsetBlockStartPriority = el.style.getPropertyPriority('inset-block-start');
+              item.oldInsetBlockEnd = el.style.getPropertyValue('inset-block-end');
+              item.oldInsetBlockEndPriority = el.style.getPropertyPriority('inset-block-end');
+              item.oldHeight = el.style.getPropertyValue('height');
+              item.oldHeightPriority = el.style.getPropertyPriority('height');
+              item.oldMaxHeight = el.style.getPropertyValue('max-height');
+              item.oldMaxHeightPriority = el.style.getPropertyPriority('max-height');
+              el.style.setProperty('position', 'relative', 'important');
+              el.style.setProperty('top', 'auto', 'important');
+              el.style.setProperty('bottom', 'auto', 'important');
+              el.style.setProperty('inset-block-start', 'auto', 'important');
+              el.style.setProperty('inset-block-end', 'auto', 'important');
+              el.style.setProperty('height', 'auto', 'important');
+              el.style.setProperty('max-height', 'none', 'important');
+            }
             var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
               var st = window.getComputedStyle(allEls[k]);
@@ -1560,10 +1612,12 @@ async function doFullCapture(tabId) {
                 // scocca dell'app o uno sfondo decorativo, non una barra fissa.
                 var rc = allEls[k].getBoundingClientRect();
                 if (rc.width >= window.innerWidth * 0.9 && rc.height >= window.innerHeight * 0.9) continue;
-                window.__screenshotHidden.push({
+                var stickyItem = {
                   el: allEls[k],
                   oldVisibility: allEls[k].style.visibility
-                });
+                };
+                neutralizeTallSticky(stickyItem, allEls[k], st, rc);
+                window.__screenshotHidden.push(stickyItem);
               }
             }
 
@@ -1619,10 +1673,36 @@ async function doFullCapture(tabId) {
                 if (list[di].el === currentEls[dk]) { known = true; break; }
               }
               if (!known) {
-                list.push({
+                var dynamicItem = {
                   el: currentEls[dk],
                   oldVisibility: currentEls[dk].style.visibility
-                });
+                };
+                var dynamicViewH = scrollAncNow ? scrollAncNow.clientHeight : window.innerHeight;
+                if (dp === 'sticky' && dr.height > dynamicViewH + 2) {
+                  dynamicItem.tallSticky = true;
+                  dynamicItem.oldPosition = currentEls[dk].style.getPropertyValue('position');
+                  dynamicItem.oldPositionPriority = currentEls[dk].style.getPropertyPriority('position');
+                  dynamicItem.oldTop = currentEls[dk].style.getPropertyValue('top');
+                  dynamicItem.oldTopPriority = currentEls[dk].style.getPropertyPriority('top');
+                  dynamicItem.oldBottom = currentEls[dk].style.getPropertyValue('bottom');
+                  dynamicItem.oldBottomPriority = currentEls[dk].style.getPropertyPriority('bottom');
+                  dynamicItem.oldInsetBlockStart = currentEls[dk].style.getPropertyValue('inset-block-start');
+                  dynamicItem.oldInsetBlockStartPriority = currentEls[dk].style.getPropertyPriority('inset-block-start');
+                  dynamicItem.oldInsetBlockEnd = currentEls[dk].style.getPropertyValue('inset-block-end');
+                  dynamicItem.oldInsetBlockEndPriority = currentEls[dk].style.getPropertyPriority('inset-block-end');
+                  dynamicItem.oldHeight = currentEls[dk].style.getPropertyValue('height');
+                  dynamicItem.oldHeightPriority = currentEls[dk].style.getPropertyPriority('height');
+                  dynamicItem.oldMaxHeight = currentEls[dk].style.getPropertyValue('max-height');
+                  dynamicItem.oldMaxHeightPriority = currentEls[dk].style.getPropertyPriority('max-height');
+                  currentEls[dk].style.setProperty('position', 'relative', 'important');
+                  currentEls[dk].style.setProperty('top', 'auto', 'important');
+                  currentEls[dk].style.setProperty('bottom', 'auto', 'important');
+                  currentEls[dk].style.setProperty('inset-block-start', 'auto', 'important');
+                  currentEls[dk].style.setProperty('inset-block-end', 'auto', 'important');
+                  currentEls[dk].style.setProperty('height', 'auto', 'important');
+                  currentEls[dk].style.setProperty('max-height', 'none', 'important');
+                }
+                list.push(dynamicItem);
               }
             }
           }
@@ -1682,6 +1762,9 @@ async function doFullCapture(tabId) {
             var checks = 0;
             var lastY = -1;
             var interval = setInterval(function() {
+              if (window.__shotCaptureControl && window.__shotCaptureControl.cancelled) {
+                clearInterval(interval); resolve(window.scrollY); return;
+              }
               var currentY = custom
                 ? document.querySelector('[data-screenshot-scroll]').scrollTop
                 : window.scrollY;
@@ -1845,24 +1928,7 @@ async function doFullCapture(tabId) {
       args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot, realScrolls]
     });
 
-    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
-    var multiF = await multiSessione();
-    var pezzoScartatoF = false;
-    if (multiF && multiF.active) {
-      var okF = await multiAggiungiPezzo(compResult[0].result, tabId, 'full');
-      // Pezzo respinto per quota: si prosegue coi RIPRISTINI della pagina
-      // (scroll, elementi nascosti) e si segnala errore alla fine.
-      pezzoScartatoF = (okF === false);
-    } else {
-      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      chrome.downloads.download({
-        url: compResult[0].result,
-        filename: 'screenshots/screenshot_' + ts + '.png',
-        saveAs: false
-      });
-
-      await copyToClipboard(compResult[0].result, tabId);
-    }
+    var savedF = await saveCapturedImage(compResult[0].result, tabId, 'full');
 
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -1871,6 +1937,15 @@ async function doFullCapture(tabId) {
           for (var k = 0; k < window.__screenshotHidden.length; k++) {
             var item = window.__screenshotHidden[k];
             item.el.style.visibility = item.oldVisibility;
+            if (item.tallSticky) {
+              item.el.style.setProperty('position', item.oldPosition, item.oldPositionPriority);
+              item.el.style.setProperty('top', item.oldTop, item.oldTopPriority);
+              item.el.style.setProperty('bottom', item.oldBottom, item.oldBottomPriority);
+              item.el.style.setProperty('inset-block-start', item.oldInsetBlockStart, item.oldInsetBlockStartPriority);
+              item.el.style.setProperty('inset-block-end', item.oldInsetBlockEnd, item.oldInsetBlockEndPriority);
+              item.el.style.setProperty('height', item.oldHeight, item.oldHeightPriority);
+              item.el.style.setProperty('max-height', item.oldMaxHeight, item.oldMaxHeightPriority);
+            }
           }
           window.__screenshotHidden = null;
         }
@@ -1889,16 +1964,17 @@ async function doFullCapture(tabId) {
       captureBackgrounds = false;
     }
     await resumeCssAnims(tabId);
-    if (pezzoScartatoF) {
+    if (savedF.rejected) {
       sendError('Piece too large for the session (10 MB limit)');
     } else {
       sendSuccess();
     }
-    if (!(multiF && multiF.active)) {
+    if (!savedF.multi) {
       await registraCatturaRiuscita(tabId);
     }
 
   } catch (err) {
+    if (err.name === 'CaptureCancelledError' || (activeCaptureJob && activeCaptureJob.cancelled)) throw err;
     console.error('Screenshot error:', err);
     if (typeof d !== 'undefined' && d && d.multiPane) {
       try { await cleanupMultiPaneCapture(tabId, d.panes); } catch (cleanupErr) {}
@@ -1967,31 +2043,16 @@ function isPaginaNonIniettabile(err) {
 // === VISIBLE ONLY ===
 async function doVisibleCapture(tabId) {
   try {
-    var dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
-    var multiV = await multiSessione();
-    if (multiV && multiV.active) {
-      var okV = await multiAggiungiPezzo(dataUrl, tabId, 'visible');
-      await resumeCssAnims(tabId);
-      if (okV === false) {
-        sendError('Piece too large for the session (10 MB limit)');
-      } else {
-        sendSuccess();
-      }
-      return;
-    }
-    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    chrome.downloads.download({
-      url: dataUrl,
-      filename: 'screenshots/screenshot_' + ts + '.png',
-      saveAs: false
-    });
-    await copyToClipboard(dataUrl, tabId);
+    var dataUrl = await captureFrame(tabId);
+    var savedV = await saveCapturedImage(dataUrl, tabId, 'visible');
     await resumeCssAnims(tabId);
+    if (savedV.rejected) { sendError('Piece too large for the session (10 MB limit)'); return; }
     sendSuccess();
+    if (savedV.multi) return;
     await showBollino(tabId, true);
     await registraCatturaRiuscita(tabId);
   } catch (err) {
+    if (err.name === 'CaptureCancelledError' || (activeCaptureJob && activeCaptureJob.cancelled)) throw err;
     console.error('Screenshot error:', err);
     await resumeCssAnims(tabId);
     sendError(err.message);
@@ -2105,6 +2166,7 @@ async function captureAreaPanes(tabId, area) {
           (p.isWindow ? window : p.el).scrollTo({ top: p.origin,
             left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
           p.el.querySelectorAll('*').forEach(function(el) {
+            if (el.id === '__shot_capture_progress') return;
             var css = getComputedStyle(el);
             if (css.position !== 'sticky' && css.position !== 'fixed') return;
             var r = el.getBoundingClientRect();
@@ -2129,6 +2191,7 @@ async function captureAreaPanes(tabId, area) {
     var frames = [];
     var shifts = [];
     async function shotAt(offset) {
+      checkCaptureCancelled();
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function(y) {
@@ -2165,7 +2228,7 @@ async function captureAreaPanes(tabId, area) {
           }
         });
         try {
-          var shot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          var shot = await captureFrame(tabId);
           shifts.push(position[0].result);
           frames.push(shot);
           return;
@@ -2273,9 +2336,10 @@ async function doAreaCapture(tabId) {
     var fotoLente = null;
     if (lenteAttiva) {
       try {
-        fotoLente = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+        fotoLente = await captureFrame(tabId);
       } catch (nienteLente) {}
     }
+    checkCaptureCancelled();
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       args: [inMulti, fotoLente, lenteAttiva],
@@ -3238,6 +3302,18 @@ async function doAreaCapture(tabId) {
           window.removeEventListener('scroll', onScrollDuringDrag, true);
           if (scrollTarget) scrollTarget.removeEventListener('scroll', onScrollDuringDrag);
         }
+        if (window.__shotCaptureControl) {
+          window.__shotCaptureControl.cancelSelection = function() {
+            scrollPaused = false;
+            cleanupSelectionInput();
+            clearTimeout(lenteTimer);
+            window.removeEventListener('scroll', lenteScrollata, true);
+            overlay.remove();
+            var noSelect = document.getElementById('__screenshot_noselect');
+            if (noSelect) noSelect.remove();
+            delete window.__screenshotArea;
+          };
+        }
         document.addEventListener('keydown', onKey, true);
         document.addEventListener('keyup', onKeyUp, true);
         window.addEventListener('blur', onSelectionBlur);
@@ -3258,6 +3334,7 @@ async function doAreaCapture(tabId) {
     var area = null;
     for (var attempt = 0; attempt < 120; attempt++) {
       await sleep(500);
+      checkCaptureCancelled();
       var result = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: function() {
@@ -3330,6 +3407,7 @@ async function doAreaCapture(tabId) {
         var bordoTop = el ? offsetY : 0;
         var tutti = document.querySelectorAll('*');
         for (var k = 0; k < tutti.length; k++) {
+          if (tutti[k].id === '__shot_capture_progress') continue;
           if (barraPartenza && (tutti[k] === barraPartenza ||
               tutti[k].contains(barraPartenza) || barraPartenza.contains(tutti[k]))) continue;
           var pz = window.getComputedStyle(tutti[k]);
@@ -3433,6 +3511,7 @@ async function doAreaCapture(tabId) {
               var scope = scopes.shift();
               var found = scope.querySelectorAll('*');
               for (var de = 0; de < found.length; de++) {
+                if (found[de].id === '__shot_capture_progress') continue;
                 result.push(found[de]);
                 if (found[de].shadowRoot) scopes.push(found[de].shadowRoot);
               }
@@ -3452,6 +3531,7 @@ async function doAreaCapture(tabId) {
           if (!window.__screenshotStickies) {
             window.__screenshotStickies = [];
             var scrollAnc = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
+            var stickyViewH = scrollAnc ? scrollAnc.clientHeight : window.innerHeight;
             function aggiungiSticky(el, diretto) {
               for (var a = 0; a < window.__screenshotStickies.length; a++) {
                 if (window.__screenshotStickies[a].el === el) {
@@ -3459,7 +3539,7 @@ async function doAreaCapture(tabId) {
                   return;
                 }
               }
-              window.__screenshotStickies.push({
+              var item = {
                 el: el,
                 oldVis: el.style.visibility,
                 diretto: diretto,
@@ -3467,7 +3547,45 @@ async function doAreaCapture(tabId) {
                 classified: false,
                 bottomRoot: false,
                 bottomGroup: false
-              });
+              };
+              var itemCss = window.getComputedStyle(el);
+              var itemRect = el.getBoundingClientRect();
+              var hiddenLongContent = false;
+              var descendants = el.querySelectorAll('*');
+              for (var td = 0; td < descendants.length; td++) {
+                var ds = window.getComputedStyle(descendants[td]);
+                if ((ds.overflowY === 'auto' || ds.overflowY === 'scroll') &&
+                    descendants[td].scrollHeight > descendants[td].clientHeight + 2) {
+                  hiddenLongContent = true;
+                  break;
+                }
+              }
+              if (itemCss.position === 'sticky' &&
+                  (itemRect.height > stickyViewH + 2 || hiddenLongContent)) {
+                item.tallSticky = true;
+                item.oldPosition = el.style.getPropertyValue('position');
+                item.oldPositionPriority = el.style.getPropertyPriority('position');
+                item.oldTop = el.style.getPropertyValue('top');
+                item.oldTopPriority = el.style.getPropertyPriority('top');
+                item.oldBottom = el.style.getPropertyValue('bottom');
+                item.oldBottomPriority = el.style.getPropertyPriority('bottom');
+                item.oldInsetBlockStart = el.style.getPropertyValue('inset-block-start');
+                item.oldInsetBlockStartPriority = el.style.getPropertyPriority('inset-block-start');
+                item.oldInsetBlockEnd = el.style.getPropertyValue('inset-block-end');
+                item.oldInsetBlockEndPriority = el.style.getPropertyPriority('inset-block-end');
+                item.oldHeight = el.style.getPropertyValue('height');
+                item.oldHeightPriority = el.style.getPropertyPriority('height');
+                item.oldMaxHeight = el.style.getPropertyValue('max-height');
+                item.oldMaxHeightPriority = el.style.getPropertyPriority('max-height');
+                el.style.setProperty('position', 'relative', 'important');
+                el.style.setProperty('top', 'auto', 'important');
+                el.style.setProperty('bottom', 'auto', 'important');
+                el.style.setProperty('inset-block-start', 'auto', 'important');
+                el.style.setProperty('inset-block-end', 'auto', 'important');
+                el.style.setProperty('height', 'auto', 'important');
+                el.style.setProperty('max-height', 'none', 'important');
+              }
+              window.__screenshotStickies.push(item);
             }
             var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
@@ -3555,7 +3673,7 @@ async function doAreaCapture(tabId) {
               if (window.__screenshotStickies[di].el === currentEls[dk]) { known = true; break; }
             }
             if (known) continue;
-            window.__screenshotStickies.push({
+            var dynamicItem = {
               el: currentEls[dk],
               oldVis: currentEls[dk].style.visibility,
               diretto: true,
@@ -3563,7 +3681,33 @@ async function doAreaCapture(tabId) {
               classified: false,
               bottomRoot: false,
               bottomGroup: false
-            });
+            };
+            var dynamicViewH = scrollAncNow ? scrollAncNow.clientHeight : window.innerHeight;
+            if (dp === 'sticky' && dr.height > dynamicViewH + 2) {
+              dynamicItem.tallSticky = true;
+              dynamicItem.oldPosition = currentEls[dk].style.getPropertyValue('position');
+              dynamicItem.oldPositionPriority = currentEls[dk].style.getPropertyPriority('position');
+              dynamicItem.oldTop = currentEls[dk].style.getPropertyValue('top');
+              dynamicItem.oldTopPriority = currentEls[dk].style.getPropertyPriority('top');
+              dynamicItem.oldBottom = currentEls[dk].style.getPropertyValue('bottom');
+              dynamicItem.oldBottomPriority = currentEls[dk].style.getPropertyPriority('bottom');
+              dynamicItem.oldInsetBlockStart = currentEls[dk].style.getPropertyValue('inset-block-start');
+              dynamicItem.oldInsetBlockStartPriority = currentEls[dk].style.getPropertyPriority('inset-block-start');
+              dynamicItem.oldInsetBlockEnd = currentEls[dk].style.getPropertyValue('inset-block-end');
+              dynamicItem.oldInsetBlockEndPriority = currentEls[dk].style.getPropertyPriority('inset-block-end');
+              dynamicItem.oldHeight = currentEls[dk].style.getPropertyValue('height');
+              dynamicItem.oldHeightPriority = currentEls[dk].style.getPropertyPriority('height');
+              dynamicItem.oldMaxHeight = currentEls[dk].style.getPropertyValue('max-height');
+              dynamicItem.oldMaxHeightPriority = currentEls[dk].style.getPropertyPriority('max-height');
+              currentEls[dk].style.setProperty('position', 'relative', 'important');
+              currentEls[dk].style.setProperty('top', 'auto', 'important');
+              currentEls[dk].style.setProperty('bottom', 'auto', 'important');
+              currentEls[dk].style.setProperty('inset-block-start', 'auto', 'important');
+              currentEls[dk].style.setProperty('inset-block-end', 'auto', 'important');
+              currentEls[dk].style.setProperty('height', 'auto', 'important');
+              currentEls[dk].style.setProperty('max-height', 'none', 'important');
+            }
+            window.__screenshotStickies.push(dynamicItem);
             addedNow = true;
           }
 
@@ -3696,6 +3840,9 @@ async function doAreaCapture(tabId) {
             var checks = 0;
             var lastCy = -1;
             var interval = setInterval(function() {
+              if (window.__shotCaptureControl && window.__shotCaptureControl.cancelled) {
+                clearInterval(interval); resolve(window.scrollY); return;
+              }
               var cy = hasCustomScroll
                 ? document.querySelector('[data-screenshot-area-scroll]').scrollTop
                 : window.scrollY;
@@ -3819,8 +3966,10 @@ async function doAreaCapture(tabId) {
                 list[j].hiddenByCapture = false;
               }
             }
-            requestAnimationFrame(function() {
-              requestAnimationFrame(function() {
+            var frame, timeout;
+            function finishBottom() {
+                cancelAnimationFrame(frame);
+                clearTimeout(timeout);
                 for (var k = 0; k < list.length; k++) {
                   if (!list[k].bottomRoot) continue;
                   var r = list[k].el.getBoundingClientRect();
@@ -3830,8 +3979,9 @@ async function doAreaCapture(tabId) {
                 resolve(minTop < Infinity
                   ? { top: Math.max(0, Math.floor(minTop - 64)) }
                   : null);
-              });
-            });
+            }
+            timeout = setTimeout(finishBottom, 250);
+            frame = requestAnimationFrame(function() { frame = requestAnimationFrame(finishBottom); });
           }, 50);
         });
       },
@@ -4091,24 +4241,7 @@ async function doAreaCapture(tabId) {
     });
     }
 
-    // MULTI SNIP: a sessione attiva il pezzo va all'editor, non al download.
-    var multiA = await multiSessione();
-    var pezzoScartatoA = false;
-    if (multiA && multiA.active) {
-      var okA = await multiAggiungiPezzo(compResult[0].result, tabId, 'area');
-      // Pezzo respinto per quota: si prosegue coi RIPRISTINI della pagina
-      // e si segnala errore alla fine.
-      pezzoScartatoA = (okA === false);
-    } else {
-      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      chrome.downloads.download({
-        url: compResult[0].result,
-        filename: 'screenshots/screenshot_' + ts + '.png',
-        saveAs: false
-      });
-
-      await copyToClipboard(compResult[0].result, tabId);
-    }
+    var savedA = await saveCapturedImage(compResult[0].result, tabId, 'area');
 
     // Ripristino: visibility dei fixed/sticky + pagina riportata IN CIMA.
     // (Richiesta esplicita: a fine cattura Area si torna in alto come nella
@@ -4121,6 +4254,15 @@ async function doAreaCapture(tabId) {
           for (var k = 0; k < window.__screenshotStickies.length; k++) {
             var item = window.__screenshotStickies[k];
             item.el.style.visibility = item.oldVis;
+            if (item.tallSticky) {
+              item.el.style.setProperty('position', item.oldPosition, item.oldPositionPriority);
+              item.el.style.setProperty('top', item.oldTop, item.oldTopPriority);
+              item.el.style.setProperty('bottom', item.oldBottom, item.oldBottomPriority);
+              item.el.style.setProperty('inset-block-start', item.oldInsetBlockStart, item.oldInsetBlockStartPriority);
+              item.el.style.setProperty('inset-block-end', item.oldInsetBlockEnd, item.oldInsetBlockEndPriority);
+              item.el.style.setProperty('height', item.oldHeight, item.oldHeightPriority);
+              item.el.style.setProperty('max-height', item.oldMaxHeight, item.oldMaxHeightPriority);
+            }
           }
           window.__screenshotStickies = null;
         }
@@ -4142,17 +4284,18 @@ async function doAreaCapture(tabId) {
       captureBackgrounds = false;
     }
     await resumeCssAnims(tabId);
-    if (pezzoScartatoA) {
+    if (savedA.rejected) {
       sendError('Piece too large for the session (10 MB limit)');
     } else {
       sendSuccess();
     }
-    if (!(multiA && multiA.active)) {
+    if (!savedA.multi) {
       await showBollino(tabId, true);
       await registraCatturaRiuscita(tabId);
     }
 
   } catch (err) {
+    if (err.name === 'CaptureCancelledError' || (activeCaptureJob && activeCaptureJob.cancelled)) throw err;
     console.error('Area screenshot error:', err);
     if (captureBackgrounds) {
       await restoreCaptureBackgrounds(tabId);

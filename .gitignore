@@ -13,3 +13,6 @@
 
 # File personale estraneo al progetto
 dialetto-frasi.json
+
+# Anteprime generate dalle prove locali (rigenerabili dagli script in tools).
+/tools/artifacts/
