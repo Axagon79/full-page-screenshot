@@ -682,6 +682,236 @@ async function resumeCssAnims(tabId) {
   } catch (e) {}
 }
 
+// I fondi decorativi fissi a tutta finestra non vanno nascosti come gli header:
+// nelle catture lunghe li ancoriamo al documento, evitando la ripetizione del
+// gradiente a ogni fetta. Solo sfondi esplicitamente decorativi; MAI scocche di
+// app, popup o contenitori che scorrono. Visible e catture interne non passano qui.
+async function prepareCaptureBackgrounds(tabId) {
+  var result = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function() {
+      if (window.__screenshotBackgrounds) window.__screenshotBackgrounds.restore();
+      if (!document.body) return false;
+      var pageHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if (pageHeight <= window.innerHeight + 1) return false;
+
+      // Un overlay modale puo avere gli stessi attributi di un fondo. Quando
+      // c'e un dialogo visibile lasciamo intatta tutta la sua composizione.
+      var dialogs = document.querySelectorAll('dialog[open], [role="dialog"], [aria-modal="true"]');
+      for (var d = 0; d < dialogs.length; d++) {
+        var ds = getComputedStyle(dialogs[d]);
+        var dr = dialogs[d].getBoundingClientRect();
+        if (ds.display !== 'none' && ds.visibility !== 'hidden' && Number(ds.opacity) > 0 &&
+            dr.width > 0 && dr.height > 0 && dr.bottom > 0 && dr.top < innerHeight &&
+            dr.right > 0 && dr.left < innerWidth) return false;
+      }
+      function transformed(css) {
+        return css.transform !== 'none' || css.perspective !== 'none' ||
+          css.filter !== 'none' || (css.backdropFilter && css.backdropFilter !== 'none') ||
+          (css.translate && css.translate !== 'none') ||
+          (css.rotate && css.rotate !== 'none') || (css.scale && css.scale !== 'none') ||
+          /transform|perspective|filter/.test(css.willChange) ||
+          /paint|layout|strict|content/.test(css.contain) ||
+          (css.contentVisibility && css.contentVisibility !== 'visible');
+      }
+      if (transformed(getComputedStyle(document.body)) ||
+          transformed(getComputedStyle(document.documentElement))) return false;
+
+      var properties = ['top', 'bottom', 'left', 'right', 'width', 'height',
+        'min-height', 'max-height', 'box-sizing', 'transition-property',
+        'margin-top', 'margin-bottom', 'margin-left', 'margin-right'];
+      var records = [];
+      var contentSelector = 'a,button,input,textarea,select,iframe,video,audio,canvas,' +
+        'main,nav,header,footer,[tabindex],[contenteditable]:not([contenteditable="false"]),' +
+        '[role]:not([role="presentation"]):not([role="none"])';
+      for (var c = 0; c < document.body.children.length; c++) {
+        var el = document.body.children[c];
+        var css = getComputedStyle(el);
+        if (el.getAttribute('aria-hidden') !== 'true' || css.pointerEvents !== 'none' ||
+            css.position !== 'fixed' || css.display === 'none' || css.visibility === 'hidden' ||
+            !(Number(css.opacity) > 0) || !(parseInt(css.zIndex, 10) <= 0) || transformed(css)) continue;
+        var rect = el.getBoundingClientRect();
+        if (Math.abs(rect.top) > 2 || Math.abs(rect.left) > 2 ||
+            Math.abs(rect.width - innerWidth) > 2 || Math.abs(rect.height - innerHeight) > 2) continue;
+        if (el.textContent.trim() || el.matches(contentSelector) || el.querySelector(contentSelector)) continue;
+        var descendants = [el].concat(Array.from(el.querySelectorAll('*')));
+        var unsafe = false;
+        for (var n = 0; n < descendants.length; n++) {
+          var child = descendants[n];
+          var cs = getComputedStyle(child);
+          if (child.shadowRoot || cs.pointerEvents !== 'none' ||
+              ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && child.scrollHeight > child.clientHeight + 1) ||
+              ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && child.scrollWidth > child.clientWidth + 1)) {
+            unsafe = true;
+            break;
+          }
+        }
+        if (unsafe) continue;
+        records.push({ el: el, top: rect.top, left: rect.left + window.scrollX, width: rect.width,
+          hadStyle: el.hasAttribute('style'), original: properties.map(function(name) {
+            return { name: name, value: el.style.getPropertyValue(name), priority: el.style.getPropertyPriority(name) };
+          }) });
+      }
+      if (!records.length) return false;
+
+      // Restano fixed: nessun reflow, nessuna nuova altezza di scroll, nessun
+      // elemento spostato nel DOM. Le coordinate percentuali dei decori vengono
+      // distribuite una sola volta sull'altezza del documento, congelata qui.
+      var state = {
+        sync: function() {
+          records.forEach(function(rec) {
+            rec.el.style.setProperty('top', (rec.top - window.scrollY) + 'px', 'important');
+            rec.el.style.setProperty('left', (rec.left - window.scrollX) + 'px', 'important');
+          });
+        },
+        restore: function() {
+          window.removeEventListener('scroll', state.sync);
+          records.forEach(function(rec) {
+            rec.original.forEach(function(prop) {
+              if (prop.value) rec.el.style.setProperty(prop.name, prop.value, prop.priority);
+              else rec.el.style.removeProperty(prop.name);
+            });
+            if (!rec.hadStyle && !rec.el.style.cssText) rec.el.removeAttribute('style');
+          });
+          delete window.__screenshotBackgrounds;
+        }
+      };
+      window.__screenshotBackgrounds = state;
+      try {
+        records.forEach(function(rec) {
+          var style = rec.el.style;
+          style.setProperty('transition-property', 'none', 'important');
+          style.setProperty('box-sizing', 'border-box', 'important');
+          style.setProperty('width', rec.width + 'px', 'important');
+          style.setProperty('height', pageHeight + 'px', 'important');
+          style.setProperty('min-height', '0', 'important');
+          style.setProperty('max-height', 'none', 'important');
+          style.setProperty('bottom', 'auto', 'important');
+          style.setProperty('right', 'auto', 'important');
+          ['margin-top', 'margin-bottom', 'margin-left', 'margin-right'].forEach(function(name) {
+            style.setProperty(name, '0', 'important');
+          });
+        });
+        state.sync();
+        window.addEventListener('scroll', state.sync, { passive: true });
+        return true;
+      } catch (err) {
+        state.restore();
+        throw err;
+      }
+    }
+  });
+  return !!(result && result[0] && result[0].result);
+}
+
+async function syncCaptureBackgrounds(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: function() {
+      if (!window.__screenshotBackgrounds) return;
+      window.__screenshotBackgrounds.sync();
+      // Il listener scroll puo arrivare tardi: allinea anche esplicitamente
+      // dopo il micro-scroll degli header e attendi il disegno prima della foto.
+      return new Promise(function(resolve) {
+        var frameId;
+        var timeoutId;
+        function done() {
+          cancelAnimationFrame(frameId);
+          clearTimeout(timeoutId);
+          resolve();
+        }
+        // Le schede in secondo piano possono sospendere requestAnimationFrame:
+        // non lasciare mai la cattura bloccata nell'attesa del disegno.
+        timeoutId = setTimeout(done, 250);
+        frameId = requestAnimationFrame(function() { frameId = requestAnimationFrame(done); });
+      });
+    }
+  });
+}
+
+async function restoreCaptureBackgrounds(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function() {
+        if (window.__screenshotBackgrounds) window.__screenshotBackgrounds.restore();
+      }
+    });
+  } catch (closedTab) {}
+}
+
+// Un discendente con transition:all puo restare visibile per mezzo secondo
+// anche se il suo header ha gia visibility:hidden. Solo DURANTE lo scatto
+// azzeriamo l'opacita degli elementi gia esclusi: si oscura
+// l'intero sottalbero (anche shadow DOM), senza alterarne dimensioni o scroll.
+async function captureStitchedFrame(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function() {
+        var records = [];
+        window.__screenshotCaptureMasks = records;
+        var list = (window.__screenshotHidden || []).concat(window.__screenshotStickies || []);
+        var seen = new Set();
+        list.forEach(function(item) {
+          var el = item.el;
+          if (!item.hiddenByCapture || !el.isConnected || el.style.visibility !== 'hidden' || seen.has(el)) return;
+          seen.add(el);
+          records.push({ el: el,
+            opacity: el.style.getPropertyValue('opacity'),
+            opacityPriority: el.style.getPropertyPriority('opacity') });
+          el.style.setProperty('opacity', '0', 'important');
+          // Termina SOLO la dissolvenza della maschera appena applicata.
+          // transition:none fermerebbe anche altezza/posizione, cambiando
+          // la geometria della pagina durante lo scatto.
+          el.getAnimations().forEach(function(animation) {
+            if (animation.transitionProperty === 'opacity' && animation.effect &&
+                animation.effect.target === el && !animation.effect.pseudoElement) {
+              try { animation.finish(); }
+              catch (pausedTransition) { animation.cancel(); }
+            }
+          });
+        });
+        if (!records.length) return;
+        return new Promise(function(resolve) {
+          var frameId;
+          var timeoutId;
+          function done() {
+            cancelAnimationFrame(frameId);
+            clearTimeout(timeoutId);
+            resolve();
+          }
+          timeoutId = setTimeout(done, 250);
+          frameId = requestAnimationFrame(function() { frameId = requestAnimationFrame(done); });
+        });
+      }
+    });
+    return await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+  } finally {
+    // Anche quota di cattura, errore o cambio pagina devono lasciare il sito
+    // com'era. Non si ripristina l'intero style: solo l'opacita toccata.
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: function() {
+          (window.__screenshotCaptureMasks || []).forEach(function(rec) {
+            if (rec.opacity) rec.el.style.setProperty('opacity', rec.opacity, rec.opacityPriority);
+            else rec.el.style.removeProperty('opacity');
+            rec.el.getAnimations().forEach(function(animation) {
+              if (animation.transitionProperty === 'opacity' && animation.effect &&
+                  animation.effect.target === rec.el && !animation.effect.pseudoElement) {
+                try { animation.finish(); }
+                catch (pausedTransition) { animation.cancel(); }
+              }
+            });
+          });
+          delete window.__screenshotCaptureMasks;
+        }
+      });
+    } catch (closedTab) {}
+  }
+}
+
 // === COPIA NEGLI APPUNTI (dalla pagina attiva) ===
 // In Manifest V3 il service worker non puo' accedere a navigator.clipboard, e
 // un documento offscreen invisibile non puo' usarlo perche' non ha il focus
@@ -1087,6 +1317,7 @@ async function doMultiPaneFullCapture(tabId, d) {
 }
 
 async function doFullCapture(tabId) {
+  var captureBackgrounds = false;
   try {
     sendProgress('Preparazione...', 5);
 
@@ -1277,6 +1508,9 @@ async function doFullCapture(tabId) {
     // (per lo scroll di finestra coincide con l'altezza del viewport).
     var stepH = d.hasCustomScroll ? d.ch : d.vh;
     var rows = Math.ceil(d.sh / stepH);
+    if (!d.hasCustomScroll && rows > 1) {
+      captureBackgrounds = await prepareCaptureBackgrounds(tabId);
+    }
     var captures = [];
     // Scroll REALE raggiunto da ogni slice: le liste (webmail) scattano a
     // multipli di riga o si agganciano al fondo prima del previsto — la
@@ -1397,14 +1631,22 @@ async function doFullCapture(tabId) {
           function manageStickiesFP() {
             var list = window.__screenshotHidden || [];
             // ripristina visibility originale di tutti prima di decidere
-            for (var s = 0; s < list.length; s++) { list[s].el.style.visibility = list[s].oldVisibility; }
+            for (var s = 0; s < list.length; s++) {
+              list[s].el.style.visibility = list[s].oldVisibility;
+              list[s].hiddenByCapture = false;
+            }
             // PRIMA slice (row 0): lascia visibili gli header/barre fisse, così
             // compaiono UNA volta in cima (es. barra AI-DESK del sito). Le slice
             // successive li nascondono per non ripeterli.
             if (row === 0) return;
 
             function getS() { return custom ? document.querySelector('[data-screenshot-scroll]').scrollTop : window.scrollY; }
-            function setS(v) { if (custom) { document.querySelector('[data-screenshot-scroll]').scrollTop = v; } else { window.scrollTo(0, v); } }
+            // La lettura segue subito lo spostamento: non deve ereditare lo
+            // scroll animato del sito, altrimenti gli header sembrano mobili.
+            function setS(v) {
+              var scroller = custom ? document.querySelector('[data-screenshot-scroll]') : window;
+              scroller.scrollTo({ top: v, left: custom ? scroller.scrollLeft : window.scrollX, behavior: 'instant' });
+            }
             var base = getS();
             var tops1 = [];
             for (var s = 0; s < list.length; s++) { tops1.push(list[s].el.getBoundingClientRect().top); }
@@ -1417,7 +1659,10 @@ async function doFullCapture(tabId) {
             var scrollMoved = Math.abs(realProbe - base) > 1;
             for (var s = 0; s < list.length; s++) {
               var anchored = scrollMoved && (Math.abs(tops1[s] - tops2[s]) < 2);
-              if (anchored) list[s].el.style.visibility = 'hidden';
+              if (anchored) {
+                list[s].el.style.visibility = 'hidden';
+                list[s].hiddenByCapture = true;
+              }
             }
           }
 
@@ -1466,7 +1711,8 @@ async function doFullCapture(tabId) {
       var dataUrl = null;
       for (var retry = 0; retry < 3; retry++) {
         try {
-          dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          if (captureBackgrounds) await syncCaptureBackgrounds(tabId);
+          dataUrl = await captureStitchedFrame(tabId);
           break;
         } catch (captureErr) {
           if (retry < 2 && captureErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -1634,6 +1880,10 @@ async function doFullCapture(tabId) {
       args: [d.sy, d.hasCustomScroll]
     });
 
+    if (captureBackgrounds) {
+      await restoreCaptureBackgrounds(tabId);
+      captureBackgrounds = false;
+    }
     await resumeCssAnims(tabId);
     if (pezzoScartatoF) {
       sendError('Piece too large for the session (10 MB limit)');
@@ -1649,10 +1899,16 @@ async function doFullCapture(tabId) {
     if (typeof d !== 'undefined' && d && d.multiPane) {
       try { await cleanupMultiPaneCapture(tabId, d.panes); } catch (cleanupErr) {}
     }
+    if (captureBackgrounds) {
+      await restoreCaptureBackgrounds(tabId);
+      captureBackgrounds = false;
+    }
     await resumeCssAnims(tabId);
     // FALLBACK: su pagine non iniettabili (chrome://, errore) catturo il visibile.
     if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
     sendError(err.message);
+  } finally {
+    if (captureBackgrounds) await restoreCaptureBackgrounds(tabId);
   }
 }
 
@@ -1998,6 +2254,7 @@ async function captureAreaPanes(tabId, area) {
 
 async function doAreaCapture(tabId) {
   var areaScrollbarsHidden = false;
+  var captureBackgrounds = false;
   try {
     // (le animazioni JS sono già congelate dal listener startCapture)
     // In sessione Multi Snip l'overlay mostra un testo dedicato, così si
@@ -2042,7 +2299,7 @@ async function doAreaCapture(tabId) {
         info.style.cssText = 'position:fixed;top:8px;right:8px;font-family:Segoe UI,sans-serif;font-size:12px;font-weight:600;color:white;background:rgba(0,0,0,0.7);padding:8px 14px;border-radius:8px;pointer-events:none;';
         info.textContent = inMulti
           ? 'Multi Snip: drag to select a piece — it will be added to the editor'
-          : 'Trascina per selezionare l\'area';
+          : 'Drag to select an area';
         overlay.appendChild(info);
 
         var scrollPaused = false;
@@ -2054,8 +2311,8 @@ async function doAreaCapture(tabId) {
         overlay.appendChild(scrollHint);
         function showScrollPause() {
           scrollHint.textContent = scrollPaused
-            ? (inMulti ? 'Scrolling paused — release Space to resume' : 'Scorrimento in pausa — rilascia Spazio per riprendere')
-            : (inMulti ? 'Hold Space to pause scrolling' : 'Tieni premuto Spazio per fermare lo scorrimento');
+            ? 'Scrolling paused — release Space to resume'
+            : 'Hold Space to pause scrolling';
           scrollHint.style.background = scrollPaused ? '#ffe3a3' : '#202027';
           scrollHint.style.color = scrollPaused ? '#342400' : '#fff';
         }
@@ -3119,6 +3376,9 @@ async function doAreaCapture(tabId) {
     if (!giaVisibile && meta.topCover) {
       numSlices = Math.ceil((area.h_doc + meta.topCover) / sliceH);
     }
+    if (!area.hasCustomScroll && !giaVisibile && numSlices > 1) {
+      captureBackgrounds = await prepareCaptureBackgrounds(tabId);
+    }
 
     var captures = [];
     var deltas = [];  // di quanto lo scroll è rimasto indietro rispetto al voluto (per slice)
@@ -3335,10 +3595,16 @@ async function doAreaCapture(tabId) {
           function manageStickies(scrollNow, hasCustomScroll) {
             var scrollEl = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
             function getS() { return scrollEl ? scrollEl.scrollTop : window.scrollY; }
-            function setS(v) { if (scrollEl) { scrollEl.scrollTop = v; } else { window.scrollTo(0, v); } }
+            // Anche sui siti con scroll-behavior:smooth il micro-scroll e il
+            // ripristino devono terminare PRIMA di misurare l'ancoraggio.
+            function setS(v) {
+              (scrollEl || window).scrollTo({ top: v,
+                left: scrollEl ? scrollEl.scrollLeft : window.scrollX, behavior: 'instant' });
+            }
             // ripristina la visibility originale di tutti
             for (var s = 0; s < window.__screenshotStickies.length; s++) {
               window.__screenshotStickies[s].el.style.visibility = window.__screenshotStickies[s].oldVis;
+              window.__screenshotStickies[s].hiddenByCapture = false;
             }
             // Una sola fetta rappresenta già esattamente ciò che è a schermo.
             if (lastIdx === 0) return;
@@ -3411,6 +3677,7 @@ async function doAreaCapture(tabId) {
               var item = window.__screenshotStickies[s];
               if (item.bottomGroup || (idx > 0 && anchoredNow[s])) {
                 item.el.style.visibility = 'hidden';
+                item.hiddenByCapture = true;
               }
             }
           }
@@ -3484,7 +3751,8 @@ async function doAreaCapture(tabId) {
       var dataUrl = null;
       for (var retry = 0; retry < 3; retry++) {
         try {
-          dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          if (captureBackgrounds) await syncCaptureBackgrounds(tabId);
+          dataUrl = await captureStitchedFrame(tabId);
           break;
         } catch (captureErr) {
           if (retry < 2 && captureErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -3542,7 +3810,10 @@ async function doAreaCapture(tabId) {
 
             var minTop = Infinity;
             for (var j = 0; j < list.length; j++) {
-              if (list[j].bottomGroup) list[j].el.style.visibility = list[j].oldVis;
+              if (list[j].bottomGroup) {
+                list[j].el.style.visibility = list[j].oldVis;
+                list[j].hiddenByCapture = false;
+              }
             }
             requestAnimationFrame(function() {
               requestAnimationFrame(function() {
@@ -3568,7 +3839,8 @@ async function doAreaCapture(tabId) {
       if (area.hasCustomScroll) await hideAreaCustomScrollbars(tabId);
       for (var overlayRetry = 0; overlayRetry < 3; overlayRetry++) {
         try {
-          bottomOverlay = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          if (captureBackgrounds) await syncCaptureBackgrounds(tabId);
+          bottomOverlay = await captureStitchedFrame(tabId);
           bottomOverlayTop = bottomInfo.top;
           break;
         } catch (overlayErr) {
@@ -3861,6 +4133,10 @@ async function doAreaCapture(tabId) {
       args: [area.hasCustomScroll]
     });
 
+    if (captureBackgrounds) {
+      await restoreCaptureBackgrounds(tabId);
+      captureBackgrounds = false;
+    }
     await resumeCssAnims(tabId);
     if (pezzoScartatoA) {
       sendError('Piece too large for the session (10 MB limit)');
@@ -3874,12 +4150,17 @@ async function doAreaCapture(tabId) {
 
   } catch (err) {
     console.error('Area screenshot error:', err);
+    if (captureBackgrounds) {
+      await restoreCaptureBackgrounds(tabId);
+      captureBackgrounds = false;
+    }
     await resumeCssAnims(tabId);
     // FALLBACK: su pagine non iniettabili (chrome://, errore) catturo il visibile.
     if (isPaginaNonIniettabile(err)) { await doVisibleCapture(tabId); return; }
     sendError(err.message);
     await showBollino(tabId, false, err.message);
   } finally {
+    if (captureBackgrounds) await restoreCaptureBackgrounds(tabId);
     // Ripristina le barre anche se la cattura fallisce. Nessuna modifica
     // permanente allo stile del sito o al comportamento del suo scroller.
     if (areaScrollbarsHidden) {
