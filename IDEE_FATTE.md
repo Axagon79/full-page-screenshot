@@ -1,14 +1,45 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **20/09/2026**; commit e verifiche indicati nelle singole voci.
+Aggiornato il **21/09/2026**; commit e verifiche indicati nelle singole voci.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
 
+## 21/09/2026 — Fondo caricato in ritardo: correzione confermata
+
+**Ideata il:** 20/09/2026, dalla segnalazione dell'utente sulla parte finale mancante di Yahoo e dalla richiesta di aspettare i contenuti lenti senza rallentare tutte le pagine.
+**Realizzata il:** 21/09/2026; dopo le prove autorizzate l'utente ha allegato una cattura Yahoo di 1920×18562 con la sezione finale presente e ha approvato la chiusura di questo problema con richiesta di commit e push.
+
+- Full Page aggiorna le misure durante la cattura e segue il fondo quando vengono aggiunti contenuti. L'attesa aggiuntiva avviene al fondo, non dopo ogni foto; cresce solo quando vengono rilevati cambiamenti o segnali di caricamento.
+- Se il fondo cambia, vengono riprese anche le foto che contenevano la precedente sezione finale, evitando di lasciarla a metà dell'immagine. Corrette composizione e ultima riga anche con zoom frazionario.
+- Attese e crescita hanno limiti: una pagina che continua a caricare non provoca un ciclo infinito e non viene salvata come un Full Page falsamente completo. Stop rimane disponibile e conserva i pezzi precedenti di Multi Snip.
+- Lo stesso motore vale per Full Page normale e Multi Snip. Area mantiene i confini scelti; scorrimenti interni, colonne indipendenti e interfaccia non vengono cambiati da questa correzione.
+- Prove autorizzate su caricamenti veloci, lenti e continui, Stop durante l'attesa, caricamento bloccato, zoom, Area, Multi Snip, DeepSeek e fondo Yahoo. Risultati e limiti in `tools/README.md`; una pagina che aggiunge contenuti molto tardi senza segnali può ancora sfuggire all'attesa.
+
+File: `full-page-screenshot-extension/capture-control.js`, `full-page-screenshot-extension/sw.js`, `tools/test-area-sidebar.cjs`, `tools/test-capture-stop.cjs`; documentazione in `tools/README.md`.
+**Commit:** `03915d8`. Manifest, ZIP e Store invariati. Nessun nuovo test durante questa archiviazione.
+La chiusura riguarda soltanto il fondo tagliato: pubblicità Yahoo ancora frammentate in alcune visite, riquadro destro ripetuto, conferma generale della recensione e idee future restano separati.
+
+## 20/09/2026 — Salvataggio Area con zoom: correzione confermata
+
+**Ideata il:** 20/09/2026, dalla ricomparsa dell'errore «Image too large to save», precisata dall'utente su DeepSeek Thinking Mode con zoom al 110%.
+**Realizzata il:** 20/09/2026; dopo le prove automatiche l'utente ha confermato il salvataggio senza errori al 110%, allegando l'immagine risultante (1918×8433).
+
+- Corretto l'arrotondamento nel percorso Area introdotto in `02bd727`: scala coerente con i pixel della cattura, bordi assoluti e un pixel di sovrapposizione nello scorrimento. La lunghezza della pagina non era la causa del caso riprodotto.
+- La stessa correzione vale per Area in Multi Snip; le colonne indipendenti, il motore Full Page e l'interfaccia Stop/avanzamento non vengono modificati.
+- Gli errori di composizione vengono conservati anziché trasformati tutti nell'avviso di immagine troppo grande. I risultati realmente incompleti continuano a essere rifiutati.
+- Prove precedentemente autorizzate: DeepSeek con zoom reale 90/100/110/125%, Multi widget/editor e trascinamento al bordo destro; MDN `/Web` al 110%, Full Page e Stop. Passati 39 controlli mirati, 33 sui menu e 88 della suite precedente (21 casi obsoleti saltati). La cattura delle colonne indipendenti resta identica. Risultati e limiti dell'automazione in `tools/README.md`; la conferma manuale dell'utente completa la verifica del salvataggio nella sua estensione.
+
+File: `full-page-screenshot-extension/sw.js`, `tools/lib/browser-fixture.cjs`, `tools/test-area-sidebar.cjs`, `tools/test-area-fractional.cjs`; documentazione in `tools/README.md`.
+**Commit:** `03915d8`. Manifest, pacchetto ZIP e Store invariati. Nessun nuovo test durante questa archiviazione.
+Questa chiusura riguarda il salvataggio Area con zoom, non le pubblicità Yahoo, la conferma generale del bug della recensione o le idee future.
+
 ## 20/09/2026 — Errore di salvataggio Area su MDN: chiusura confermata
+
+**Seguito del 20/09:** l'utente ha riaperto il problema dopo una nuova segnalazione su DeepSeek al 110%. L'errore di arrotondamento è stato poi riprodotto, corretto e confermato risolto dall'utente: vedere la voce sul salvataggio Area con zoom qui sopra. Questa voce conserva soltanto la prima chiusura storica.
 
 **Ideata il:** 20/09/2026, dalla segnalazione dell'utente del messaggio «Image too large to save».
 **Realizzata il:** 20/09/2026, verifica e chiusura esplicitamente confermata dall'utente; nessuna nuova correzione dedicata.
