@@ -8,6 +8,20 @@ Le date «Ideata il» indicano la data documentata, non una data inventata di pr
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
 
+## 21/09/2026 — Colonne laterali della recensione: chiusura confermata
+
+**Ideata il:** dalla recensione sullo Store che segnalava colonne laterali sticky, più alte dello schermo, spezzate e incomplete nelle catture Area e Full Page.
+**Realizzata il:** 20/09/2026 nel codice (`02bd727`); l'utente ha confermato la chiusura in chat il 21/09/2026.
+
+- Le colonne laterali con scorrimento proprio vengono conservate durante le catture che scorrono, invece di essere riprese sempre uguali e riproposte al fondo dell'immagine.
+- Riproduzione documentata il 20/09 su DeepSeek, riferita dall'utente: in Full Page l'elenco laterale non veniva fatto scorrere e ricompariva in fondo; in Area il contenuto veniva acquisito tutto, ma gli ultimi scatti sovrascrivevano il menu quando cambiava posizione.
+- Lo stesso difetto era presente anche con il codice di giugno: non era una regressione della 9.9 o della 9.10.
+- Prove automatiche su Tailwind, DeepSeek e MDN passate in Full Page e Area, anche in Multi Snip. Risultati e limiti dell'automazione in `tools/README.md`.
+- Questa voce supera le note del 20/09 più in basso in questo file, dove il bug della recensione risultava ancora aperto.
+
+**Commit:** `02bd727`. Manifest, ZIP e Store invariati. Nessun nuovo test durante questa archiviazione.
+La chiusura riguarda soltanto le colonne laterali della recensione: pubblicità Yahoo frammentate, riquadro destro ripetuto e idee future restano separati e aperti.
+
 ## 21/09/2026 — Fondo caricato in ritardo: correzione confermata
 
 **Ideata il:** 20/09/2026, dalla segnalazione dell'utente sulla parte finale mancante di Yahoo e dalla richiesta di aspettare i contenuti lenti senza rallentare tutte le pagine.
