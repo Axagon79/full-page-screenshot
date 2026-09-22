@@ -136,16 +136,67 @@
       padding: 10px 14px 5px 14px;
     }
 
-    /* Novita': visibile solo quando c'e' un changelog da mostrare (JS aggiunge .show) */
-    .news {
-      display: none;
-      padding: 14px 16px;
-      margin: 0 0 16px 0;
-      border-radius: 14px;
-      background: rgba(0,212,255,0.08);
-      border: 1px solid rgba(0,212,255,0.3);
+    /* Novita': pulsantino accanto al titolo (JS aggiunge .show se la versione
+       installata ha un changelog) che apre una finestrella sopra la pagina.
+       E' fissa sullo schermo: la pagina non si allunga e non compare lo scroll. */
+    .brand-riga {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .news.show { display: block; }
+    .news-btn {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 9px;
+      border-radius: 20px;
+      background: rgba(0,212,255,0.12);
+      border: 1px solid rgba(0,212,255,0.3);
+      color: #00d4ff;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .news-btn.show { display: inline-flex; }
+    .news-btn:hover { background: rgba(0,212,255,0.22); }
+    .news-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(5,5,15,0.6);
+    }
+    .news-modal.open { display: flex; }
+    .news-box {
+      position: relative;
+      width: 100%;
+      max-width: 560px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: 16px 20px;
+      border-radius: 14px;
+      background: #1c1c33;
+      border: 1px solid rgba(0,212,255,0.3);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .news-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: #8a93a4;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+    .news-close:hover { color: #fff; }
     .news-head {
       display: flex;
       align-items: center;
@@ -153,9 +204,10 @@
       font-size: 13px;
       font-weight: 700;
       color: #00d4ff;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      padding-right: 24px;
     }
-    .news ul {
+    .news-box ul {
       margin: 0;
       padding-left: 18px;
       font-size: 12.5px;
@@ -433,7 +485,13 @@
     <div class="brand">
       <img class="brand-icona" src="icon_128.png" alt="">
       <div>
-        <h2>Full Page Screenshot</h2>
+        <div class="brand-riga">
+          <h2>Full Page Screenshot</h2>
+          <button class="news-btn" id="newsBtn" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+            What's new
+          </button>
+        </div>
         <div class="brand-sub">Capture settings<span class="ver" id="verBadge"></span></div>
       </div>
     </div>
@@ -522,14 +580,6 @@
     </div>
 
     <div class="col-right">
-      <div class="news" id="news">
-        <div class="news-head">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
-          <span id="newsVersion">What's new</span>
-        </div>
-        <ul id="newsList"></ul>
-      </div>
-
       <div class="card">
         <div class="card-title">How it works</div>
 
@@ -603,6 +653,16 @@
     </div>
   </div>
 
+  <div class="news-modal" id="newsModal" role="dialog" aria-modal="true" aria-labelledby="newsVersion">
+    <div class="news-box">
+      <button class="news-close" id="newsClose" type="button" aria-label="Close">&times;</button>
+      <div class="news-head">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        <span id="newsVersion">What's new</span>
+      </div>
+      <ul id="newsList"></ul>
+    </div>
+  </div>
   <script src="settings.js"></script>
 </body>
 </html>
