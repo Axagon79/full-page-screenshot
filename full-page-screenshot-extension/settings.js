@@ -1,6 +1,14 @@
 // Changelog per versione: solo le voci rivolte all'utente (niente dettagli
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
+  '9.12': [
+    'Fixed: side menus that scroll on their own (like Wikipedia, MDN or DeepSeek) are now captured once and in full, instead of being cut or repeated at the bottom.',
+    'New: Stop — click the extension icon or press Esc to cancel a Full Page or Select Area capture; a small panel shows the progress.',
+    'Fixed: Select Area no longer fails with "Image too large to save" when the page is zoomed.',
+    'Fixed: Full Page waits for content that loads late, so the end of long pages is no longer cut off.',
+    'Fixed: repeated menus and broken backgrounds in scrolling captures on some sites.',
+    'Fixed: missing pieces in captures of long lists that reuse their rows while scrolling.'
+  ],
   '9.10': [
     'Improved: Select Area captures multiple selected scrolling columns together, each up to its own end, including a page feed alongside an independent sidebar.',
     'Fixed: area selection can start above a scrolling column, such as the Yahoo Mail logo, without scrolling an unrelated column.',
