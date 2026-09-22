@@ -489,6 +489,27 @@ Il multi-snip cross-page giustificherebbe un prezzo più alto ($5-10/mese): è u
 ---
 
 ## LIMITI NOTI ARCHIVIATI (non bug, non da inseguire)
+- **Riquadro laterale di Yahoo Finance (dock)** — deciso il 22/09/2026 dal supervisore: **resta irrisolto, per scelta**, non perché sia impossibile. Nessuna risorsa investita per ora.
+
+  **Dove si verifica:** `https://finance.yahoo.com/`, colonna destra, il riquadro che contiene Top gainers / Top losers / Most active e, più in basso, Top economic events, Earnings events ed Edit your Dock.
+
+  **Cosa succede, osservato su catture reali dell'utente:**
+  - *Full Page* (immagine 1920×18505 del 21/09/2026): il riquadro **ricompare in fondo** all'immagine, tagliato nella parte alta e appoggiato sopra il piè di pagina, dove nella pagina vera non sta.
+  - *Area* (immagine 1902×18882 del 22/09/2026): la colonna destra viene **troncata di netto** subito dopo la riga «INTC Intel Corporation», a metà della sezione Most active; le sezioni successive del riquadro non compaiono affatto.
+  - Il contenuto principale della pagina (articoli, immagini, piè di pagina) è invece catturato per intero in entrambe le modalità.
+
+  **Causa individuata leggendo il codice** (lettura del sorgente, non verifica nel browser):
+  - `manageStickiesFP` in `full-page-screenshot-extension/sw.js` (percorso Full Page) decide fetta per fetta con un micro-scroll e **non conserva memoria**: quando il riquadro arriva in fondo al proprio contenitore smette di risultare ancorato al viewport e viene lasciato visibile, finendo in fondo all'immagine.
+  - `manageStickies` in `sw.js` (percorso Area) ha invece la memoria `hiddenAsRepeat`: una volta riconosciuto come ripetizione l'elemento resta nascosto per tutte le fette rimanenti, ed è proprio questo a produrre il troncamento.
+  - `prepareCaptureSidebars` in `full-page-screenshot-extension/capture-control.js` srotola in altezza piena soltanto i menu di navigazione (`nav, [role="navigation"], [role="tree"]`): quel riquadro non è navigazione, quindi non viene mai srotolato.
+  - `prepareCaptureAds` nello stesso file lo esclude di proposito, perché l'elemento si dichiara `aria-modal="true"`; l'esclusione esiste per non toccare le finestre popup vere.
+
+  **Strada possibile se un giorno si riapre:** srotolare in altezza piena anche i riquadri laterali sticky dotati di scorrimento proprio, non solo i menu di navigazione. Un elemento disteso diventa contenuto normale e non può né ripetersi né essere troncato.
+
+  **Avvertenza vincolante per chi ci metterà mano:** la zona di codice interessata è la stessa che oggi fa funzionare le colonne laterali di Wikipedia, MDN, DeepSeek e Facebook, le barre inferiori vere (per esempio il consenso cookie) e i contenitori a scorrimento indipendente. Non intervenire senza rieseguire le prove di regressione già esistenti (`tools/test-area-sidebar.cjs`, comprese le opzioni `--release` e `--full`, e `tools/test-sidebar-guards.cjs`). In particolare: **copiare la sola memoria `hiddenAsRepeat` nel percorso Full Page sposterebbe il difetto invece di risolverlo**, togliendo la ripetizione e introducendo lo stesso troncamento oggi visibile in Area.
+
+  **Perché non lo risolviamo adesso:** è un difetto estetico che non fa perdere il contenuto della pagina; finora è stato osservato su una sola pagina; il rischio di rompere ciò che oggi funziona non è giustificato dal beneficio.
+
 - **PDF full-page**: limite di piattaforma (Chrome blocca l'iniezione in PDFium). Nemmeno GoFullPage ci riesce. Lo risolverà il multi-snip.
 - **YouTube modalità Area esce bianca**: lazy-loading React.
 - **Chrome Web Store / pagine chrome://**: il browser vieta l'iniezione → fallback automatico al visibile (dalla 9.6).
