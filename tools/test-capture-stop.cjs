@@ -224,7 +224,7 @@ function environment(options = {}) {
         // Only browser geometry is synthetic. The Full Page loop, retries,
         // masking helper, composition function and save path remain actual.
         return [{ result: { sh: 1200, vh: 600, vw: 800, sy: 75, ch: 600,
-          ot: 0, dpr: 1, hasCustomScroll: false } }];
+          ot: 0, dpr: 1, hasCustomScroll: !!options.customFull } }];
       }
       if (options.actualFull && source.includes('function manageStickiesFP()')) {
         note('slice.begin', spec.args[0]);
@@ -361,6 +361,10 @@ function environment(options = {}) {
       let result;
       messageListener(msg, sender, response => { result = response; });
       return result;
+    },
+    dispatchAsync(msg, sender = {}) {
+      assert.ok(messageListener, 'Load actualRoutes for runtime dispatch');
+      return new Promise(resolve => messageListener(msg, sender, resolve));
     },
     clickAction() { assert.ok(actionListener); actionListener({ id: 10 }); }
   };
@@ -769,6 +773,87 @@ test('actual runtime/action routes report active job and reject stale page cance
   assert.equal(job.cancelled, true);
   gate.resolve();
   await job.done;
+  noOutput(e);
+  restored(e);
+});
+
+for (const multi of [false, true]) for (const entry of ['toolbar', 'nearby button']) {
+  test(`end line: ${entry} starts one Full Page capture${multi ? ' inside Multi Snip' : ''}`, async () => {
+    const gate = deferred();
+    const e = environment({ actualRoutes: true, multi: multi ? collection() : undefined,
+      hooks: { capture: () => gate.promise } });
+    const marker = { placed: true, removed: false, paused: false, getY() { return 350; },
+      pause() { this.paused = true; }, resume() { this.paused = false; },
+      remove() { this.removed = true; delete e.page.__shotEndLine; } };
+    e.page.__shotEndLine = marker;
+    assert.equal(await e.context.syncEndLineAction(10), true);
+    assert.ok(e.events.some(event => event.name === 'action.setPopup' &&
+      event.value.tabId === 10 && event.value.popup === ''));
+    if (entry === 'toolbar') e.clickAction();
+    else assert.equal((await e.dispatchAsync({ action: 'startCaptureToLine' }, { tab: { id: 10 } })).started, true);
+    await until(() => e.outputs.captures.length === 1, 'end-line Full Page start');
+    const job = e.context.activeCaptureJob;
+    assert.equal(job.mode, 'full');
+    assert.equal(job.options.endLine, true);
+    gate.resolve();
+    await job.done;
+    assert.equal(job.committed, true);
+    assert.equal(marker.paused, true);
+    assert.equal(marker.removed, true);
+    assert.equal(e.page.__shotEndLine, undefined);
+    if (multi) {
+      assert.equal(e.store.multi.pieces.length, 2);
+      assert.equal(e.outputs.downloads.length, 0);
+    } else assert.equal(e.outputs.downloads.length, 1);
+    assert.ok(e.events.some(event => event.name === 'action.setPopup' &&
+      event.value.tabId === 10 && event.value.popup === 'popup.html'));
+    restored(e);
+  });
+}
+
+for (const multi of [false, true]) {
+  test(`end line: one Stop click keeps the marker and ${multi ? 'earlier Multi pieces' : 'saves nothing'}`, async () => {
+    const gate = deferred();
+    const original = multi ? collection() : undefined;
+    const e = environment({ actualRoutes: true, multi: original, hooks: { capture: () => gate.promise } });
+    const marker = { placed: true, removed: false, paused: false, getY() { return 350; },
+      pause() { this.paused = true; }, resume() { this.paused = false; },
+      remove() { this.removed = true; delete e.page.__shotEndLine; } };
+    e.page.__shotEndLine = marker;
+    await e.context.syncEndLineAction(10);
+    e.clickAction();
+    await until(() => e.outputs.captures.length === 1, 'end-line capture frame');
+    const job = e.context.activeCaptureJob;
+    assert.equal(marker.paused, true);
+    e.clickAction();
+    assert.equal(job.cancelled, true);
+    gate.resolve();
+    await job.done;
+    assert.equal(marker.paused, false);
+    assert.equal(marker.removed, false);
+    assert.equal(e.page.__shotEndLine, marker);
+    assert.ok(e.events.some(event => event.name === 'action.setPopup' &&
+      event.value.tabId === 10 && event.value.popup === ''));
+    if (multi) assert.deepEqual(e.store.multi, original);
+    noOutput(e);
+    restored(e);
+  });
+}
+
+test('end line refuses an internal scroller without saving a misleading image', async () => {
+  const e = environment({ actualFull: true, customFull: true, actualRoutes: true });
+  const marker = { placed: true, removed: false, paused: false, getY() { return 350; },
+    pause() { this.paused = true; }, resume() { this.paused = false; },
+    remove() { this.removed = true; delete e.page.__shotEndLine; } };
+  e.page.__shotEndLine = marker;
+  const response = await e.dispatchAsync({ action: 'startCaptureToLine' }, { tab: { id: 10 } });
+  assert.equal(response.started, true);
+  const job = e.context.activeCaptureJob;
+  await job.done;
+  assert.equal(job.failed, true);
+  assert.match(e.outputs.errors[0], /normally scrolling page/);
+  assert.equal(marker.removed, false);
+  assert.equal(marker.paused, false);
   noOutput(e);
   restored(e);
 });

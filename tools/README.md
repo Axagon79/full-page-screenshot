@@ -2,6 +2,19 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Linea di fine Full Page: prove autorizzate del 23/09/2026
+
+L'utente ha approvato esplicitamente le prove automatiche su Full Page, Multi Snip, Stop e ripristino. Il codice è ancora locale: le prove qui sotto usano la pagina nel browser isolato e le API Chrome adattate; **non** certificano il clic sull'estensione installata nel profilo dell'utente.
+
+- `node --test tools/test-capture-stop.cjs`: 71 passati, 0 falliti, 21 vecchi casi già saltati. Sette casi nuovi coprono avvio da icona e pulsante vicino alla linea, normale e Multi Snip, Stop con conservazione della linea e dei pezzi precedenti, e rifiuto sicuro degli scroller interni.
+- `node tools/test-area-sidebar.cjs --full --growth=static --end-line --end-line-button`: clic reale sul pulsante nel browser, PNG alto 1550 anziché 2200 px, linee/UI escluse dai fotogrammi, ripristino.
+- Varianti `--end-line-drag --multi --dark`, `--end-line --multi --editor --mobile --dark`, `--end-line --stop --multi`, `--end-line-anchor`, `--end-line --zoom=110`: trascinamento fino a 1600 px, Multi da pannello e editor, Stop senza file, ancoraggio al contenuto che cresce e zoom 110% superati. Anteprime chiare/scure, desktop/mobile aperte e controllate.
+- Regressioni senza linea: `--full`, `--multi` (Area), `--full --multi --editor` superate. Restano i percorsi comuni di cattura; nessun cambiamento al salvataggio Area o Visible.
+- Prova aggiuntiva su MDN: `node tools/test-area-sidebar.cjs --full --site=mdn --end-line --end-line-mdn` (anche con `--multi` e `--multi --stop`). Il menu laterale è portato alla voce «position» prima di piazzare la linea; nell'immagine il menu conserva la posizione scelta al taglio, non invade la testata, e pagina e menu tornano come prima. Full Page e Area normali su MDN passano, così come Area sulla pagina locale. La prima prova Area su MDN ha incontrato un cambio d'altezza del sito durante il controllo; ripetuta con pagina stabile, è passata. `node --test tools/test-capture-stop.cjs`: 71 passati, 0 falliti, 21 saltati.
+- Prova manuale dell'utente su Wikipedia «Museo del Louvre»: dopo la correzione il pannello «Aspetto» a destra appare nel punto visto quando è stata fissata la linea. La correzione del pannello destro non è stata ricontrollata con prove automatiche: l'utente ha scelto di eseguirle personalmente.
+
+Limite dichiarato: il taglio alla linea vale per pagine con scorrimento del documento, anche con un menu laterale indipendente come MDN. Se scorrono soltanto contenitori interni, il comando non salva un risultato ambiguo; altri tipi di colonne indipendenti non sono ancora stati verificati. Full Page normale e Area restano disponibili. Commit e push conservano il prototipo sul ramo di lavoro: non costituiscono uno ZIP né una pubblicazione nello Store. L'idea resta aperta finché l'utente non decide di includerla.
+
 ## Fondo caricato in ritardo: prove autorizzate del 21/09/2026
 
 Il 20/09 l'utente aveva chiesto **«Per ora modifica soltanto il codice»** e non erano stati eseguiti controlli. Il 21/09, alla proposta esplicita di provare Yahoo, pagine veloci/lente, Stop, Multi Snip e regressioni Area, ha risposto **«ok»**. Le prove sotto sono state eseguite dopo questa autorizzazione, in browser isolati con codice reale e API Chrome adattate, non sull'estensione installata nel profilo dell'utente.

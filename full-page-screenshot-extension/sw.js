@@ -1,6 +1,14 @@
 importScripts('capture-control.js');
 
-chrome.action.onClicked.addListener(function() { if (captureHasToolbarStop()) cancelCapture(); });
+chrome.action.onClicked.addListener(function(tab) {
+  if (captureHasToolbarStop()) { cancelCapture(); return; }
+  if (activeCaptureJob || !tab || tab.id == null) return;
+  // A placed end line removes the popup on this tab, making this one click a
+  // direct Full Page start. Other tabs keep the existing popup behavior.
+  syncEndLineAction(tab.id).then(function(armed) {
+    if (armed) startControlledCapture(tab.id, 'full', { endLine: true });
+  }).catch(function(error) { console.warn('End line action:', error); });
+});
 
 // Menu contestuale per Capture Mode
 chrome.runtime.onInstalled.addListener(function(details) {
@@ -9,6 +17,11 @@ chrome.runtime.onInstalled.addListener(function(details) {
       id: 'captureMode',
       title: 'Capture Mode',
       contexts: ['action']
+    });
+    chrome.contextMenus.create({
+      id: 'captureEndLine',
+      title: 'Set screenshot end line',
+      contexts: ['page']
     });
   });
 
@@ -29,9 +42,14 @@ chrome.runtime.onInstalled.addListener(function(details) {
   }
 });
 
-chrome.contextMenus.onClicked.addListener(function(info) {
+chrome.contextMenus.onClicked.addListener(function(info, tab) {
   if (info.menuItemId === 'captureMode') {
     chrome.tabs.create({ url: 'settings.html' });
+  }
+  if (info.menuItemId === 'captureEndLine' && tab && tab.id != null) {
+    if (activeCaptureJob) return;
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['end-line.js'] })
+      .catch(function(error) { sendError(error.message); });
   }
 });
 
@@ -39,6 +57,23 @@ chrome.contextMenus.onClicked.addListener(function(info) {
 var ultimaFotoLente = 0;
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   if (msg.action === 'getCaptureState') { sendResponse(captureState()); return; }
+  if (msg.action === 'endLineArmed' || msg.action === 'endLineDisarmed') {
+    if (!sender || !sender.tab || sender.tab.id == null || activeCaptureJob) {
+      sendResponse({ armed: false }); return;
+    }
+    syncEndLineAction(sender.tab.id).then(function(armed) { sendResponse({ armed: armed }); })
+      .catch(function() { sendResponse({ armed: false }); });
+    return true;
+  }
+  if (msg.action === 'startCaptureToLine') {
+    if (!sender || !sender.tab || sender.tab.id == null || activeCaptureJob) {
+      sendResponse({ started: false }); return;
+    }
+    syncEndLineAction(sender.tab.id).then(function(armed) {
+      sendResponse(armed ? startControlledCapture(sender.tab.id, 'full', { endLine: true }) : { started: false });
+    }).catch(function() { sendResponse({ started: false }); });
+    return true;
+  }
   if (msg.action === 'cancelCapture') {
     // Page keyboard messages must belong to the current capture document.
     if (sender && sender.tab && (!activeCaptureJob || sender.tab.id !== activeCaptureJob.tabId ||
@@ -569,6 +604,12 @@ chrome.tabs.onActivated.addListener(function(info) {
 // quindi sulla scheda attiva lo si ripianta (mai durante una cattura).
 chrome.tabs.onUpdated.addListener(function(tabId, change, tab) {
   if (activeCaptureJob && tabId === activeCaptureJob.tabId && change.status === 'loading') cancelCapture();
+  if (change.status === 'loading' && !activeCaptureJob) {
+    // A navigation destroys the page marker, but Chrome keeps a tab-specific
+    // popup override until we clear it.
+    chrome.action.setPopup({ tabId: tabId, popup: 'popup.html' }).catch(function() {});
+    chrome.action.setTitle({ tabId: tabId, title: chrome.runtime.getManifest().name }).catch(function() {});
+  }
   if (change.status !== 'complete' || !tab || !tab.active) return;
   if (tabId === multiCatturaTab) return;
   multiSessione().then(function(m) {
@@ -1336,6 +1377,7 @@ async function doMultiPaneFullCapture(tabId, d) {
 
 async function doFullCapture(tabId) {
   var captureBackgrounds = false;
+  var endLineRequested = !!(activeCaptureJob && activeCaptureJob.options.endLine);
   try {
     sendProgress('Preparazione...', 5);
 
@@ -1480,6 +1522,9 @@ async function doFullCapture(tabId) {
         // di cattura nasconde la scrollbar del contenitore, il contenuto si
         // riallarga di ~15px e l'altezza totale può cambiare leggermente.
         var sh = target ? target.scrollHeight : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        var control = window.__shotCaptureControl;
+        var endLine = !target && control && control.endLine;
+        if (endLine) sh = Math.max(1, Math.min(sh, control.endLine.getY()));
 
         // Geometria del contenitore A SCHERMO: dove inizia (ot) e quanto è
         // alta la sua parte visibile (ch). Sulle pagine dove il contenitore
@@ -1514,12 +1559,16 @@ async function doFullCapture(tabId) {
           visualH: window.visualViewport && window.visualViewport.scale === 1
             ? window.visualViewport.height : window.innerHeight,
           dpr: window.devicePixelRatio || 1,
-          hasCustomScroll: !useWindow
+          hasCustomScroll: !useWindow,
+          endLine: !!endLine
         };
       }
     });
 
     var d = results[0].result;
+    if (endLineRequested && (d.multiPane || d.hasCustomScroll || !d.endLine)) {
+      throw new Error('The end line needs a normally scrolling page. Use Full Page or Area for this page.');
+    }
     if (d.multiPane) {
       await doMultiPaneFullCapture(tabId, d);
       return;
@@ -1540,13 +1589,15 @@ async function doFullCapture(tabId) {
           Math.abs(state.dpr - d.dpr) > 0.001) {
         throw new Error('The window size or zoom changed during capture. Please try again.');
       }
-      if (state.growing || Math.abs(state.height - d.sh) > 1) {
+      var currentEnd = d.endLine ? state.end : state.height;
+      if (!(currentEnd > 0)) throw new Error('The end line is no longer available. Place it again.');
+      if (state.growing || Math.abs(currentEnd - d.sh) > 1) {
         documentGrowing = true;
       }
       // Start the tail time budget only when we actually reach the old end.
       // A small early resize must not time out a long, otherwise static page.
       if (!growthStarted && documentGrowing && state.y + state.viewH >= initialHeight) growthStarted = Date.now();
-      if (state.height > d.sh + 1 && captures.length) {
+      if (currentEnd > d.sh + 1 && captures.length) {
         // A footer can already be partly visible in the penultimate frame.
         // When more content is inserted before it, invalidate the frames that
         // overlap the old last viewport, not just the shot currently in flight.
@@ -1561,7 +1612,7 @@ async function doFullCapture(tabId) {
           }
         }
       }
-      d.sh = state.height;
+      d.sh = currentEnd;
       // Bound only the newly discovered tail, not already-loaded long pages.
       // On a limit, do not silently save a truncated "Full Page" or Multi piece.
       if (d.sh > initialHeight + 20 * stepH ||
@@ -1847,7 +1898,7 @@ async function doFullCapture(tabId) {
 
       var beforeFrame = null;
       if (!d.hasCustomScroll) {
-        beforeFrame = await readCaptureDocument(tabId, { wait: true, height: d.sh,
+        beforeFrame = await readCaptureDocument(tabId, { wait: true, height: d.sh, endLine: d.endLine,
           growing: documentGrowing, maxWait: Math.max(0, Math.min(6000, 20000 - documentWaitMs)) });
         documentWaitMs += beforeFrame.waited;
         updateDocumentSize(beforeFrame);
@@ -1878,7 +1929,8 @@ async function doFullCapture(tabId) {
         }
       }
       if (!d.hasCustomScroll) {
-        var afterFrame = await readCaptureDocument(tabId, { wait: false, height: d.sh, growing: documentGrowing });
+        var afterFrame = await readCaptureDocument(tabId, { wait: false, height: d.sh,
+          growing: documentGrowing, endLine: d.endLine });
         updateDocumentSize(afterFrame);
         if (documentRewindY !== null) {
           nextDocumentY = documentRewindY;
@@ -1886,7 +1938,8 @@ async function doFullCapture(tabId) {
           rows = Math.max(rows, i + 1 + Math.ceil((d.sh - nextDocumentY) / stepH));
           continue;
         }
-        if (Math.abs(afterFrame.height - beforeFrame.height) > 1 ||
+        if (Math.abs((d.endLine ? afterFrame.end : afterFrame.height) -
+            (d.endLine ? beforeFrame.end : beforeFrame.height)) > 1 ||
             Math.abs(afterFrame.y - beforeFrame.y) > 1 / d.dpr) {
           // The layout changed while Chrome took the shot: discard this frame
           // and revisit the same segment, rather than skipping or duplicating it.
@@ -1904,9 +1957,9 @@ async function doFullCapture(tabId) {
         }
         // A tolerance used to recognise fractional scroll limits must not end
         // a static page one reachable pixel early (e.g. exactly two viewports).
-        var requestedEnd = nextDocumentY >= Math.max(0, beforeFrame.height - beforeFrame.viewH) - 0.001;
+        var requestedEnd = nextDocumentY >= Math.max(0, d.sh - beforeFrame.viewH) - 0.001;
         documentDone = beforeFrame.settled && afterFrame.atBottom &&
-          (requestedEnd || beforeFrame.y + beforeFrame.viewH >= afterFrame.height || afterFrame.height <= d.vh);
+          (requestedEnd || beforeFrame.y + beforeFrame.viewH >= d.sh || d.sh <= d.vh);
         nextDocumentY = Math.min(beforeFrame.y + stepH, Math.max(0, d.sh - afterFrame.viewH));
         if (!documentDone && nextDocumentY <= beforeFrame.y + 0.1 && !afterFrame.atBottom) {
           throw new Error('The page stopped scrolling before the end. Please try a selected area.');

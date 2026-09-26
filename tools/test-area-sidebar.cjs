@@ -123,6 +123,7 @@ async function checkFinalRows(source, frameSource, frameY) {
 
 function frameState() {
   const hud=document.getElementById('__shot_capture_progress');
+  const endLine=document.getElementById('__shot_end_line');
   const list=window.__screenshotStickies||window.__screenshotHidden||[];
   window.__testStickyElements ||= [];
   const stickies=list.map(item=>{
@@ -134,7 +135,8 @@ function frameState() {
       hiddenByCapture:!!item.hiddenByCapture,repeat:!!item.hiddenAsRepeat,bottomGroup:!!item.bottomGroup};
   });
   const ads=(window.__testAdRoots||[]).map((el,index)=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {index,top:r.top,height:r.height,position:s.position,visible:s.visibility==='visible'&&s.display!=='none'&&s.opacity!=='0',viewport:innerHeight};});
-  return {y:scrollY,hudHidden:!hud||getComputedStyle(hud).display==='none'||getComputedStyle(hud).visibility==='hidden',stickies,ads,
+  return {y:scrollY,hudHidden:!hud||getComputedStyle(hud).display==='none'||getComputedStyle(hud).visibility==='hidden',
+    endLineHidden:!endLine||getComputedStyle(endLine).display==='none'||getComputedStyle(endLine).visibility==='hidden',stickies,ads,
     panes:(window.__screenshotAreaPanes||[]).map(p=>({isWindow:p.isWindow,scroll:p.el.scrollTop,rect:p.el.getBoundingClientRect().toJSON()})),
     footer:document.querySelector('footer')?.getBoundingClientRect().toJSON()};
 }
@@ -265,6 +267,14 @@ async function checkNavigationPixels(source) {
   const ads = process.argv.includes('--ads');
   const growth=(process.argv.find(arg=>arg.startsWith('--growth='))||'').slice(9);
   if(growth&&!['static','exact','fast','slow','continuous','stalled'].includes(growth))throw Error('Unknown growth fixture');
+  const endLine=process.argv.includes('--end-line');
+  const endLineMdn=process.argv.includes('--end-line-mdn');
+  const endLineButton=process.argv.includes('--end-line-button');
+  const endLineDrag=process.argv.includes('--end-line-drag');
+  const endLineAnchor=process.argv.includes('--end-line-anchor');
+  if((endLine||endLineMdn)&&(mode!=='full'||(growth!=='static'&&!(endLineMdn&&site==='mdn'))))throw Error('End-line fixture requires --full --growth=static, or --full --site=mdn --end-line-mdn');
+  if(endLineMdn&&!endLine)throw Error('--end-line-mdn also requires --end-line');
+  if((endLineButton||endLineDrag||endLineAnchor)&&!endLine)throw Error('End-line interactions require --end-line');
   const cold=process.argv.includes('--cold'),stopWait=process.argv.includes('--stop-wait');
   const overshoot=Number((process.argv.find(arg=>arg.startsWith('--overshoot='))||'').slice(12))||0;
   const rightEdge=process.argv.includes('--right-edge'),fromContent=process.argv.includes('--from-content');
@@ -314,7 +324,7 @@ async function checkNavigationPixels(source) {
     const event=()=>({addListener(){}});
     const storage=data=>({async get(keys){const result={};for(const key of Array.isArray(keys)?keys:[keys])if(key in data)result[key]=clone(data[key]);return result;},
       async set(values){Object.assign(data,clone(values));},async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[key];}});
-    const frames=[],outputs=[],messages=[],compositions=[],measurements=[];let selection=null,context,preparation=null,adPreparation=null,stopWaitAt=0,lastFrameSource=null;
+    const frames=[],outputs=[],messages=[],compositions=[],measurements=[];let selection=null,context,preparation=null,adPreparation=null,stopWaitAt=0,lastFrameSource=null,endLineY=null;
     const previousPiece={id:1,tipo:'visible',img:'data:image/png;base64,previous'};
     const session=multi?{multi:{active:true,sessionId:'area-diagnostic',sourceTabId:1,editorTabId:editor?2:null,nextId:1,pieces:[previousPiece],trash:[]}}:{};
     const chrome={
@@ -326,6 +336,7 @@ async function checkNavigationPixels(source) {
         captureVisibleTab:async()=>{
           const state=await browser.evaluate('('+frameState.toString()+')()');
           assert(state.hudHidden,'Progress widget is excluded from every captured frame');
+          if(endLine)assert(state.endLineHidden,'The end line is excluded from every captured frame');
           frames.push(state);console.log('Frame',frames.length,'page scroll',state.y);
           if(frames.length===2&&failure)throw Error('Intentional capture failure for restoration check');
           if(frames.length===2&&stop)context.cancelCapture();
@@ -360,6 +371,11 @@ async function checkNavigationPixels(source) {
         if(spec.func.toString().includes('var navigation =')){
           preparation=await browser.evaluate('('+trackPreparation.toString()+')()');
           console.log('Preparation',JSON.stringify(preparation));
+          if(endLineMdn){
+            const aligned=await browser.evaluate('({expected:window.__endLineNavTop,actual:window.__endLineNavTarget?.getBoundingClientRect().top,scrollTop:document.querySelector(".layout__left-sidebar")?.scrollTop})');
+            console.log('End-line sidebar alignment',JSON.stringify(aligned));
+            assert(Math.abs(aligned.actual-aligned.expected)<=3,'Sidebar content remains aligned to the chosen end');
+          }
         }
         if(spec.func.toString().includes('var adMarkers =')){
           const adsState=await browser.evaluate(`(()=>{const state=window.__shotCaptureControl?.adStickies;window.__adsExpected=state?.changes||[];
@@ -382,10 +398,63 @@ async function checkNavigationPixels(source) {
     context.importScripts=(...files)=>files.forEach(file=>vm.runInContext(readSource(file),context,{filename:file}));
     vm.runInContext(readSource('sw.js'),context,{filename:'sw.js'});
     await context.captureRecovery;
+    if(endLine){
+      await browser.evaluate('window.chrome={runtime:{sendMessage:async m=>{(window.__endLineMessages||=[]).push(m);return {armed:true,started:true}}}};true');
+      await browser.evaluate(readSource('end-line.js'));
+      if(endLineMdn){
+        await browser.evaluate(`(()=>{scrollTo(0,1800);const aside=document.querySelector('.layout__left-sidebar');
+          const position=[...aside.querySelectorAll('a')].find(a=>a.textContent.trim()==='position');
+          if(!position)throw Error('MDN position link is missing');
+          aside.scrollTop+=position.getBoundingClientRect().top-350;
+          if(Math.abs(position.getBoundingClientRect().top-350)>3)throw Error('Could not position the independent MDN sidebar');
+          const target=[...aside.querySelectorAll('a')].filter(a=>{const r=a.getBoundingClientRect();return r.top>0&&r.bottom<innerHeight})
+            .sort((a,b)=>Math.abs((a.getBoundingClientRect().top+a.getBoundingClientRect().bottom)/2-650)-
+              Math.abs((b.getBoundingClientRect().top+b.getBoundingClientRect().bottom)/2-650))[0];
+          if(!target)throw Error('No visible sidebar link for end-line check');
+          window.__endLineNavTarget=target;window.__endLineNavTop=target.getBoundingClientRect().top;
+          window.__endLineNavScroll=aside.scrollTop;return true;})()`);
+      }else await browser.evaluate('scrollTo(0,900);true');
+      const pickX=endLineMdn?800:200;
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:650});
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:pickX,y:650,button:'left',clickCount:1});
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:pickX,y:650,button:'left',clickCount:1});
+      endLineY=await browser.evaluate('window.__shotEndLine?.getY()');
+      assert(Math.abs(endLineY-(endLineMdn?2450:1550))<=2,'The real mouse places the line in document coordinates');
+      assert(await browser.evaluate('window.__shotEndLine?.placed===true'),'The line is fixed after one click');
+      assert(await browser.evaluate('window.__endLineMessages.some(m=>m.action==="endLineArmed")'),'The line arms the toolbar');
+      if(endLineAnchor&&!endLineMdn){
+        await browser.evaluate('document.querySelector("main section").style.height="450px";true');
+        assert(Math.abs((await browser.evaluate('window.__shotEndLine?.getY()'))-1600)<=2,
+          'The line follows its content when earlier content grows');
+        await browser.evaluate('document.querySelector("main section").style.height="";true');
+        assert(Math.abs((await browser.evaluate('window.__shotEndLine?.getY()'))-1550)<=2,
+          'The line returns with its content before capture');
+      }
+      if(endLineDrag){
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:200,y:650});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:200,y:650,button:'left',clickCount:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:200,y:700,buttons:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:200,y:700,button:'left',clickCount:1});
+        endLineY=await browser.evaluate('window.__shotEndLine?.getY()');
+        assert(Math.abs(endLineY-1600)<=2,`Dragging adjusts the target in document coordinates (got ${endLineY})`);
+      }
+      if(dark&&!endLineMdn)await browser.evaluate('window.__endLinePreviewSection=document.querySelectorAll("main section")[3];window.__endLinePreviewOldBackground=window.__endLinePreviewSection.style.background;window.__endLinePreviewSection.style.background="rgb(20,25,35)";true');
+      const preview=await browser.cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+      fs.writeFileSync(path.join(outputDir,'end-line-preview'+(mobile?'-mobile':'-desktop')+(dark?'-dark':'-light')+'.png'),Buffer.from(preview.data,'base64'));
+      if(dark&&!endLineMdn)await browser.evaluate('window.__endLinePreviewSection.style.background=window.__endLinePreviewOldBackground;delete window.__endLinePreviewSection;delete window.__endLinePreviewOldBackground;true');
+      if(endLineButton){
+        const buttonX=(mobile?390:1920)-92,buttonY=(endLineY-900)+31;
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:buttonX,y:buttonY});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:buttonX,y:buttonY,button:'left',clickCount:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:buttonX,y:buttonY,button:'left',clickCount:1});
+        assert(await browser.evaluate('window.__endLineMessages.some(m=>m.action==="startCaptureToLine")'),'The nearby button requests a capture');
+      }
+    }
     // Normal, widget and editor starts all use the production controller.
     // Toolbar pixels are outside this capture-content diagnostic.
     context.getStopIconImageData=async()=>({});
-    context.startControlledCapture(multi?null:1,mode,multi?{multi:true,sourceRequestTabId:editor?2:1}:undefined);
+    context.startControlledCapture(multi?null:1,mode,
+      multi?{multi:true,sourceRequestTabId:editor?2:1,endLine:endLine}:endLine?{endLine:true}:undefined);
     await context.activeCaptureJob.done;
     const cancelMs=stopWaitAt?Date.now()-stopWaitAt:null;
     assert.equal(context.activeCaptureJob,null,'The job unlocks after restoration');
@@ -397,6 +466,18 @@ async function checkNavigationPixels(source) {
     assert.equal(restored.control,false);assert.equal(restored.styles,true,'Original sidebar styles and priorities restored');
     assert.equal(restored.adsStyles,true,'Original advertisement positions and priorities restored');
     assert.equal(restored.stickyVisibility,true,'Original sticky visibility restored');
+    if(endLine){
+      const marker=await browser.evaluate('({present:!!window.__shotEndLine,host:!!document.getElementById("__shot_end_line"),display:document.getElementById("__shot_end_line")?.style.display})');
+      if(stop||failure||compositionGap){
+        assert.equal(marker.present,true,'Interrupted end-line capture retains the marker');
+        assert.equal(marker.display,'block','Interrupted capture shows the marker again');
+      }else assert.equal(marker.present,false,'Completed capture removes the marker');
+      if(endLineMdn){
+        const navRestored=await browser.evaluate('({pageY:scrollY,asideY:document.querySelector(".layout__left-sidebar")?.scrollTop,expectedAsideY:window.__endLineNavScroll})');
+        assert(Math.abs(navRestored.pageY-1800)<=2,'The chosen page scroll is restored');
+        assert(Math.abs(navRestored.asideY-navRestored.expectedAsideY)<=2,'The chosen independent sidebar scroll is restored');
+      }
+    }
     if(site!=='yahoo'&&!growth)assert.equal(restored.height,initial.height,'Original document height restored');assert.equal(restored.remaining,0);
     if(independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
     else if(!live&&!baseline&&!release&&!ads&&!growth)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
@@ -420,15 +501,22 @@ async function checkNavigationPixels(source) {
       assert.equal(session.multi.pieces.length,2,'Multi adds exactly one piece');
       outputs.push(session.multi.pieces[1].img);
     }
-    const label=(site|| (tailwind?'tailwind':live?'deepseek':growth?'growth-'+growth:independent?'independent':release?'release':ads?'ads':'fixture'))+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
+    const label=(site|| (tailwind?'tailwind':live?'deepseek':growth?'growth-'+growth:independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-after.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+    if(endLineMdn){
+      const bottomPng=await browser.evaluate(`(async()=>{const im=new Image();await new Promise((yes,no)=>{im.onload=yes;im.onerror=no;im.src=${JSON.stringify(outputs[0])}});
+        const c=document.createElement('canvas');c.width=im.width;c.height=Math.min(900,im.height);
+        c.getContext('2d').drawImage(im,0,im.height-c.height,im.width,c.height,0,0,im.width,c.height);
+        return c.toDataURL('image/png');})()`);
+      fs.writeFileSync(path.join(outputDir,'end-line-mdn-bottom.png'),Buffer.from(bottomPng.split(',')[1],'base64'));
+    }
     const pixels=await browser.evaluate('('+checkNavigationPixels.toString()+')('+JSON.stringify(outputs[0])+')');
     console.log('Pixel comparison',JSON.stringify(pixels));
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-diagnostic.json'),JSON.stringify({initial,preparation,adPreparation,selection,frames,compositions,measurements,messages,restored,pixels,outputs:outputs.length},null,2));
-    assert.equal(pixels.seen,pixels.expected,'Every visible navigation item is present in the composed image');
+    if(!endLineMdn)assert.equal(pixels.seen,pixels.expected,'Every visible navigation item is present in the composed image');
     assert.equal(pixels.changed,0,'Composed navigation pixels match their captured source fragments');
-    if(mode==='full'&&!independent){
+    if(mode==='full'&&!independent&&!endLine){
       const bottom=await browser.evaluate('('+checkFinalRows.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(lastFrameSource)+','+frames.at(-1).y+')');
       bottom.capturedDocumentHeight=measurements.at(-1)?.height;
       console.log('Final rows',JSON.stringify(bottom));
@@ -440,6 +528,12 @@ async function checkNavigationPixels(source) {
     if(growth){
       const checked=await browser.evaluate('('+checkGrowthPixels.toString()+')('+JSON.stringify(outputs[0])+','+(mode==='full')+','+JSON.stringify(selection?.area||null)+')');
       console.log('Growth pixels',JSON.stringify(checked));
+      if(endLine){
+        assert(Math.abs(checked.height-endLineY*(zoom||1))<=2,'The output stops at the placed line');
+        assert.equal(checked.wrong,0,'Every row before the line matches page content');
+        assert(checked.height<checked.expectedHeight,'The rest of the document is excluded');
+        return;
+      }
       assert(Math.abs(checked.height-checked.expectedHeight)<=1,'Output reaches the actual end (Full) or selected bound (Area)');
       if(mode==='full'){
         assert.equal(checked.wrong,0,'Every colored document row and footer are present, once, in order');

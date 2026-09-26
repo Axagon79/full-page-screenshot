@@ -106,6 +106,26 @@ async function restoreCaptureAction() {
   await chrome.action.setPopup({ popup: 'popup.html' });
 }
 
+// The marker overrides the popup only on its own tab. Restore that override
+// after capture, cancellation, navigation, or a worker restart.
+async function syncEndLineAction(tabId) {
+  if (tabId == null) return false;
+  var armed = false;
+  try {
+    var result = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function() {
+        var marker = window.__shotEndLine;
+        return !!(marker && marker.placed && !marker.removed);
+      }
+    });
+    armed = !!(result[0] && result[0].result);
+  } catch (closedOrRestricted) {}
+  await chrome.action.setPopup({ tabId: tabId, popup: armed ? '' : 'popup.html' });
+  await chrome.action.setTitle({ tabId: tabId, title: armed ? 'Capture to end line' : chrome.runtime.getManifest().name });
+  return armed;
+}
+
 
 function cancelCapture(jobId) {
   var job = activeCaptureJob;
@@ -113,7 +133,10 @@ function cancelCapture(jobId) {
   job.cancelled = true;
   job.phase = 'stopping';
   job.text = 'Stopping capture…';
-  if (captureHasToolbarStop(job)) chrome.action.setTitle({ title: job.text }).catch(function() {});
+  if (captureHasToolbarStop(job)) {
+    chrome.action.setTitle({ title: job.text }).catch(function() {});
+    if (job.tabId != null) chrome.action.setTitle({ tabId: job.tabId, title: job.text }).catch(function() {});
+  }
   job.progressUpdate = (job.progressUpdate || Promise.resolve()).then(function() {
     return updateCaptureProgress(job);
   }).catch(function() {});
@@ -146,8 +169,14 @@ function startControlledCapture(tabId, mode, options) {
 async function installCaptureControl(job) {
   var result = await chrome.scripting.executeScript({
     target: { tabId: job.tabId },
-    func: function(id) {
+    func: function(id, endLine) {
+      var marker = window.__shotEndLine;
+      if (endLine && (!marker || !marker.placed || marker.removed)) {
+        throw new Error('The end line is no longer available. Place it again.');
+      }
       var control = { id: id, cancelled: false, x: window.scrollX, y: window.scrollY, scrollers: [] };
+      control.endLine = endLine ? marker : null;
+      if (marker) marker.pause();
       document.querySelectorAll('*').forEach(function(el) {
         if (el !== document.scrollingElement &&
             (el.scrollTop || el.scrollLeft || el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth)) {
@@ -184,7 +213,7 @@ async function installCaptureControl(job) {
       var oldBadge = document.getElementById('__screenshot_bollino');
       if (oldBadge) oldBadge.remove();
       return true;
-    }, args: [job.id]
+    }, args: [job.id, job.mode === 'full' && !!job.options.endLine]
   });
   job.hasPageControl = !!(result[0] && result[0].result);
 }
@@ -239,7 +268,7 @@ async function prepareCaptureSidebars(job) {
   if (!job.hasPageControl || !captureHasToolbarStop(job)) return;
   await chrome.scripting.executeScript({
     target: { tabId: job.tabId },
-    func: function(id) {
+    func: function(id, alignEndLine) {
       var control = window.__shotCaptureControl;
       var vh = window.innerHeight;
       if (!control || control.id !== id || control.cancelled || control.sidebars || !(vh > 0)) return;
@@ -255,6 +284,8 @@ async function prepareCaptureSidebars(job) {
       if (appOrModal) return;
       var state = { changes: [], scrolls: [] };
       var savedX = window.scrollX, savedY = window.scrollY;
+      var failed = false;
+      var endLineRightRails = [];
       state.restore = function() {
         for (var i = state.changes.length - 1; i >= 0; i--) {
           var rec = state.changes[i];
@@ -284,10 +315,33 @@ async function prepareCaptureSidebars(job) {
         });
       }
       try {
+        if (alignEndLine && control.endLine) {
+          var selectedLineY = control.endLine.getY() - savedY;
+          if (selectedLineY >= 0 && selectedLineY <= vh) {
+            // Short right-hand panes (for example Wikipedia's Appearance)
+            // would otherwise be kept only at the top of a Full Page image.
+            // Remember where the user actually sees them beside the end line.
+            document.querySelectorAll('*').forEach(function(el) {
+              var css = getComputedStyle(el);
+              if (css.position !== 'sticky' || css.visibility !== 'visible' ||
+                  css.display === 'none' || css.translate !== 'none' ||
+                  el.closest('dialog, [role="dialog"], [aria-modal="true"], #__shot_end_line, #__shot_capture_progress')) return;
+              var rect = el.getBoundingClientRect();
+              if (rect.left < innerWidth * 0.67 || rect.width < 100 || rect.width > innerWidth * 0.35 ||
+                  rect.height < 80 || rect.height > vh * 1.4 || rect.top >= selectedLineY || rect.bottom <= 0) return;
+              if (el.querySelector('main, article, [role="main"], [role="feed"]')) return;
+              for (var ancestor = el.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+                var ancestorCss = getComputedStyle(ancestor);
+                if (ancestorCss.position === 'fixed' || ancestorCss.position === 'sticky') return;
+              }
+              endLineRightRails.push({ el: el, documentTop: savedY + rect.top });
+            });
+          }
+        }
         // Inspect the top even when capture starts near the footer, where a
         // sticky sidebar can already have been pushed offscreen by its parent.
         window.scrollTo({ top: 0, left: savedX, behavior: 'instant' });
-        if (window.scrollY !== 0) return;
+        if (window.scrollY !== 0) { failed = true; return; }
         var navigation = 'nav, [role="navigation"], [role="tree"]';
         var candidates = [];
         document.querySelectorAll('*').forEach(function(el) {
@@ -318,6 +372,33 @@ async function prepareCaptureSidebars(job) {
               css.visibility !== 'visible' || css.display === 'none') return;
           candidates.push({ el: el, root: root, path: path });
         });
+        // In the end-line mode, the user has positioned each navigation pane
+        // independently. Remember its visible position at the chosen end;
+        // ordinary Full/Area captures retain their existing unfolding.
+        if (alignEndLine && control.endLine && candidates.length) {
+          window.scrollTo({ top: savedY, left: savedX, behavior: 'instant' });
+          candidates.forEach(function(candidate) {
+            var rect = candidate.el.getBoundingClientRect();
+            if (rect.bottom > 0 && rect.top < vh) {
+              candidate.endLineView = { top: rect.top, scrollTop: candidate.el.scrollTop };
+              var lineScreenY = control.endLine.getY() - window.scrollY;
+              var targetY = Math.max(rect.top + 8, Math.min(rect.bottom - 8, lineScreenY));
+              var best = null, bestDistance = Infinity;
+              candidate.el.querySelectorAll('a, [role="treeitem"], [data-nav-item]').forEach(function(item) {
+                var itemRect = item.getBoundingClientRect();
+                if (itemRect.bottom <= rect.top || itemRect.top >= rect.bottom ||
+                    itemRect.bottom <= 0 || itemRect.top >= vh) return;
+                var distance = Math.abs((itemRect.top + itemRect.bottom) / 2 - targetY);
+                if (distance < bestDistance) { best = item; bestDistance = distance; }
+              });
+              if (best) {
+                candidate.endLineView.anchor = best;
+                candidate.endLineView.anchorTop = best.getBoundingClientRect().top;
+              }
+            }
+          });
+          window.scrollTo({ top: 0, left: savedX, behavior: 'instant' });
+        }
         candidates.forEach(function(candidate) {
           state.scrolls.push({ el: candidate.el, x: candidate.el.scrollLeft, y: candidate.el.scrollTop });
           candidate.path.forEach(function(el) {
@@ -332,13 +413,48 @@ async function prepareCaptureSidebars(job) {
           candidate.el.scrollTo({ top: 0, left: candidate.el.scrollLeft, behavior: 'instant' });
         });
       } catch (error) {
+        failed = true;
         state.restore();
         throw error;
       } finally {
         window.scrollTo({ top: savedY, left: savedX, behavior: 'instant' });
+        if (!failed && alignEndLine && control.endLine && candidates) {
+          var lineY = control.endLine.getY();
+          var screenY = lineY - window.scrollY;
+          if (screenY >= 0 && screenY <= vh) candidates.forEach(function(candidate) {
+            if (!candidate.endLineView || getComputedStyle(candidate.root).translate !== 'none') return;
+            var contentY = candidate.endLineView.scrollTop + screenY - candidate.endLineView.top;
+            var unfoldedY = candidate.el.getBoundingClientRect().top + window.scrollY;
+            var shift = candidate.endLineView.anchor && candidate.endLineView.anchor.isConnected
+              ? candidate.endLineView.anchorTop - candidate.endLineView.anchor.getBoundingClientRect().top
+              : lineY - unfoldedY - contentY;
+            if (Number.isFinite(shift) && Math.abs(shift) < 50000) {
+              change(candidate.root, { translate: '0px ' + shift + 'px' });
+              // Moving the long menu upward must not paint it over the page
+              // header or before the menu's original document start.
+              if (shift < 0 && getComputedStyle(candidate.root).clipPath === 'none') {
+                change(candidate.root, { 'clip-path': 'inset(' + (-shift) + 'px 0px 0px 0px)' });
+              }
+            }
+          });
+        }
+        if (!failed && alignEndLine) endLineRightRails.forEach(function(rail) {
+          if (!rail.el.isConnected) return;
+          if (candidates && candidates.some(function(candidate) {
+            return candidate.root === rail.el || candidate.root.contains(rail.el) || rail.el.contains(candidate.root);
+          })) return;
+          change(rail.el, { position: 'relative', top: 'auto', bottom: 'auto',
+            'inset-block-start': 'auto', 'inset-block-end': 'auto' });
+          var flowTop = rail.el.getBoundingClientRect().top + window.scrollY;
+          var shift = rail.documentTop - flowTop;
+          if (!Number.isFinite(shift) || Math.abs(shift) >= 50000) {
+            throw new Error('Cannot align the right column to the end line on this page.');
+          }
+          change(rail.el, { translate: '0px ' + shift + 'px' });
+        });
         if (!state.changes.length && control.sidebars === state) delete control.sidebars;
       }
-    }, args: [job.id]
+    }, args: [job.id, job.mode === 'full' && !!(job.options && job.options.endLine)]
   });
 }
 
@@ -462,13 +578,16 @@ async function readCaptureDocument(tabId, options) {
               document.documentElement.scrollHeight, innerHeight);
             var viewH = window.visualViewport && window.visualViewport.scale === 1
               ? window.visualViewport.height : innerHeight;
-            var state = { height: height, y: window.scrollY, viewH: viewH, width: innerWidth,
-              dpr: devicePixelRatio || 1, atBottom: window.scrollY + viewH >= height - 1,
+            var marker = opts.endLine && control && control.endLine;
+            if (opts.endLine && !marker) throw new Error('The end line is no longer available. Place it again.');
+            var end = marker ? Math.max(1, Math.min(height, marker.getY())) : height;
+            var state = { height: height, end: end, y: window.scrollY, viewH: viewH, width: innerWidth,
+              dpr: devicePixelRatio || 1, atBottom: window.scrollY + viewH >= end - 1,
               settled: false, waited: now - started, growing: growing };
-            if (Math.abs(height - lastHeight) > 1) {
+            if (Math.abs(end - lastHeight) > 1) {
               growing = true; quietSince = now;
             }
-            lastHeight = height;
+            lastHeight = end;
             state.growing = growing;
             if (!opts.wait || !state.atBottom) { resolve(state); return; }
             var pending = loading();
@@ -542,7 +661,7 @@ async function cleanupCaptureJob(job, restoreScroll) {
   try {
     var cleaned = await chrome.scripting.executeScript({
       target: { tabId: job.tabId },
-      func: function(id, resetScroll) {
+      func: function(id, resetScroll, finishLine) {
         var control = window.__shotCaptureControl;
         // Do not touch a new document after navigation.
         if (!control || control.id !== id) return false;
@@ -591,9 +710,15 @@ async function cleanupCaptureJob(job, restoreScroll) {
           });
           window.scrollTo({ left: control.x, top: control.y, behavior: 'instant' });
         }
+        var marker = window.__shotEndLine;
+        if (marker) {
+          if (finishLine) marker.remove();
+          else marker.resume();
+        }
         delete window.__shotCaptureControl;
         return true;
-      }, args: [job.id, restoreScroll]
+      }, args: [job.id, restoreScroll,
+        job.mode === 'full' && !!(job.options && job.options.endLine) && !!job.committed]
     });
     if (cleaned[0] && cleaned[0].result) await resumeCssAnims(job.tabId);
   } catch (closedOrNavigated) {}
@@ -605,6 +730,9 @@ var captureRecovery = Promise.resolve().then(async function() {
   var saved = await chrome.storage.session.get('captureJob');
   if (saved.captureJob) await cleanupCaptureJob(saved.captureJob, true);
   await restoreCaptureAction();
+  if (saved.captureJob) {
+    try { await syncEndLineAction(saved.captureJob.tabId); } catch (closedTab) {}
+  }
   await chrome.storage.session.remove('captureJob');
   if (!activeCaptureJob) await multiAggiornaBadge();
 }).catch(function(error) { console.warn('Capture recovery:', error); });
@@ -641,6 +769,9 @@ async function runControlledCapture(job) {
     var tab = await chrome.tabs.get(job.tabId);
     job.windowId = tab.windowId;
     checkCaptureCancelled(job);
+    if (captureHasToolbarStop(job)) {
+      await chrome.action.setTitle({ tabId: job.tabId, title: 'Stop capture (Esc)' });
+    }
     if (job.options.multi) {
       await chrome.tabs.update(job.tabId, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
@@ -674,7 +805,10 @@ async function runControlledCapture(job) {
     if (job.progressUpdate) await job.progressUpdate;
     await cleanupCaptureJob(job, job.cancelled || job.failed || !job.committed);
     // Keep the job locked until all in-flight work and restoration are done.
-    try { await restoreCaptureAction(); } catch (error) { console.warn(error); }
+    try {
+      await restoreCaptureAction();
+      if (job.tabId != null) await syncEndLineAction(job.tabId);
+    } catch (error) { console.warn(error); }
     try { await chrome.storage.session.remove('captureJob'); } catch (error) { console.warn(error); }
     var widgetTab = null;
     try {
