@@ -1,12 +1,26 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **21/09/2026**; commit e verifiche indicati nelle singole voci.
+Aggiornato il **03/10/2026**; commit e verifiche indicati nelle singole voci.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 03/10/2026 — Selezione Area bloccata dai popup: chiusura confermata
+
+**Ideata il:** 02/10/2026, dalla segnalazione della selezione bloccata nella finestra di creazione Firestore; il caso successivo è stato riprodotto sulla pagina prezzi di AI Tarot.
+**Realizzata il:** 02–03/10/2026 nel codice; l'utente ha confermato il funzionamento e approvato esplicitamente la chiusura il 03/10/2026.
+
+- La selezione viene mostrata sopra i livelli della pagina e inserita nella finestra attiva, nativa o personalizzata. I clic sono abilitati solo sulla selezione, senza sbloccare la pagina dietro o chiudere il popup.
+- Area normale e Area in Multi Snip mantengono lo stesso motore. Full Page non è stato modificato per questa correzione.
+- Verifiche autorizzate su finestre locali e sul popup di accesso reale di `https://www.aitarot.pro/it/pricing`: Area normale, Multi dal pannello e dall'editor, Stop, Escape, Full Page e ripristino. Nessuna registrazione, pagamento o modifica al database.
+- La finestra originale Firebase non era più riproducibile dall'utente: la prova su una finestra nativa locale non dimostra la cattura sulla pagina autenticata Firebase.
+- Il controllo automatico a finestra stretta (390 px) arriva alla cattura ma rileva una differenza nello stile della pagina dopo il ripristino. Non è dimostrato un guasto visibile; la conferma dell'utente non viene presentata come una ripetizione di quel controllo. Dettagli e tentativi non superati restano in `tools/README.md`.
+
+File: `full-page-screenshot-extension/sw.js`, `tools/test-area-sidebar.cjs`; documentazione in `tools/README.md`.
+**Commit della correzione:** `c8bf007`. Questa voce viene salvata nel successivo commit di archiviazione. Manifest, ZIP e Store invariati. Nessun nuovo test durante questa archiviazione. Non esisteva una voce dedicata in `IDEE.md` o un `TODO.md` da rimuovere.
 
 ## 21/09/2026 — Colonne laterali della recensione: chiusura confermata
 

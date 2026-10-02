@@ -59,7 +59,9 @@ prove/correzioni su quel percorso: serve una decisione dell'utente per
 approfondire. Non modificare il test per ignorare la differenza.
 
 L'utente ha confermato il funzionamento nel proprio utilizzo e la chiusura
-del problema. Nessun commit/push o aggiornamento dello ZIP.
+del problema. Correzione e prove salvate nel commit `c8bf007`, su richiesta
+dell'utente; archivio aggiornato nel successivo commit documentale.
+Manifest, ZIP e Store invariati. Nessun nuovo test durante questi salvataggi.
 
 ## Area sopra finestre della pagina — 02/10/2026
 
