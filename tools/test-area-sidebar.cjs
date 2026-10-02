@@ -157,6 +157,66 @@ async function checkReleasePixels(source) {
   return {railRows:railRows.length,railBottom:Math.max(...railRows),barRows:barRows.length,barTop:Math.min(...barRows),height:c.height};
 }
 
+function modalFixture(kind) {
+  document.head.innerHTML = '<style>*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}#wizard{position:fixed;inset:0;margin:0;border:0;padding:0;width:100vw;height:100vh;max-width:none;max-height:none;background:white;transform:translateZ(0);z-index:2147483647}#wizard h1{height:90px;margin:0;padding:24px}#wizard-content{height:calc(100vh - 90px);overflow:auto;outline:none}#wizard-content section{height:320px;padding:50px}::backdrop{background:rgba(0,0,0,.4)}</style>';
+  document.body.innerHTML = '<main inert>Background app — must not be changed</main>';
+  const wizard=document.createElement(kind==='dialog'?'dialog':'div');wizard.id='wizard';
+  wizard.setAttribute('role','dialog');wizard.setAttribute('aria-modal','true');
+  wizard.innerHTML='<h1>Database wizard — local test only</h1><div id="wizard-content">'+
+    Array.from({length:6},(_,i)=>'<section style="background:rgb('+(i%2?'180,220,240':'240,220,180')+')">STEP '+(i+1)+'</section>').join('')+'</div>';
+  document.body.appendChild(wizard);
+  if(kind==='custom') {
+    // Mirror libraries such as Radix: body blocks outside pointer events;
+    // clicks outside the dialog would dismiss it. Do not unlock the body.
+    document.body.style.pointerEvents='none';wizard.style.pointerEvents='auto';
+    document.addEventListener('pointerdown',event=>{
+      if(!wizard.contains(event.target))wizard.remove();
+    },true);
+  }
+  if(kind==='dialog')wizard.showModal();
+  if(kind==='popover'){wizard.setAttribute('popover','manual');wizard.showPopover();}
+  window.__modalOriginal=wizard.getAttribute('style');
+  window.__modalBodyStyle=document.body.getAttribute('style');
+}
+
+async function selectPricingArea(browser, inside) {
+  const dialog=await browser.evaluate(`(()=>{const d=document.querySelector('[role="dialog"]');window.__pricingDialog=d;window.__pricingBodyStyle=document.body.getAttribute('style');const r=d.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight};})()`);
+  const margin=inside?-12:12;
+  // Headless input outside the emulated viewport does not deliver a release.
+  // Select only the visible portion on narrow layouts, as a real user can.
+  const start={x:Math.max(1,Math.min(dialog.width-2,dialog.left-margin)),y:Math.max(1,Math.min(dialog.height-2,dialog.top-margin))};
+  const end={x:Math.max(1,Math.min(dialog.width-2,dialog.right+margin)),y:Math.max(1,Math.min(dialog.height-2,dialog.bottom+margin))};
+  console.log('Pricing drag bounds',JSON.stringify({dialog,start,end}));
+  for(const [type,point,buttons] of [['mouseMoved',start,0],['mousePressed',start,1],['mouseMoved',end,1]]) {
+    await browser.cdp('Input.dispatchMouseEvent',{type,...point,buttons,button:type==='mousePressed'?'left':'none',clickCount:1});
+  }
+  assert.equal(await browser.evaluate('document.getElementById("__screenshot_area_overlay")?.firstElementChild.style.display'),'block','The real pricing popup permits drawing the rectangle');
+  assert(await browser.evaluate('window.__pricingDialog.isConnected'),'Selection does not dismiss the real pricing popup');
+  await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...end,button:'left',clickCount:1});
+  const selection=await browser.evaluate('({area:window.__screenshotArea})');
+  assert(selection.area,'Real release produces an Area selection on pricing');
+  return selection;
+}
+
+async function selectModalArea(browser, cancelSelection) {
+  const right=await browser.evaluate('Math.min(800,innerWidth-40)');
+  for(const [type,x,y,buttons] of [['mouseMoved',100,180,0],['mousePressed',100,180,1],['mouseMoved',right,450,1]]) {
+    await browser.cdp('Input.dispatchMouseEvent',{type,x,y,buttons,button:type==='mousePressed'?'left':'none',clickCount:1});
+  }
+  const box=await browser.evaluate(`(()=>{const o=document.getElementById('__screenshot_area_overlay');return {display:o?.firstElementChild.style.display,hit:document.elementFromPoint(Math.min(200,innerWidth-40),300)?.id};})()`);
+  assert.equal(box.display,'block','Real mouse draws the selection rectangle over the modal');
+  assert.equal(box.hit,'__screenshot_area_overlay','The overlay receives real mouse events');
+  if(cancelSelection){await cancelSelection();return {cancelled:true};}
+  await browser.cdp('Input.dispatchMouseEvent',{type:'mouseWheel',x:right,y:450,deltaX:0,deltaY:100000});
+  await wait(120);
+  await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:right,y:750,buttons:1});
+  await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:right,y:750,button:'left',clickCount:1});
+  const selected=await browser.evaluate('({area:window.__screenshotArea})');
+  assert(selected.area,'Real mouse release completes selection over the modal');
+  assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Release removes the selection layer');
+  return selected;
+}
+
 function selectArea(overshoot, rightEdge, fromContent) {
   const overlay = document.getElementById('__screenshot_area_overlay');
   const right = rightEdge ? innerWidth + 20 : document.documentElement.clientWidth - 1;
@@ -256,7 +316,7 @@ async function checkNavigationPixels(source) {
   const tailwind = process.argv.includes('--tailwind');
   const site=(process.argv.find(arg=>arg.startsWith('--site='))||'').slice(7);
   const baseline=process.argv.includes('--baseline');
-  const sites={mdn:'https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/position',css:'https://developer.mozilla.org/en-US/docs/Web/CSS',web:'https://developer.mozilla.org/en-US/docs/Web',wiki:'https://it.wikipedia.org/wiki/Pagina_principale',yahoo:'https://finance.yahoo.com/'};
+  const sites={mdn:'https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/position',css:'https://developer.mozilla.org/en-US/docs/Web/CSS',web:'https://developer.mozilla.org/en-US/docs/Web',wiki:'https://it.wikipedia.org/wiki/Pagina_principale',yahoo:'https://finance.yahoo.com/',pricing:'https://www.aitarot.pro/it/pricing'};
   if(site&&!sites[site])throw Error('Unknown site '+site);
   const live = process.argv.includes('--live') || tailwind || !!site;
   const mode = process.argv.includes('--full') ? 'full' : process.argv.includes('--visible') ? 'visible' : 'area';
@@ -265,6 +325,8 @@ async function checkNavigationPixels(source) {
   const independent = process.argv.includes('--independent');
   const release = process.argv.includes('--release');
   const ads = process.argv.includes('--ads');
+  const modal=(process.argv.find(arg=>arg.startsWith('--modal='))||'').slice(8);
+  if(modal&&!['dialog','custom','popover'].includes(modal))throw Error('Unknown modal fixture');
   const growth=(process.argv.find(arg=>arg.startsWith('--growth='))||'').slice(9);
   if(growth&&!['static','exact','fast','slow','continuous','stalled'].includes(growth))throw Error('Unknown growth fixture');
   const endLine=process.argv.includes('--end-line');
@@ -280,7 +342,10 @@ async function checkNavigationPixels(source) {
   const rightEdge=process.argv.includes('--right-edge'),fromContent=process.argv.includes('--from-content');
   const dragEdge=process.argv.includes('--drag-edge'),outsideRight=process.argv.includes('--outside-right');
   const nativeEdge=process.argv.includes('--native-edge')||dragEdge;
-  const stop = process.argv.includes('--stop'), failure = process.argv.includes('--failure');
+  const escapeSelection=process.argv.includes('--escape-selection');
+  const stopSelection=process.argv.includes('--stop-selection')||escapeSelection;
+  if(stopSelection&&(!modal||mode!=='area'))throw Error('--stop-selection requires Area --modal');
+  const stop = process.argv.includes('--stop')||stopSelection, failure = process.argv.includes('--failure');
   const compositionGap = process.argv.includes('--composition-gap');
   const mobile=process.argv.includes('--mobile'),dark=process.argv.includes('--dark');
   const zoomArg=process.argv.find(arg=>arg.startsWith('--zoom='));
@@ -308,7 +373,14 @@ async function checkNavigationPixels(source) {
       if(!cold)await browser.evaluate(`(async()=>{const bottom=Math.min(45000,document.documentElement.scrollHeight);for(let y=0;y<bottom;y+=innerHeight){scrollTo(0,y);await new Promise(r=>setTimeout(r,100));}scrollTo(0,0);
         await Promise.race([Promise.all([...document.images].map(img=>img.decode().catch(()=>{}))),new Promise(r=>setTimeout(r,3000))]);return true;})()`);
       await browser.evaluate('document.fonts.ready.then(()=>true)'); await wait(1000);
-    } else if(growth)await browser.evaluate('('+growthFixture.toString()+')('+JSON.stringify(growth)+')');
+      if(site==='pricing') {
+        assert(await browser.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>/^Ottieni Plus$/i.test(b.innerText.trim()));if(!b)return false;b.click();return true;})()`),'The public pricing button opens login, without an account or payment');
+        await wait(600);
+        assert(await browser.evaluate('!!document.querySelector("[role=dialog]")'),'The real pricing login popup is open');
+        await browser.evaluate('window.__pricingDialog=document.querySelector("[role=dialog]");window.__pricingBodyStyle=document.body.getAttribute("style");true');
+      }
+    } else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
+    else if(growth)await browser.evaluate('('+growthFixture.toString()+')('+JSON.stringify(growth)+')');
     else await browser.evaluate('('+fixture.toString()+')('+independent+','+release+','+ads+')');
     if(zoomArg)assert(Math.abs(await browser.evaluate('devicePixelRatio')-zoom)<0.001,'Actual browser zoom matches the requested value');
     const initial = await browser.evaluate(`({url:location.href,title:document.title,y:scrollY,height:document.documentElement.scrollHeight,inner:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,
@@ -339,7 +411,7 @@ async function checkNavigationPixels(source) {
           if(endLine)assert(state.endLineHidden,'The end line is excluded from every captured frame');
           frames.push(state);console.log('Frame',frames.length,'page scroll',state.y);
           if(frames.length===2&&failure)throw Error('Intentional capture failure for restoration check');
-          if(frames.length===2&&stop)context.cancelCapture();
+          if(frames.length===(site==='pricing'?1:2)&&stop)context.cancelCapture();
           const image=await browser.cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
           lastFrameSource='data:image/png;base64,'+image.data;
           await browser.evaluate('('+sampleNavigation.toString()+')('+JSON.stringify('data:image/png;base64,'+image.data)+','+(selection?.area?.x||0)+','+(selection?.area?.y_doc||0)+')');
@@ -386,7 +458,19 @@ async function checkNavigationPixels(source) {
           console.log('Ad preparation',JSON.stringify(adsState));
         }
         if(!selection && spec.func.toString().includes('var SCROLL_TRIGGER_ZONE')){
-          selection=nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
+          const cancelModalSelection=stopSelection?async()=>{
+            if(escapeSelection){
+              // Bridge just this cancel request to the worker adapter; the
+              // production key listener still handles the real browser key.
+              await browser.evaluate('window.chrome={runtime:{sendMessage:async m=>{window.__escapeRequest=m;return {cancelled:true}}}};true');
+              await browser.cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+              await browser.cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+              assert.deepEqual(await browser.evaluate('window.__escapeRequest'),{action:'cancelCapture',jobId:context.activeCaptureJob.id},'Escape requests cancellation of this job, rather than closing the native dialog');
+            }
+            assert(context.cancelCapture(),'Stop cancels a live modal selection');await wait(100);
+            assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Stop removes the top-layer overlay before any shot');
+          }:null;
+          selection=site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
           if(fromContent||nativeEdge)await browser.evaluate('window.__navExpected=[]');
           console.log('Selected',JSON.stringify(selection));
         }
@@ -466,6 +550,13 @@ async function checkNavigationPixels(source) {
     assert.equal(restored.control,false);assert.equal(restored.styles,true,'Original sidebar styles and priorities restored');
     assert.equal(restored.adsStyles,true,'Original advertisement positions and priorities restored');
     assert.equal(restored.stickyVisibility,true,'Original sticky visibility restored');
+    if(modal){
+      const state=await browser.evaluate(`(()=>{const w=document.getElementById('wizard');return {present:!!w,open:w.tagName==='DIALOG'?w.open:w.hasAttribute('popover')?w.matches(':popover-open'):true,style:w.getAttribute('style')===window.__modalOriginal,inert:document.querySelector('main').inert,overlay:!!document.getElementById('__screenshot_area_overlay'),noSelect:!!document.getElementById('__screenshot_noselect')};})()`);
+      assert.deepEqual(state,{present:true,open:true,style:true,inert:true,overlay:false,noSelect:false},'The original modal stays open and unchanged; selection is fully removed');
+      assert.equal(await browser.evaluate('document.getElementById("wizard-content").scrollTop'),0,'Modal scroll restored');
+      assert(await browser.evaluate('document.body.getAttribute("style")===window.__modalBodyStyle'),'The original modal pointer lock is preserved');
+    }
+    if(site==='pricing')assert.deepEqual(await browser.evaluate('({open:window.__pricingDialog.isConnected,body:document.body.getAttribute("style")===window.__pricingBodyStyle,empty:[...window.__pricingDialog.querySelectorAll("input")].every(el=>!el.value),overlay:!!document.getElementById("__screenshot_area_overlay")})'),{open:true,body:true,empty:true,overlay:false},'The real login stays open, empty, unchanged and free of selection UI');
     if(endLine){
       const marker=await browser.evaluate('({present:!!window.__shotEndLine,host:!!document.getElementById("__shot_end_line"),display:document.getElementById("__shot_end_line")?.style.display})');
       if(stop||failure||compositionGap){
@@ -480,7 +571,7 @@ async function checkNavigationPixels(source) {
     }
     if(site!=='yahoo'&&!growth)assert.equal(restored.height,initial.height,'Original document height restored');assert.equal(restored.remaining,0);
     if(independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
-    else if(!live&&!baseline&&!release&&!ads&&!growth)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
+    else if(!live&&!baseline&&!release&&!ads&&!growth&&!modal)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
     const growthLimit=mode==='full'&&['continuous','stalled'].includes(growth);
     if(stop||failure||compositionGap||stopWait||growthLimit){
       assert.equal(outputs.length,0,'Interrupted capture produces no file');
@@ -501,7 +592,7 @@ async function checkNavigationPixels(source) {
       assert.equal(session.multi.pieces.length,2,'Multi adds exactly one piece');
       outputs.push(session.multi.pieces[1].img);
     }
-    const label=(site|| (tailwind?'tailwind':live?'deepseek':growth?'growth-'+growth:independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
+    const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-after.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
     if(endLineMdn){
@@ -512,6 +603,15 @@ async function checkNavigationPixels(source) {
       fs.writeFileSync(path.join(outputDir,'end-line-mdn-bottom.png'),Buffer.from(bottomPng.split(',')[1],'base64'));
     }
     const pixels=await browser.evaluate('('+checkNavigationPixels.toString()+')('+JSON.stringify(outputs[0])+')');
+    if(modal){
+      // Check actual content rather than ideal boundary positions: the existing
+      // internal-scroll composer allows pixel rounding at slice joins. This
+      // modal test must catch a leftover veil, empty rows or clipped top layer.
+      const content=await browser.evaluate(`(async()=>{const img=new Image();await new Promise((yes,no)=>{img.onload=yes;img.onerror=no;img.src=${JSON.stringify(outputs[0])}});const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);const data=ctx.getImageData(c.width-20,0,1,c.height).data;let wrong=0;for(let y=0;y<c.height;y++){if(![[180,220,240],[240,220,180]].some(color=>color.every((v,k)=>data[y*4+k]===v)&&data[y*4+3]===255))wrong++;}return {wrong,width:img.width,height:img.height};})()`);
+      assert.equal(content.wrong,0,'All modal image rows contain the original content, without selection veil or blank bands');
+      assert.equal(content.width,Math.round(selection.area.w*initial.dpr));
+      assert.equal(content.height,Math.round(selection.area.h_doc*initial.dpr));
+    }
     console.log('Pixel comparison',JSON.stringify(pixels));
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-diagnostic.json'),JSON.stringify({initial,preparation,adPreparation,selection,frames,compositions,measurements,messages,restored,pixels,outputs:outputs.length},null,2));
     if(!endLineMdn)assert.equal(pixels.seen,pixels.expected,'Every visible navigation item is present in the composed image');

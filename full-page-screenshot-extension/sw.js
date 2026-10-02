@@ -2517,7 +2517,7 @@ async function doAreaCapture(tabId) {
 
         var overlay = document.createElement('div');
         overlay.id = '__screenshot_area_overlay';
-        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;cursor:crosshair;background:rgba(19,19,16,0);transition:background 0.8s ease;';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;pointer-events:auto;cursor:crosshair;background:rgba(19,19,16,0);transition:background 0.8s ease;';
 
         var box = document.createElement('div');
         box.style.cssText = 'position:absolute;border:2px dashed #00d4ff;box-shadow:0 0 0 9999px rgba(19, 19, 16, 0.65);display:none;pointer-events:none;';
@@ -3490,7 +3490,49 @@ async function doAreaCapture(tabId) {
         noSel.id = '__screenshot_noselect';
         noSel.textContent = '*{-webkit-user-select:none !important;user-select:none !important;}';
         (document.head || document.documentElement).appendChild(noSel);
-        document.body.appendChild(overlay);
+        // A modal dialog makes everything outside it inert: even the highest
+        // z-index cannot receive the selection's mouse events there. Keep the
+        // overlay inside the active native modal, without changing the dialog.
+        var selectionHost = document.body;
+        var nativeModals = Array.from(document.querySelectorAll('dialog')).filter(function(el) {
+          try { return el.matches(':modal'); } catch (unsupportedModal) { return false; }
+        });
+        var focusedModal = document.activeElement && document.activeElement.closest('dialog');
+        if (nativeModals.length) selectionHost = nativeModals.includes(focusedModal)
+          ? focusedModal : nativeModals[nativeModals.length - 1];
+        else {
+          // Custom modal libraries can disable pointer events on body and
+          // dismiss their dialog on outside clicks. Keep selection within the
+          // frontmost visible dialog, without unlocking the underlying page.
+          var customModals = Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"]')).filter(function(el) {
+            var r = el.getBoundingClientRect(), css = getComputedStyle(el);
+            if (css.display === 'none' || css.visibility !== 'visible' || r.width <= 0 || r.height <= 0) return false;
+            var x = (Math.max(0, r.left) + Math.min(innerWidth, r.right)) / 2;
+            var y = (Math.max(0, r.top) + Math.min(innerHeight, r.bottom)) / 2;
+            if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) return false;
+            var front = document.elementFromPoint(x, y);
+            return front && el.contains(front);
+          });
+          var focusedCustom = document.activeElement && document.activeElement.closest('[role="dialog"], [aria-modal="true"]');
+          if (customModals.length) selectionHost = customModals.includes(focusedCustom)
+            ? focusedCustom : customModals[customModals.length - 1];
+        }
+        selectionHost.appendChild(overlay);
+        // A non-modal, manual popover escapes clipping/transforms and the
+        // page's top layer. It must not close the site's dialog on release.
+        if (typeof overlay.showPopover === 'function') {
+          overlay.setAttribute('popover', 'manual');
+          overlay.style.margin = '0';
+          overlay.style.padding = '0';
+          overlay.style.border = '0';
+          overlay.style.width = 'auto';
+          overlay.style.height = 'auto';
+          overlay.style.maxWidth = 'none';
+          overlay.style.maxHeight = 'none';
+          noSel.textContent += '#__screenshot_area_overlay::backdrop{background:transparent!important;pointer-events:none!important;}';
+          try { overlay.showPopover(); }
+          catch (unsupportedPopover) { overlay.removeAttribute('popover'); }
+        }
         // Avvia la dissolvenza graduale dello scuro (come lo Snipping Tool)
         void overlay.offsetWidth;
         overlay.style.background = 'rgba(19, 19, 16, 0.65)';

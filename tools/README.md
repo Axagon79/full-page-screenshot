@@ -2,6 +2,117 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Popup AI Tarot: correzione confermata e limite della prova automatica — 03/10/2026
+
+**Chiusura confermata dall'utente il 03/10/2026:** ha riferito che la cattura
+funziona e ha approvato esplicitamente di considerare risolto il problema.
+La conferma riguarda il suo utilizzo; non dimostra che abbia ripetuto il
+controllo automatico a 390 px descritto sotto. Il limite di quel controllo
+rimane documentato, senza presentarlo come un guasto visibile accertato.
+Riepilogo in `IDEE_FATTE.md`. Nessun nuovo test durante questa archiviazione.
+
+Sulla pagina pubblica `https://www.aitarot.pro/it/pricing`, premendo «Ottieni
+Plus» senza account, si apre il popup di accesso segnalato dall'utente.
+Nessuna registrazione, credenziale o procedura di pagamento è stata eseguita.
+Le prove usano Edge isolato con codice di produzione/API Chrome adattate,
+non l'estensione installata nel profilo dell'utente.
+
+**Riproduzione con la prima correzione:** il popup è un dialog personalizzato
+Radix, non un dialog nativo. L'overlay era nel top layer ma ereditava
+`pointer-events: none` dal body: hit testing sul popup sottostante, nessun
+rettangolo e attesa della selezione. Correzione aggiuntiva in `sw.js`: eventi
+del puntatore abilitati esplicitamente solo sull'overlay, inserito nel dialog
+personalizzato visibile in primo piano. La pagina dietro resta bloccata come
+previsto dal sito e i clic della selezione non sono clic esterni al popup.
+
+Prove desktop passate con `node tools/test-area-sidebar.cjs`:
+
+- `--site=pricing`: selezione col mouse reale, PNG 449×459, immagine aperta
+  e controllata; popup ancora aperto e vuoto, stile body invariato.
+- `--site=pricing --multi`: aggiunta dal pannello senza scaricare un file.
+- `--site=pricing --multi --editor --popup-inside`: drag iniziato dentro al
+  popup; PNG 401×411 e pezzo precedente conservato.
+- `--site=pricing --multi --stop`: Stop durante il primo scatto; nessun
+  pezzo incompleto e pezzo precedente conservato.
+- `--site=pricing --full --multi --editor`: Full Page ancora funzionante,
+  PNG 1920×4847, sei scatti; ultime 128 righe confrontate senza differenze,
+  popup e pagina ripristinati.
+- `--modal=custom --multi --editor`, `--modal=custom --multi
+  --escape-selection`: pagina locale con body non cliccabile e chiusura su
+  clic esterno; cattura ed Escape passati, finestra/stili preservati.
+- `--modal=dialog --multi --stop-selection`: finestra nativa ancora
+  annullabile durante il drag, senza scatti e senza chiuderla.
+- `--native-edge --multi --editor`: selezione normale con mouse reale fino
+  al bordo destro, PNG 1869×4839 e ripristino passati.
+- Suite Stop: 71 passati, 0 falliti, 21 vecchi casi saltati.
+
+**Limite della prova automatica, non un guasto confermato:** `--site=pricing --mobile`
+usa viewport stretto 390 px (non un dispositivo mobile). Il sito presenta
+qui il login come pannello inferiore. Il primo tentativo falliva perché il
+mouse di prova veniva rilasciato fuori viewport; il solo test è stato corretto
+limitando le coordinate alla parte visibile. Il secondo disegna e completa la
+selezione e arriva alla composizione PNG 387×492, ma fallisce il confronto
+esatto dello stile body dopo il ripristino. Popup aperto e campi vuoti;
+non è dimostrato se la differenza sia un danno alla pagina o una variazione
+innocua del sito. Dopo due tentativi falliti non sono state fatte ulteriori
+prove/correzioni su quel percorso: serve una decisione dell'utente per
+approfondire. Non modificare il test per ignorare la differenza.
+
+L'utente ha confermato il funzionamento nel proprio utilizzo e la chiusura
+del problema. Nessun commit/push o aggiornamento dello ZIP.
+
+## Area sopra finestre della pagina — 02/10/2026
+
+Segnalazione: nella finestra di creazione Firestore su Firebase non appare il
+rettangolo Area e l'icona Stop rimane attiva; Full Page funziona. L'utente ha
+autorizzato diagnosi, correzione e prove locali. **Nessun accesso all'account
+Firebase, nessuna modifica al database, nessuna prova sulla pagina autenticata.**
+
+Riproduzione precedente alla modifica, con il selettore di produzione e mouse
+reale in Edge isolato: un `dialog.showModal()` riceve i clic al posto dell'overlay
+aggiunto al body, `box.display` resta `none` e la selezione non si completa.
+Questo dimostra il difetto con finestre native, non il tipo di finestra effettivo
+usato dall'account Firebase dell'utente.
+
+In `sw.js` il selettore viene inserito nella finestra nativa attiva, quando
+presente, e mostrato come popover manuale non modale: supera i livelli della
+pagina e gli antenati trasformati senza chiudere o modificare la finestra del
+sito. Nessun nuovo motore: Area normale e Area Multi Snip usano lo stesso codice.
+Rimozione, Stop e ripristino restano quelli comuni. Il pacchetto 9.12.zip non
+viene modificato e non sono stati eseguiti commit/push.
+
+Verifiche passate con `node tools/test-area-sidebar.cjs`:
+
+- `--modal=dialog`, anche `--multi --editor`: trascinamento/rilascio reali,
+  PNG 700×1680, finestra ancora aperta, stili e scroll ripristinati.
+- `--modal=custom --multi`, `--modal=popover --multi --editor`: finestra con
+  livello massimo e finestra nel top layer; selezione e cattura completate.
+- `--modal=dialog --multi --stop`: annullamento durante gli scatti; nessun nuovo
+  file/pezzo, pezzo precedente conservato.
+- `--modal=dialog --multi --stop-selection`: annullamento durante il
+  trascinamento; overlay rimosso prima di qualsiasi scatto.
+- `--modal=dialog --escape-selection --multi --editor`: tasto Escape reale,
+  richiesta di annullamento inoltrata dal ponte di prova; la finestra nativa
+  del sito non viene chiusa. Non certifica il collegamento Chrome installato.
+- `--modal=dialog --dark`, `--modal=dialog --mobile`: schema colori scuro e
+  viewport stretto 390 px; cattura completata. Sono impostazioni del browser
+  isolato, non prove su un dispositivo mobile o sul profilo dell'utente.
+- Regressioni `--multi --editor` (Area), `--full --multi`,
+  `--independent --multi`: menu e ripristino superati; colonne indipendenti
+  ancora gestite dal motore dedicato. Nessuna modifica al motore Full Page.
+- `node --test tools/test-capture-stop.cjs`: 71 passati, 0 falliti,
+  21 vecchi casi saltati; `git diff --check` superato.
+
+Il controllo del PNG locale verifica colori originali, assenza del velo e di
+bande vuote, dimensioni selezionate. Una prima aspettativa di identità con
+confini ideali falliva: la finestra nativa applicava il contorno di focus e il
+compositore preesistente degli scroller interni arrotonda le giunture. Il
+contorno è stato tolto solo nella pagina di prova, non nel codice di cattura;
+il controllo dei colori non certifica l'allineamento perfetto di ogni giuntura.
+I controlli pixel dei menu nelle regressioni restano invariati. Resta necessaria
+la prova dell'utente su Firebase dopo ricaricamento dell'estensione e della
+pagina. Non dichiarare la segnalazione chiusa senza conferma.
+
 ## Linea di fine Full Page: prove autorizzate del 23/09/2026
 
 L'utente ha approvato esplicitamente le prove automatiche su Full Page, Multi Snip, Stop e ripristino. Il codice è ancora locale: le prove qui sotto usano la pagina nel browser isolato e le API Chrome adattate; **non** certificano il clic sull'estensione installata nel profilo dell'utente.
