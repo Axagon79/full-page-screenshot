@@ -39,14 +39,14 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 ### Full Page fino a qui — linea di fine cattura
 
 **Ideata il:** 20/09/2026.
-**Stato:** prototipo provato dall'utente su MDN e Wikipedia; la decisione di pubblicarlo resta aperta.
+**Stato:** provato dall'utente su MDN e Wikipedia; incluso nel pacchetto 9.13 su richiesta esplicita del 03/10/2026. Nella stessa data l'utente ha riferito di aver pubblicato la versione: lo stato effettivo nello Store non è stato verificato. Non ancora archiviato come lavoro concluso.
 
 Catturare tutta la larghezza della pagina, dall'inizio fino a un punto finale scelto dall'utente.
 Utile quando interessa soltanto una parte di una pagina molto lunga, senza disegnare un rettangolo come in Seleziona area.
 
 L'utente sceglie dal menu del tasto destro sulla pagina «Set screenshot end line». La linea segue il puntatore; un clic la fissa. Si può trascinare, cancellare con × o Esc, quindi avviare con «Capture to here» accanto alla linea oppure con un clic sull'icona dell'estensione. Lo stesso motore Full Page acquisisce tutta la larghezza dall'inizio fino alla linea, anche come nuovo pezzo Multi Snip. Durante gli scatti la linea è nascosta; Stop conserva la linea e i pezzi precedenti, senza salvare il pezzo incompleto. Il punto è ancorato al contenuto se questo si sposta durante il caricamento.
 
-Se la pagina scorre normalmente ma un menu laterale scorre per conto suo, il taglio lo mantiene nella posizione scelta dall'utente: controllato su MDN. Su Wikipedia l'utente ha confermato anche la posizione del pannello «Aspetto» a destra. La Full Page normale e Area non usano questo allineamento. Resta un limite sulle pagine dove scorrono solo contenitori interni: il comando «fino a qui» non produce un'immagine ambigua. Altre pagine con colonne indipendenti non sono ancora state verificate. Il commit conserva il prototipo, ma la nuova funzione non viene archiviata né inserita nello Store finché l'utente non lo decide.
+Se la pagina scorre normalmente ma un menu laterale scorre per conto suo, il taglio lo mantiene nella posizione scelta dall'utente: controllato su MDN. Su Wikipedia l'utente ha confermato anche la posizione del pannello «Aspetto» a destra. La Full Page normale e Area non usano questo allineamento. Resta un limite sulle pagine dove scorrono solo contenitori interni: il comando «fino a qui» non produce un'immagine ambigua. Altre pagine con colonne indipendenti non sono ancora state verificate. Il pacchetto 9.13 include la funzione come richiesto dall'utente; la pubblicazione riferita non sostituisce la decisione dell'utente di archiviare l'idea come conclusa.
 
 ### Scorciatoia da tastiera per catturare / aggiungere un pezzo
 

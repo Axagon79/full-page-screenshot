@@ -1,6 +1,10 @@
 // Changelog per versione: solo le voci rivolte all'utente (niente dettagli
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
+  '9.13': [
+    'New: Capture to here — right-click a page to set an end line, adjust it, then capture from the top to that point using the nearby button or the extension icon. Also available in Multi Snip.',
+    'Fixed: Select Area now works over pop-up windows, including login dialogs, without closing them. Also fixed when adding a piece in Multi Snip.'
+  ],
   '9.12': [
     'Fixed: side menus that scroll on their own (like Wikipedia, MDN or DeepSeek) are now captured once and in full, instead of being cut or repeated at the bottom.',
     'New: Stop — click the extension icon or press Esc to cancel a Full Page or Select Area capture; a small panel shows the progress.',
