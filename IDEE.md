@@ -3,8 +3,8 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **21 settembre 2026**.
-Riordino delle idee dell'11/09; stato del codice e delle prove aggiornato fino al commit `03915d8`.
+Ultimo aggiornamento: **3 ottobre 2026**.
+Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
 
@@ -19,6 +19,24 @@ L'ultima modifica registrata era del **07/08/2026** (`5fee6f9`), benché l'intes
 L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da seguire.
 
 ## Situazione della versione
+
+**Stato corrente — 03/10/2026:** l'utente precisa che la 9.13 è stata inviata
+allo Store ed è **ancora in revisione**, non già disponibile. Su sua richiesta
+inizia la **9.14**, con il fix confermato della
+riga nei contenitori interni e la gestione della vecchia riga dopo ricarica
+dell'estensione. Manifest e note aggiornati; ZIP locale 9.14 creato e
+controllato (26 file identici ai sorgenti attuali). È la base della prossima
+versione, da rigenerare se si aggiungono altre modifiche. **Decisione
+dell'utente:** non inviare ora la 9.14; aspettare che passi la 9.13 e nel
+frattempo raccogliere eventuali bug da correggere e novità da concordare.
+L'intenzione è pubblicare la 9.14 quando includerà anche qualcosa di nuovo,
+dopo le verifiche autorizzate e la decisione esplicita dell'utente. Lo ZIP
+attuale è una fotografia provvisoria, non una versione finale da inviare.
+Nessuna nuova funzione aggiunta e nessun invio allo Store. Correzione,
+prove e avvio della 9.14 salvati nel commit `a4d8a52`; l'utente ha
+autorizzato commit e push anche delle note. Lo ZIP 9.13 non viene modificato.
+
+### Cronologia fino al 21/09/2026 — numeri e note sotto sono storici
 
 - Manifest e ultimo pacchetto locale: **9.11**.
 - La 9.10 risultava pubblicata nello screenshot dello Store fornito dall'utente; la 9.11 è stata successivamente inviata in revisione secondo la chat. L'esito attuale non è stato verificato qui.
@@ -36,17 +54,10 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Idee ancora aperte
 
-### Full Page fino a qui — linea di fine cattura
-
-**Ideata il:** 20/09/2026.
-**Stato:** provato dall'utente su MDN e Wikipedia; incluso nel pacchetto 9.13 su richiesta esplicita del 03/10/2026. Nella stessa data l'utente ha riferito di aver pubblicato la versione: lo stato effettivo nello Store non è stato verificato. Non ancora archiviato come lavoro concluso.
-
-Catturare tutta la larghezza della pagina, dall'inizio fino a un punto finale scelto dall'utente.
-Utile quando interessa soltanto una parte di una pagina molto lunga, senza disegnare un rettangolo come in Seleziona area.
-
-L'utente sceglie dal menu del tasto destro sulla pagina «Set screenshot end line». La linea segue il puntatore; un clic la fissa. Si può trascinare, cancellare con × o Esc, quindi avviare con «Capture to here» accanto alla linea oppure con un clic sull'icona dell'estensione. Lo stesso motore Full Page acquisisce tutta la larghezza dall'inizio fino alla linea, anche come nuovo pezzo Multi Snip. Durante gli scatti la linea è nascosta; Stop conserva la linea e i pezzi precedenti, senza salvare il pezzo incompleto. Il punto è ancorato al contenuto se questo si sposta durante il caricamento.
-
-Se la pagina scorre normalmente ma un menu laterale scorre per conto suo, il taglio lo mantiene nella posizione scelta dall'utente: controllato su MDN. Su Wikipedia l'utente ha confermato anche la posizione del pannello «Aspetto» a destra. La Full Page normale e Area non usano questo allineamento. Resta un limite sulle pagine dove scorrono solo contenitori interni: il comando «fino a qui» non produce un'immagine ambigua. Altre pagine con colonne indipendenti non sono ancora state verificate. Il pacchetto 9.13 include la funzione come richiesto dall'utente; la pubblicazione riferita non sostituisce la decisione dell'utente di archiviare l'idea come conclusa.
+La funzione «Full Page fino a qui» e la correzione per lo scorrimento interno
+sono confermate e archiviate in [IDEE_FATTE.md](IDEE_FATTE.md), voce del
+03/10/2026. La correzione più recente entra nella preparazione locale della
+9.14, salvata in `a4d8a52`: non nello ZIP 9.13 già inviato in revisione.
 
 ### Scorciatoia da tastiera per catturare / aggiungere un pezzo
 

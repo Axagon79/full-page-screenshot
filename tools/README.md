@@ -2,6 +2,132 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Avvio della 9.14 e controllo del pacchetto — 03/10/2026
+
+Su richiesta dell'utente, il manifest
+passa a 9.14. Le note di `settings.js` elencano soltanto il fix della riga sui
+contenitori interni e la gestione della vecchia riga dopo ricarica
+dell'estensione. Nessuna nuova funzione, permesso o modifica alla descrizione
+Store. Nessun invio della 9.14 allo Store.
+
+**Salvataggio successivamente autorizzato — 03/10/2026:** codice,
+prove locali, manifest e note della 9.14 nel commit `a4d8a52`. Archivio,
+decisione sulla revisione 9.13 e queste note nel successivo commit
+documentale; push richiesto dall'utente. Nessun nuovo test durante i commit.
+Gli ZIP restano locali e ignorati da Git; nessuna pubblicazione della 9.14.
+
+**Precisazione successiva dell'utente:** la 9.13 è ancora in revisione,
+non già pubblicata. La 9.14 resta una versione in lavorazione: prima
+aspettare l'approvazione della 9.13, raccogliendo eventuali bug da correggere
+e novità concordate. L'intenzione è inviarla quando includerà anche qualcosa
+di nuovo, dopo verifiche autorizzate e decisione finale dell'utente.
+Lo ZIP attuale è provvisorio; non viene inviato né rigenerato per questa
+sola annotazione. Nessuna nuova prova eseguita.
+
+Creato `full-page-screenshot-extension/9.14.zip` come pacchetto di partenza:
+26 file, 1.620.487 byte, stessi nomi di file della 9.13, presi dai sorgenti
+attuali. Comprende tutte le risorse dell'estensione già presenti nella 9.13,
+incluse le immagini. Non contiene altri ZIP, cartelle di lavoro, prove o
+impostazioni personali dell'editor.
+
+**Controllo esplicitamente autorizzato dall'utente e passato:** riapertura
+dello ZIP, manifest 9.14, 26 file ciascuno identico al sorgente corrente
+tramite confronto SHA-256; ZIP 9.13 identico prima e dopo. Nessuna nuova
+prova di cattura durante il confezionamento: valgono le prove e la conferma
+utente documentate sotto. Il pacchetto deve essere rigenerato se si
+aggiungono altre modifiche prima della pubblicazione.
+
+SHA-256 ZIP 9.13: `008478FCD5A2C7B13BAB13A287DD867A4C09F7B82F6BAC417692342776F69C8C`.
+SHA-256 ZIP 9.14: `E8B1A6DA5636ABB17DCC44B9C3C9D10A9F91A69C6ACD7AF3B1744AEAF7D278FE`.
+
+## Riga su pagine con scorrimento interno — 03/10/2026
+
+**Chiusura confermata dall'utente il 03/10/2026:** ha riferito «Funziona»
+e ha approvato esplicitamente di considerare risolto il problema della riga.
+Non ha precisato quali delle tre pagine segnalate siano state riprovate.
+Conferma del suo utilizzo, distinta dalle prove locali sotto. Voce archiviata
+in `IDEE_FATTE.md`; nessun nuovo test durante questa archiviazione.
+
+L'utente ha autorizzato la correzione e le prove. Nel risultato della console
+fornito dall'utente il documento resta alto 828 px e fermo; scorre un DIV
+interno alto 5010 px. Il precedente rifiuto del comando «fino a qui» era
+quindi coerente con il limite del codice, non risolto ricaricando la pagina.
+
+La riga ora conserva il riferimento al contenitore principale visibile.
+Il motore Full Page comune acquisisce quel contenuto dall'inizio alla riga;
+le altre colonne vengono prese dalla vista scelta e mantenute accanto al
+fondo, senza scorrerle o ripeterle. Alla fine o allo Stop tornano tutte le
+posizioni e gli stili iniziali. Full Page e Area senza riga mantengono i
+percorsi precedenti. In caso di pagina cambiata o copertura incompleta viene
+segnalato un errore, senza salvare un'immagine parziale.
+
+Gestito anche il lancio sincrono di «Extension context invalidated» dopo una
+ricarica dell'estensione: la vecchia riga viene rimossa, senza lasciare un
+pulsante disabilitato o un errore non gestito. Non mantiene in vita una pagina
+collegata alla vecchia estensione: dopo l'aggiornamento va ricaricata anche
+la pagina.
+
+Prove con `node tools/test-area-sidebar.cjs`, Edge isolato e codice reale
+con API Chrome adattate, su pagina locale a tre colonne indipendenti:
+
+- `--full --end-line --end-line-internal --end-line-button`: cattura normale
+  dal pulsante vicino alla riga; PNG 1920×1750, ogni riga del contenuto e
+  tutti i pixel delle colonne laterali corretti rispetto alla vista scelta.
+- `--full --end-line --end-line-internal --multi --editor --zoom=110 --dark`:
+  PNG 1920×1925, confronto senza differenze e pezzo precedente conservato.
+- `--full --end-line --end-line-internal --end-line-sidebar --multi --editor
+  --zoom=125`: riga piazzata dal lato della colonna laterale ma collegata al
+  contenuto principale; PNG 1920×2188, confronto senza differenze.
+- `--full --end-line --end-line-internal --mobile --end-line-drag
+  --end-line-button --multi`: trascinamento e avvio reale col mouse a 390 px,
+  PNG 390×1800, confronti senza differenze. Passata anche la cattura da editor
+  a 390 px in modalità scura. Non sono prove su un dispositivo mobile.
+- `--end-line-short --multi --end-line-button`, con i tre flag di base:
+  taglio entro il primo schermo, PNG 1920×350, nessuna coda aggiunta.
+- `--end-line-anchor --multi --editor`, con i tre flag di base: inserimento
+  di 50 px sopra il punto scelto, ancoraggio verificato e PNG corretto.
+- `--end-line-stale --end-line-button`, con i tre flag di base: messaggio
+  Chrome simulato che lancia sincronicamente l'errore; vecchia riga rimossa,
+  nuova riga e cattura funzionanti. Non è una ricarica dell'estensione
+  installata nel profilo dell'utente.
+- `--full --end-line --end-line-internal --multi --mobile --dark --stop`:
+  annullamento durante gli scatti, nessun nuovo pezzo/file, precedente
+  conservato, riga nuovamente disponibile e tutte le colonne ripristinate.
+- `--failure --multi --editor`, con i tre flag di base: errore di scatto
+  simulato, niente immagine incompleta, ripristino e raccolta conservati.
+- `--full --end-line --end-line-internal --multi --editor --composition-gap`:
+  ultimo scatto deliberatamente rimosso; errore di copertura effettivo
+  riportato all'utente, nessun nuovo pezzo, ripristino passato.
+
+I «tre flag di base» sopra sono `--full --end-line --end-line-internal`.
+Su tutti i percorsi interni si controllano anche le tre posizioni di scroll,
+gli stili originali, l'assenza dell'indicatore e della riga nell'immagine.
+Anteprime chiare/scure, desktop/390 px e immagine finale aperte e controllate.
+
+**Difetti trovati durante le prove:** al 125% il primo confronto ha mostrato
+un pixel finale mancante per l'arrotondamento dello scorrimento. Corretto
+solo il percorso riga/contenitore: misura del viewport visibile e ultimo
+scroll arrotondato al pixel fisico superiore, con immagine sempre ritagliata
+alla riga. Ripetizione al 125% e controlli al 110%/390 px passati. Il controllo
+dello scatto omesso inizialmente cercava il vecchio testo dell'errore:
+aspettativa aggiornata al messaggio preciso di copertura incompleta, senza
+ignorare errori o differenze nei pixel. Passato alla ripetizione.
+
+Regressioni locali passate: riga sul documento normale (`--full
+--growth=static --end-line --end-line-button`), Full Page e Area da editor
+Multi Snip (`--growth=static --multi --editor`, con/senza `--full`), Area
+con colonne indipendenti (`--independent --multi --editor`) e Full Page
+con colonne indipendenti (`--full --independent --multi --editor`). Suite
+Stop: 71 passati, 0 falliti, 21 vecchi casi saltati. Sintassi dei cinque
+file JavaScript modificati e `git diff --check` passati.
+
+**Limite:** nessuna prova dentro gli account DeepSeek, AI Studio o Firebase,
+nessun accesso a dati/account/database. Non certifica la gestione di liste
+virtualizzate o delle geometrie specifiche di quei siti. La successiva
+conferma dell'utente non dimostra una prova separata su tutte e tre le pagine.
+Manifest, ZIP 9.13, Store, commit e push non modificati per questa correzione;
+chiusura approvata dall'utente e archiviata in `IDEE_FATTE.md`.
+
 ## Popup AI Tarot: correzione confermata e limite della prova automatica — 03/10/2026
 
 **Chiusura confermata dall'utente il 03/10/2026:** ha riferito che la cattura

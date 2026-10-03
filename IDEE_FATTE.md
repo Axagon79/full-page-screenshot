@@ -8,6 +8,26 @@ Le date «Ideata il» indicano la data documentata, non una data inventata di pr
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
 
+## 03/10/2026 — Full Page fino a qui: riga e scorrimento interno confermati
+
+**Ideata il:** 20/09/2026.
+**Realizzata il:** funzione iniziale nel codice già provata dall'utente su MDN e Wikipedia; estensione ai contenitori interni il 03/10/2026. Dopo aver riferito «Funziona», l'utente ha approvato esplicitamente di considerare risolto il problema della riga nella stessa data.
+
+- Cattura tutta la larghezza dall'inizio al punto scelto, senza disegnare un rettangolo. Serve quando l'utente sta già guardando il punto dove desidera fermarsi e non vuole tornare all'inizio o ricordare il punto durante una selezione Area.
+- Dal menu del tasto destro sulla pagina si sceglie «Set screenshot end line»: la riga segue il puntatore, un clic la fissa; può essere trascinata o rimossa con × o Esc. Avvio dal pulsante «Capture to here» o dall'icona dell'estensione.
+- Usa il motore Full Page comune, anche per aggiungere un pezzo a Multi Snip. Riga e indicatore vengono nascosti durante gli scatti; Stop conserva la riga e i pezzi precedenti, ripristina la pagina e non salva il pezzo incompleto. Il punto può seguire il contenuto quando elementi caricati sopra lo spostano.
+- Su MDN e Wikipedia l'utente ha confermato le colonne laterali nella posizione scelta, compreso il pannello «Aspetto» a destra. Full Page e Area senza riga non usano questo allineamento.
+- Correzione del 03/10 dopo le segnalazioni DeepSeek, AI Studio e Firebase: quando il documento resta fermo, la riga si collega al contenitore principale visibile. Quel contenuto viene acquisito dall'inizio alla riga; le altre colonne restano nella vista scelta, accanto al fondo, senza essere scorse o ripetute.
+- Gestito anche l'errore «Extension context invalidated» lanciato sincronicamente dopo la ricarica dell'estensione: la vecchia riga viene rimossa senza lasciare il pulsante bloccato. Dopo l'aggiornamento va ricaricata anche la pagina.
+- Prove locali autorizzate passate: Multi Snip da pannello/editor, Stop, errori di scatto/composizione, riga trascinata e ancorata al contenuto, zoom 110%/125%, chiaro/scuro, desktop e finestra a 390 px. Full Page e Area normali ricontrollate. Risultati, tentativi e limiti in `tools/README.md`.
+- La conferma dell'utente riguarda il suo utilizzo; non specifica quali delle tre pagine segnalate siano state riprovate. Nessun accesso agli account, ai dati o ai database da parte dell'agente. Non certifica tutte le pagine, liste virtualizzate o geometrie possibili.
+
+File: `full-page-screenshot-extension/end-line.js`, `capture-control.js`, `sw.js`; prove in `tools/test-area-sidebar.cjs`, `tools/test-capture-stop.cjs`; documentazione in `tools/README.md`.
+**Commit:** funzione iniziale `0a37ff8`; preparazione della 9.13 e descrizione Store `5df4873`; correzione per lo scorrimento interno, prove e avvio della 9.14 in `a4d8a52`, su successiva richiesta esplicita dell'utente di commit e push. Questa voce viene salvata nel successivo commit documentale. Nessun nuovo test durante il salvataggio.
+La funzione iniziale è inclusa nello ZIP 9.13 richiesto dall'utente, che aveva riferito di aver pubblicato la versione e ha poi precisato che è stata inviata ed è ancora in revisione; stato online non verificato. **La correzione dei contenitori interni non è nello ZIP 9.13 già inviato in revisione.** Manifest, ZIP e Store invariati durante questa correzione e archiviazione. Nessun nuovo test durante l'archiviazione; nessun `TODO.md` trovato. Voce rimossa dalle idee aperte lasciando il rimando.
+
+**Preparazione successiva — 03/10/2026:** l'utente chiede di iniziare la 9.14 con questa correzione. Manifest e note utente portati alla 9.14; ZIP 9.13 conservato, nessun commit/push o pubblicazione della 9.14. Controllo del nuovo pacchetto autorizzato dall'utente; esito in `tools/README.md`. L'utente precisa poi che la 9.13 è ancora in revisione: la 9.14 resta in lavorazione per raccogliere eventuali correzioni e novità concordate, senza invio ora. Intenzione di pubblicarla dopo l'approvazione della 9.13 e con qualcosa di nuovo; decisione finale dell'utente. Lo ZIP 9.14 attuale è provvisorio e andrà rigenerato con le modifiche successive.
+
 ## 03/10/2026 — Selezione Area bloccata dai popup: chiusura confermata
 
 **Ideata il:** 02/10/2026, dalla segnalazione della selezione bloccata nella finestra di creazione Firestore; il caso successivo è stato riprodotto sulla pagina prezzi di AI Tarot.
