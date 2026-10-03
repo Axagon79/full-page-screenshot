@@ -2,7 +2,22 @@
 // world, so the capture controller can read it without exposing page globals.
 (function() {
   var old = window.__shotEndLine;
-  if (old && typeof old.restart === 'function') { old.restart(); return; }
+  if (old && typeof old.restart === 'function') {
+    try {
+      if (!old.isLive || old.isLive()) { old.restart(); return; }
+    } catch (staleContext) {}
+    try { old.remove(); } catch (staleContext) {
+      var oldHost = document.getElementById('__shot_end_line');
+      if (oldHost) oldHost.remove();
+    }
+  }
+
+  // Chrome can throw synchronously after an extension reload: a Promise
+  // catch alone does not handle that, leaving a disabled stale line behind.
+  function send(message) {
+    try { return Promise.resolve(chrome.runtime.sendMessage(message)); }
+    catch (error) { return Promise.reject(error); }
+  }
 
   var host = document.createElement('div');
   host.id = '__shot_end_line';
@@ -63,14 +78,17 @@
 
   var state = {
     placed: false, paused: false, removed: false, hasPointer: false, y: scrollY + innerHeight / 2,
-    anchor: null, anchorOffset: 0, lastClientY: innerHeight / 2,
+    anchor: null, anchorOffset: 0, lastClientY: innerHeight / 2, target: null,
+    isLive: function() { try { return !!chrome.runtime.id; } catch (error) { return false; } },
     getY: function() {
+      if (this.target && !this.target.isConnected) throw new Error('The scrolling content changed. Place the end line again.');
       if (this.anchor && this.anchor.isConnected) {
-        var top = this.anchor.getBoundingClientRect().top + scrollY;
+        var top = this.anchor.getBoundingClientRect().top - origin() + position();
         return clamp(top + this.anchorOffset);
       }
       return clamp(this.y);
     },
+    getScreenY: function() { return origin() + this.getY() - position(); },
     pause: function() {
       this.paused = true;
       host.style.setProperty('display', 'none', 'important');
@@ -87,13 +105,14 @@
       this.placed = false;
       this.hasPointer = false;
       this.anchor = null;
+      this.target = null;
       this.y = scrollY + this.lastClientY;
       card.classList.add('placing');
       line.classList.add('placing');
       hint.textContent = 'Click to set end · Esc to cancel';
       captureButton.hidden = true;
       removeButton.hidden = true;
-      chrome.runtime.sendMessage({ action: 'endLineDisarmed' }).catch(function() {});
+      send({ action: 'endLineDisarmed' }).catch(function() {});
       draw();
     },
     remove: function() {
@@ -110,22 +129,50 @@
       if (layoutObserver) layoutObserver.disconnect();
       host.remove();
       if (window.__shotEndLine === this) delete window.__shotEndLine;
-      chrome.runtime.sendMessage({ action: 'endLineDisarmed' }).catch(function() {});
+      send({ action: 'endLineDisarmed' }).catch(function() {});
     }
   };
   window.__shotEndLine = state;
   captureButton.hidden = true;
   removeButton.hidden = true;
 
+  function position() { return state.target ? state.target.scrollTop : scrollY; }
+  function origin() {
+    return state.target ? state.target.getBoundingClientRect().top + (state.target.clientTop || 0) : 0;
+  }
   function clamp(y) {
-    var fullHeight = Math.max(document.documentElement.scrollHeight,
+    var fullHeight = state.target ? state.target.scrollHeight : Math.max(document.documentElement.scrollHeight,
       document.body ? document.body.scrollHeight : 0, innerHeight);
     return Math.max(1, Math.min(fullHeight, y));
   }
 
+  function chooseTarget() {
+    var range = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0) - innerHeight;
+    var locked = [document.documentElement, document.body].some(function(el) {
+      return el && /^(hidden|clip)$/.test(getComputedStyle(el).overflowY);
+    });
+    if (!locked && range >= innerHeight * 0.5) return null;
+    var best = null, bestArea = 0;
+    document.querySelectorAll('*').forEach(function(el) {
+      if (el === document.documentElement || el.closest('[data-screenshot-ui]')) return;
+      var css = getComputedStyle(el), r = el.getBoundingClientRect();
+      if (!/^(auto|scroll)$/.test(css.overflowY) || css.display === 'none' || css.visibility !== 'visible' ||
+          el.scrollHeight <= el.clientHeight + 10) return;
+      var width = Math.max(0, Math.min(innerWidth, r.right) - Math.max(0, r.left));
+      var height = Math.max(0, Math.min(innerHeight, r.bottom) - Math.max(0, r.top));
+      var area = width * height;
+      if (height < 50 || width < 80) return;
+      if (area > bestArea || (area === bestArea && best && el.scrollHeight > best.scrollHeight)) {
+        best = el; bestArea = area;
+      }
+    });
+    return best;
+  }
+
   function draw() {
     if (state.removed || state.paused) return;
-    var screenY = (state.placed ? state.getY() : clamp(state.y)) - scrollY;
+    if (state.target && !state.target.isConnected) { state.remove(); return; }
+    var screenY = state.placed ? state.getScreenY() : state.y - scrollY;
     var visible = (state.placed || state.hasPointer) && screenY >= 0 && screenY <= innerHeight;
     line.style.display = visible ? 'block' : 'none';
     card.style.display = visible || (!state.placed && !state.hasPointer) ? 'flex' : 'none';
@@ -144,22 +191,23 @@
     host.style.setProperty('visibility', 'hidden', 'important');
     var el = document.elementFromPoint(clientX, clientY);
     host.style.setProperty('visibility', 'visible', 'important');
-    if (!el || el === document.body || el === document.documentElement) return;
+    if (!el || el === document.body || el === document.documentElement ||
+        (state.target && (el === state.target || !state.target.contains(el)))) return;
     // A child of a sticky/fixed rail moves with the viewport, not with the
     // document. Keep the absolute coordinate instead of following that rail.
-    for (var ancestor = el; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+    for (var ancestor = el; ancestor && ancestor !== document.body && ancestor !== state.target; ancestor = ancestor.parentElement) {
       var pos = getComputedStyle(ancestor).position;
       if (pos === 'fixed' || pos === 'sticky') return;
     }
     state.anchor = el;
-    state.anchorOffset = state.y - (el.getBoundingClientRect().top + scrollY);
+    state.anchorOffset = state.y - (el.getBoundingClientRect().top - origin() + position());
   }
 
   function onMove(event) {
     if (state.paused || state.placed || state.removed) return;
     state.hasPointer = true;
     state.lastClientY = event.clientY;
-    state.y = clamp(scrollY + event.clientY);
+    state.y = scrollY + event.clientY;
     state.hasPointer = true;
     draw();
   }
@@ -168,7 +216,8 @@
     if (state.paused || state.placed || state.removed || event.button !== 0) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    state.y = clamp(scrollY + event.clientY);
+    state.target = chooseTarget();
+    state.y = clamp(position() + event.clientY - origin());
     state.placed = true;
     anchorAt(event.clientX, event.clientY);
     line.classList.remove('placing');
@@ -185,7 +234,7 @@
     }
     document.addEventListener('click', swallow, true);
     setTimeout(function() { document.removeEventListener('click', swallow, true); }, 700);
-    chrome.runtime.sendMessage({ action: 'endLineArmed' }).then(function(reply) {
+    send({ action: 'endLineArmed' }).then(function(reply) {
       if ((!reply || !reply.armed) && !state.removed) state.remove();
     }).catch(function() { if (!state.removed) state.remove(); });
   }
@@ -210,7 +259,7 @@
     if (!dragging) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    state.y = clamp(scrollY + event.clientY);
+    state.y = clamp(position() + event.clientY - origin());
     draw();
   }
   function onDragEnd(event) {
@@ -218,7 +267,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     dragging = false;
-    state.y = clamp(scrollY + event.clientY);
+    state.y = clamp(position() + event.clientY - origin());
     anchorAt(event.clientX, event.clientY);
     draw();
   }
@@ -228,9 +277,9 @@
     event.stopPropagation();
     if (!state.placed || state.paused) return;
     captureButton.disabled = true;
-    chrome.runtime.sendMessage({ action: 'startCaptureToLine' }).then(function(reply) {
+    send({ action: 'startCaptureToLine' }).then(function(reply) {
       if (!state.removed && (!reply || !reply.started)) captureButton.disabled = false;
-    }).catch(function() { if (!state.removed) captureButton.disabled = false; });
+    }).catch(function() { if (!state.removed) state.remove(); });
   });
   removeButton.addEventListener('click', function(event) {
     event.preventDefault();

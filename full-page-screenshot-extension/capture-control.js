@@ -272,6 +272,9 @@ async function prepareCaptureSidebars(job) {
       var control = window.__shotCaptureControl;
       var vh = window.innerHeight;
       if (!control || control.id !== id || control.cancelled || control.sidebars || !(vh > 0)) return;
+      // An end line inside an app follows only its chosen content pane. Do
+      // not unfold or reposition the independent columns prepared by the user.
+      if (alignEndLine && control.endLine && control.endLine.target) return;
       var doc = document.scrollingElement;
       if (!doc || doc.scrollHeight - vh < vh * 0.5) return;
       if ([document.documentElement, document.body].some(function(el) {
@@ -704,7 +707,7 @@ async function cleanupCaptureJob(job, restoreScroll) {
           'data-screenshot-area-pane', 'data-screenshot-area-scrollbar', 'data-screenshot-start-sticky'].forEach(function(attr) {
           document.querySelectorAll('[' + attr + ']').forEach(function(el) { el.removeAttribute(attr); });
         });
-        if (resetScroll) {
+        if (resetScroll || (control.endLine && control.endLine.target)) {
           control.scrollers.forEach(function(rec) {
             if (rec.el.isConnected) rec.el.scrollTo({ left: rec.x, top: rec.y, behavior: 'instant' });
           });

@@ -220,7 +220,7 @@ function environment(options = {}) {
     scripting: { async executeScript(spec) {
       const source = spec.func.toString();
       await callHook('executeScript', source, spec.args || []);
-      if (options.actualFull && source.includes('var scrollEl = null;')) {
+      if (options.actualFull && source.includes('var scrollEl = lineTarget || null;')) {
         // Only browser geometry is synthetic. The Full Page loop, retries,
         // masking helper, composition function and save path remain actual.
         return [{ result: { sh: 1200, vh: 600, vw: 800, sy: 75, ch: 600,
@@ -840,7 +840,7 @@ for (const multi of [false, true]) {
   });
 }
 
-test('end line refuses an internal scroller without saving a misleading image', async () => {
+test('end line refuses an internal scroller without a matching bound marker', async () => {
   const e = environment({ actualFull: true, customFull: true, actualRoutes: true });
   const marker = { placed: true, removed: false, paused: false, getY() { return 350; },
     pause() { this.paused = true; }, resume() { this.paused = false; },

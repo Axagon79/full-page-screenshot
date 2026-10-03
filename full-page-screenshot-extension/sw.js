@@ -1384,7 +1384,13 @@ async function doFullCapture(tabId) {
     var results = await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: function() {
-        var scrollEl = null;
+        var control = window.__shotCaptureControl;
+        var marker = control && control.endLine;
+        var lineTarget = marker && marker.target;
+        if (lineTarget && !lineTarget.isConnected) {
+          throw new Error('The scrolling content changed. Place the end line again.');
+        }
+        var scrollEl = lineTarget || null;
         // PROVA PRATICA invece del confronto di altezze: su alcuni siti (es.
         // betexplorer) scrolla il BODY con overflow proprio, non la finestra —
         // il documento risulta alto ma window.scrollTo non muove nulla. Quindi:
@@ -1404,7 +1410,7 @@ async function doFullCapture(tabId) {
         var corsaWin = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
         if (windowScrolls && corsaWin < window.innerHeight * 0.5) windowScrolls = false;
 
-        if (!windowScrolls) {
+        if (!windowScrolls && !lineTarget) {
           var all = document.querySelectorAll('*');
           var bestVisibleArea = -1;
           var bestScrollHeight = -1;
@@ -1513,7 +1519,9 @@ async function doFullCapture(tabId) {
 
         if (target) {
           target.setAttribute('data-screenshot-scroll', 'true');
-          target.scrollTop = 0;
+          // First remember the actual end view. The existing capture loop
+          // will scroll this pane to zero, never its independent neighbours.
+          if (!lineTarget) target.scrollTop = 0;
         } else {
           window.scrollTo(0, 0);
         }
@@ -1522,8 +1530,7 @@ async function doFullCapture(tabId) {
         // di cattura nasconde la scrollbar del contenitore, il contenuto si
         // riallarga di ~15px e l'altezza totale può cambiare leggermente.
         var sh = target ? target.scrollHeight : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var control = window.__shotCaptureControl;
-        var endLine = !target && control && control.endLine;
+        var endLine = marker && (!target || target === lineTarget) ? marker : null;
         if (endLine) sh = Math.max(1, Math.min(sh, control.endLine.getY()));
 
         // Geometria del contenitore A SCHERMO: dove inizia (ot) e quanto è
@@ -1549,6 +1556,25 @@ async function doFullCapture(tabId) {
           if (!(ch >= 50)) { ch = window.innerHeight; ot = 0; }
         }
 
+        var endPane = null;
+        if (lineTarget) {
+          var lineRect = target.getBoundingClientRect();
+          ot = Math.max(0, lineRect.top + (target.clientTop || 0));
+          var lineViewHeight = window.visualViewport && window.visualViewport.scale === 1
+            ? window.visualViewport.height : window.innerHeight;
+          ch = Math.min(target.clientHeight, lineViewHeight - ot);
+          var left = Math.max(0, lineRect.left + (target.clientLeft || 0));
+          var right = Math.min(window.innerWidth, lineRect.left + (target.clientLeft || 0) + target.clientWidth);
+          var screenEnd = marker.getScreenY();
+          if (!(ch >= 50 && right > left && screenEnd > ot && screenEnd <= ot + ch + 1)) {
+            throw new Error('Move the end line inside the visible scrolling content, then try again.');
+          }
+          var bg = getComputedStyle(document.body).backgroundColor;
+          if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') bg = getComputedStyle(document.documentElement).backgroundColor;
+          endPane = { left: left, width: right - left, screenEnd: screenEnd,
+            background: !bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)' ? '#ffffff' : bg };
+        }
+
         return {
           sh: sh,
           vh: window.innerHeight,
@@ -1560,25 +1586,33 @@ async function doFullCapture(tabId) {
             ? window.visualViewport.height : window.innerHeight,
           dpr: window.devicePixelRatio || 1,
           hasCustomScroll: !useWindow,
-          endLine: !!endLine
+          endLine: !!endLine,
+          endPane: endPane
         };
       }
     });
 
     var d = results[0].result;
-    if (endLineRequested && (d.multiPane || d.hasCustomScroll || !d.endLine)) {
+    if (endLineRequested && (d.multiPane || (d.hasCustomScroll && !d.endPane) || !d.endLine)) {
       throw new Error('The end line needs a normally scrolling page. Use Full Page or Area for this page.');
     }
     if (d.multiPane) {
       await doMultiPaneFullCapture(tabId, d);
       return;
     }
+    // Preserve all regions outside the selected pane exactly at the chosen
+    // end. captureFrame excludes both the marker and the progress indicator.
+    if (d.endPane) d.endPane.image = await captureFrame(tabId);
     // Passo di avanzamento: l'altezza VISIBILE del contenitore scrollato
     // (per lo scroll di finestra coincide con l'altezza del viewport).
     // One physical pixel of overlap avoids gaps from rounded viewport sizes
     // at browser zoom. Internal scrollers retain their existing step/engine.
-    var stepH = d.hasCustomScroll ? d.ch : Math.max(1,
+    var stepH = d.hasCustomScroll ? (d.endPane ? Math.max(1, d.ch - 1 / d.dpr) : d.ch) : Math.max(1,
       Math.min(d.vh, d.visualH || d.vh) - 1 / d.dpr);
+    // The final scroll must cover the last physical pixel even when Chrome
+    // rounds CSS scroll positions at fractional zoom. Clip the image to the
+    // selected end, not the scroll request, so this cannot extend the result.
+    var endPaneLastY = d.endPane ? Math.ceil(Math.max(0, d.sh - d.ch) * d.dpr) / d.dpr : 0;
     var rows = Math.ceil(d.sh / stepH);
     var initialRows = rows, initialHeight = d.sh;
     var documentDone = false, nextDocumentY = 0, documentGrowing = false;
@@ -1887,7 +1921,7 @@ async function doFullCapture(tabId) {
             }, 50);
           });
         },
-        args: [d.hasCustomScroll ? i * stepH : nextDocumentY, d.hasCustomScroll, i,
+        args: [d.hasCustomScroll ? (d.endPane ? Math.min(i * stepH, endPaneLastY) : i * stepH) : nextDocumentY, d.hasCustomScroll, i,
           !d.hasCustomScroll && nextDocumentY < 1 / d.dpr]
       });
       if (d.hasCustomScroll) realScrolls.push((esitoSlice && esitoSlice[0] && typeof esitoSlice[0].result === 'number')
@@ -1895,6 +1929,32 @@ async function doFullCapture(tabId) {
         : i * stepH);
 
       await sleep(350);
+
+      if (d.endPane) {
+        var paneState = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: function() {
+            var control = window.__shotCaptureControl;
+            var marker = control && control.endLine, el = marker && marker.target;
+            if (!el || !el.isConnected) throw new Error('The scrolling content changed. Place the end line again.');
+            var r = el.getBoundingClientRect();
+            var paneViewHeight = window.visualViewport && window.visualViewport.scale === 1
+              ? window.visualViewport.height : innerHeight;
+            return { y: el.scrollTop, end: marker.getY(), left: Math.max(0, r.left + (el.clientLeft || 0)),
+              right: Math.min(innerWidth, r.left + (el.clientLeft || 0) + el.clientWidth),
+              top: Math.max(0, r.top + (el.clientTop || 0)), height: Math.min(el.clientHeight, paneViewHeight - Math.max(0, r.top + (el.clientTop || 0))),
+              width: innerWidth, viewH: innerHeight, dpr: devicePixelRatio || 1 };
+          }
+        });
+        var ps = paneState[0].result;
+        if (Math.abs(ps.end - d.sh) > 1 || Math.abs(ps.left - d.endPane.left) > 0.5 ||
+            Math.abs(ps.right - d.endPane.left - d.endPane.width) > 0.5 ||
+            Math.abs(ps.top - d.ot) > 0.5 || Math.abs(ps.height - d.ch) > 0.5 ||
+            ps.width !== d.vw || ps.viewH !== d.vh || Math.abs(ps.dpr - d.dpr) > 0.001) {
+          throw new Error('The scrolling content moved during capture. Place the end line again.');
+        }
+        realScrolls[realScrolls.length - 1] = ps.y;
+      }
 
       var beforeFrame = null;
       if (!d.hasCustomScroll) {
@@ -1983,7 +2043,7 @@ async function doFullCapture(tabId) {
 
     var compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot, reali) {
+      func: function(imgs, pw, ph, viewH, ratio, custom, ch, ot, reali, endPane) {
         // Load first: physical image sizes and actual scroll positions must
         // agree, including fractional browser zoom and a newly loaded tail.
         function loadImg(src) {
@@ -1995,10 +2055,54 @@ async function doFullCapture(tabId) {
           });
         }
 
-        return Promise.all(imgs.map(loadImg)).then(function(loaded) {
+        return Promise.all((endPane ? imgs.concat([endPane.image]) : imgs).map(loadImg)).then(function(loaded) {
+          var endView = endPane ? loaded.pop() : null;
           var total = loaded.length;
+          if (!total) throw new Error('No capture frames were available. Please try again.');
           // Larghezza canvas = larghezza reale della cattura (tutte uguali).
           var cw = loaded[0].width;
+
+          if (custom && endPane) {
+            // Same Full Page frames and save path; only this end-line case
+            // composes the chosen pane separately from its unchanged rails.
+            var kLine = ratio > 0 && isFinite(ratio) &&
+              Math.abs(loaded[0].height - viewH * ratio) <= Math.max(1, ratio / 2) + 0.001
+              ? ratio : loaded[0].height / viewH;
+            var bandTopLine = Math.round(ot * kLine), contentH = Math.round(ph * kLine);
+            var leftLine = Math.round(endPane.left * kLine);
+            var rightLine = Math.min(cw, Math.round((endPane.left + endPane.width) * kLine));
+            var canvasLine = document.createElement('canvas');
+            canvasLine.width = cw; canvasLine.height = bandTopLine + contentH;
+            var ctxLine = canvasLine.getContext('2d');
+            if (!ctxLine) throw new Error('Image too large to save. Please capture a shorter section.');
+            ctxLine.fillStyle = endPane.background; ctxLine.fillRect(0, 0, cw, canvasLine.height);
+            if (endView.width !== cw || endView.height !== loaded[0].height || rightLine <= leftLine) {
+              throw new Error('The window size changed during capture. Please try again.');
+            }
+            var screenEndLine = Math.min(endView.height, Math.round(endPane.screenEnd * kLine));
+            var endDest = canvasLine.height - screenEndLine;
+            var endSkip = Math.max(bandTopLine, -endDest), endCount = screenEndLine - endSkip;
+            if (endCount > 0) ctxLine.drawImage(endView, 0, endSkip, cw, endCount, 0, endDest + endSkip, cw, endCount);
+            // Keep the original top bar once. The rails from the end view
+            // remain beside the bottom, not repeated or re-scrolled.
+            if (bandTopLine > 0) ctxLine.drawImage(loaded[0], 0, 0, cw, bandTopLine, 0, 0, cw, bandTopLine);
+            var coveredLine = 0;
+            for (var li = 0; li < total; li++) {
+              var imageLine = loaded[li];
+              if (imageLine.width !== cw || imageLine.height !== loaded[0].height) throw new Error('The window size changed during capture. Please try again.');
+              var destLine = Math.round(reali[li] * kLine);
+              var skipLine = Math.max(0, coveredLine - destLine, -destLine);
+              var countLine = Math.min(Math.round(ch * kLine) - skipLine, imageLine.height - bandTopLine - skipLine,
+                contentH - destLine - skipLine);
+              if (countLine <= 0) continue;
+              if (destLine + skipLine > coveredLine) throw new Error('The page moved during capture. Please try again.');
+              ctxLine.drawImage(imageLine, leftLine, bandTopLine + skipLine, rightLine - leftLine, countLine,
+                leftLine, bandTopLine + destLine + skipLine, rightLine - leftLine, countLine);
+              coveredLine = destLine + skipLine + countLine;
+            }
+            if (coveredLine < contentH) throw new Error('The scrolling content ended before the capture was complete. Please try again.');
+            return canvasLine.toDataURL('image/png');
+          }
 
           // CONTENITORE INTERNO: ogni cattura è il viewport intero, ma il
           // contenuto NUOVO sta solo nella fascia del contenitore a schermo
@@ -2089,7 +2193,7 @@ async function doFullCapture(tabId) {
           return { captureError: error && error.message ? error.message : 'Unable to compose the full page. Please try again.' };
         });
       },
-      args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot, realScrolls]
+      args: [captures, d.vw, d.sh, d.vh, d.dpr, d.hasCustomScroll, d.ch, d.ot, realScrolls, d.endPane]
     });
 
     var composedFull = compResult[0].result;

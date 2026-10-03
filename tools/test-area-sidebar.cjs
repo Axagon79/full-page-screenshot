@@ -69,6 +69,40 @@ async function checkAdPixels(source, origin) {
   });
 }
 
+function internalEndFixture() {
+  const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.head.innerHTML='<style>*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0;background:'+(dark?'#141923':'#fff')+';font:16px Arial}header{height:60px;background:rgb(226,237,245);padding:18px}.app{display:flex;height:calc(100vh - 60px)}aside{width:180px;flex:none;overflow:auto}main{flex:1;min-width:0;overflow:auto}section{height:80px;padding:20px}.right{width:140px}nav div{height:70px;padding:20px}@media(max-width:500px){aside{width:80px}.right{width:70px}}</style>';
+  const colors=['rgb(60,130,190)','rgb(180,160,45)','rgb(75,175,100)','rgb(185,80,130)','rgb(110,90,200)','rgb(45,165,175)'];
+  function rail(id,offset){return '<aside id="'+id+'"'+(offset?' class="right"':'')+'><nav>'+Array.from({length:50},(_,i)=>'<div style="background:rgb('+(offset?200:40)+','+(80+(i%8)*15)+','+(offset?40:200)+')">RAIL '+i+'</div>').join('')+'</nav></aside>';}
+  document.body.innerHTML='<header>APP HEADER</header><div class="app">'+rail('left-pane',0)+'<main id="main-pane">'+Array.from({length:60},(_,i)=>'<section style="background:'+colors[i%6]+'">CONTENT '+i+'</section>').join('')+'</main>'+rail('right-pane',1)+'</div>';
+  document.getElementById('left-pane').scrollTop=420;
+  document.getElementById('right-pane').scrollTop=280;
+  document.getElementById('main-pane').scrollTop=1100;
+  window.__internalInitial=[...document.querySelectorAll('aside,main')].map(el=>({el,y:el.scrollTop,style:el.getAttribute('style')}));
+}
+
+async function checkInternalEndPixels(source, reference, endY, screenEnd) {
+  async function load(src){const im=new Image();await new Promise((yes,no)=>{im.onload=yes;im.onerror=no;im.src=src;});return im;}
+  const [image,endView]=await Promise.all([load(source),load(reference)]);
+  const scale=devicePixelRatio,r=document.getElementById('main-pane').getBoundingClientRect();
+  const left=Math.round(r.left*scale),right=Math.round(r.right*scale),top=Math.round(r.top*scale);
+  const expectedHeight=top+Math.round(endY*scale),cut=Math.round(screenEnd*scale),dest=expectedHeight-cut;
+  function pixels(im){const c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').drawImage(im,0,0);return c.getContext('2d').getImageData(0,0,c.width,c.height).data;}
+  const a=pixels(image),b=pixels(endView),colors=[[60,130,190],[180,160,45],[75,175,100],[185,80,130],[110,90,200],[45,165,175]];
+  let mainWrong=0,railsWrong=0,earlyRailWrong=0;
+  for(let y=top;y<image.height;y++){
+    const color=colors[Math.floor((y-top+0.1)/scale/80)%6],p=(y*image.width+left+Math.min(8,right-left-1))*4;
+    if(color.some((v,k)=>a[p+k]!==v)||a[p+3]!==255)mainWrong++;
+    for(let x=0;x<image.width;x++){
+      if(x>=left&&x<right)continue;
+      const at=(y*image.width+x)*4;
+      if(y>=dest+top){const from=((y-dest)*endView.width+x)*4;if([0,1,2,3].some(k=>a[at+k]!==b[from+k]))railsWrong++;}
+      else if(y<dest+top){const expected=matchMedia('(prefers-color-scheme: dark)').matches?[20,25,35]:[255,255,255];if(expected.some((v,k)=>a[at+k]!==v)||a[at+3]!==255)earlyRailWrong++;}
+    }
+  }
+  return {width:image.width,height:image.height,expectedHeight,mainWrong,railsWrong,earlyRailWrong};
+}
+
 function growthFixture(mode) {
   document.head.innerHTML = '<style>*{box-sizing:border-box}body{margin:0;font:16px Arial}section{height:400px;padding:60px}footer{height:200px;padding:60px;background:rgb(174,37,101)}</style>';
   document.body.innerHTML = '<main></main><footer>REAL END OF DOCUMENT</footer>';
@@ -322,7 +356,10 @@ async function checkNavigationPixels(source) {
   const mode = process.argv.includes('--full') ? 'full' : process.argv.includes('--visible') ? 'visible' : 'area';
   const multi = process.argv.includes('--multi');
   const editor = process.argv.includes('--editor');
-  const independent = process.argv.includes('--independent');
+  const endLineInternal = process.argv.includes('--end-line-internal');
+  const endLineShort = process.argv.includes('--end-line-short');
+  const endLineStale = process.argv.includes('--end-line-stale');
+  const independent = process.argv.includes('--independent') || endLineInternal;
   const release = process.argv.includes('--release');
   const ads = process.argv.includes('--ads');
   const modal=(process.argv.find(arg=>arg.startsWith('--modal='))||'').slice(8);
@@ -334,7 +371,10 @@ async function checkNavigationPixels(source) {
   const endLineButton=process.argv.includes('--end-line-button');
   const endLineDrag=process.argv.includes('--end-line-drag');
   const endLineAnchor=process.argv.includes('--end-line-anchor');
-  if((endLine||endLineMdn)&&(mode!=='full'||(growth!=='static'&&!(endLineMdn&&site==='mdn'))))throw Error('End-line fixture requires --full --growth=static, or --full --site=mdn --end-line-mdn');
+  if((endLine||endLineMdn)&&(mode!=='full'||(growth!=='static'&&!(endLineMdn&&site==='mdn')&&!endLineInternal)))throw Error('End-line fixture requires --full --growth=static, --end-line-internal, or --full --site=mdn --end-line-mdn');
+  if(endLineInternal&&(!endLine||live||growth))throw Error('Internal end-line fixture requires --full --end-line without a live site or growth fixture');
+  if((endLineShort||endLineStale)&&!endLineInternal)throw Error('Short/stale line checks require --end-line-internal');
+  if(endLineShort&&endLineDrag)throw Error('Short and drag checks are separate cases');
   if(endLineMdn&&!endLine)throw Error('--end-line-mdn also requires --end-line');
   if((endLineButton||endLineDrag||endLineAnchor)&&!endLine)throw Error('End-line interactions require --end-line');
   const cold=process.argv.includes('--cold'),stopWait=process.argv.includes('--stop-wait');
@@ -379,7 +419,8 @@ async function checkNavigationPixels(source) {
         assert(await browser.evaluate('!!document.querySelector("[role=dialog]")'),'The real pricing login popup is open');
         await browser.evaluate('window.__pricingDialog=document.querySelector("[role=dialog]");window.__pricingBodyStyle=document.body.getAttribute("style");true');
       }
-    } else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
+    } else if(endLineInternal)await browser.evaluate('('+internalEndFixture.toString()+')()');
+    else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
     else if(growth)await browser.evaluate('('+growthFixture.toString()+')('+JSON.stringify(growth)+')');
     else await browser.evaluate('('+fixture.toString()+')('+independent+','+release+','+ads+')');
     if(zoomArg)assert(Math.abs(await browser.evaluate('devicePixelRatio')-zoom)<0.001,'Actual browser zoom matches the requested value');
@@ -396,7 +437,7 @@ async function checkNavigationPixels(source) {
     const event=()=>({addListener(){}});
     const storage=data=>({async get(keys){const result={};for(const key of Array.isArray(keys)?keys:[keys])if(key in data)result[key]=clone(data[key]);return result;},
       async set(values){Object.assign(data,clone(values));},async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[key];}});
-    const frames=[],outputs=[],messages=[],compositions=[],measurements=[];let selection=null,context,preparation=null,adPreparation=null,stopWaitAt=0,lastFrameSource=null,endLineY=null;
+    const frames=[],outputs=[],messages=[],compositions=[],measurements=[];let selection=null,context,preparation=null,adPreparation=null,stopWaitAt=0,lastFrameSource=null,endLineY=null,endLineScreenY=null,endViewSource=null;
     const previousPiece={id:1,tipo:'visible',img:'data:image/png;base64,previous'};
     const session=multi?{multi:{active:true,sessionId:'area-diagnostic',sourceTabId:1,editorTabId:editor?2:null,nextId:1,pieces:[previousPiece],trash:[]}}:{};
     const chrome={
@@ -414,6 +455,7 @@ async function checkNavigationPixels(source) {
           if(frames.length===(site==='pricing'?1:2)&&stop)context.cancelCapture();
           const image=await browser.cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
           lastFrameSource='data:image/png;base64,'+image.data;
+          if(endLineInternal&&frames.length===1)endViewSource=lastFrameSource;
           await browser.evaluate('('+sampleNavigation.toString()+')('+JSON.stringify('data:image/png;base64,'+image.data)+','+(selection?.area?.x||0)+','+(selection?.area?.y_doc||0)+')');
           return 'data:image/png;base64,'+image.data;
         }},
@@ -483,7 +525,7 @@ async function checkNavigationPixels(source) {
     vm.runInContext(readSource('sw.js'),context,{filename:'sw.js'});
     await context.captureRecovery;
     if(endLine){
-      await browser.evaluate('window.chrome={runtime:{sendMessage:async m=>{(window.__endLineMessages||=[]).push(m);return {armed:true,started:true}}}};true');
+      await browser.evaluate('window.chrome={runtime:{id:"test-extension",sendMessage:async m=>{(window.__endLineMessages||=[]).push(m);return {armed:true,started:true}}}};true');
       await browser.evaluate(readSource('end-line.js'));
       if(endLineMdn){
         await browser.evaluate(`(()=>{scrollTo(0,1800);const aside=document.querySelector('.layout__left-sidebar');
@@ -497,16 +539,19 @@ async function checkNavigationPixels(source) {
           if(!target)throw Error('No visible sidebar link for end-line check');
           window.__endLineNavTarget=target;window.__endLineNavTop=target.getBoundingClientRect().top;
           window.__endLineNavScroll=aside.scrollTop;return true;})()`);
-      }else await browser.evaluate('scrollTo(0,900);true');
-      const pickX=endLineMdn?800:200;
-      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:650});
-      await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:pickX,y:650,button:'left',clickCount:1});
-      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:pickX,y:650,button:'left',clickCount:1});
+      }else if(!endLineInternal)await browser.evaluate('scrollTo(0,900);true');
+      if(endLineShort)await browser.evaluate('document.getElementById("main-pane").scrollTop=0;window.__internalInitial.find(rec=>rec.el.id==="main-pane").y=0;true');
+      const pickY=endLineShort?350:650;
+      const pickX=process.argv.includes('--end-line-sidebar')?10:endLineInternal?await browser.evaluate('(()=>{const r=document.getElementById("main-pane").getBoundingClientRect();return r.left+r.width/2;})()'):endLineMdn?800:200;
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:pickY});
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:pickX,y:pickY,button:'left',clickCount:1});
+      await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:pickX,y:pickY,button:'left',clickCount:1});
       endLineY=await browser.evaluate('window.__shotEndLine?.getY()');
-      assert(Math.abs(endLineY-(endLineMdn?2450:1550))<=2,'The real mouse places the line in document coordinates');
+      assert(Math.abs(endLineY-(endLineShort?290:endLineInternal?1690:endLineMdn?2450:1550))<=2,'The real mouse places the line in its scrolling content coordinates');
+      if(endLineInternal)assert.equal(await browser.evaluate('window.__shotEndLine.target.id'),'main-pane','The widest main pane owns the end line, not an independent sidebar');
       assert(await browser.evaluate('window.__shotEndLine?.placed===true'),'The line is fixed after one click');
       assert(await browser.evaluate('window.__endLineMessages.some(m=>m.action==="endLineArmed")'),'The line arms the toolbar');
-      if(endLineAnchor&&!endLineMdn){
+      if(endLineAnchor&&!endLineMdn&&!endLineInternal){
         await browser.evaluate('document.querySelector("main section").style.height="450px";true');
         assert(Math.abs((await browser.evaluate('window.__shotEndLine?.getY()'))-1600)<=2,
           'The line follows its content when earlier content grows');
@@ -514,20 +559,41 @@ async function checkNavigationPixels(source) {
         assert(Math.abs((await browser.evaluate('window.__shotEndLine?.getY()'))-1550)<=2,
           'The line returns with its content before capture');
       }
-      if(endLineDrag){
-        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:200,y:650});
-        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:200,y:650,button:'left',clickCount:1});
-        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:200,y:700,buttons:1});
-        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:200,y:700,button:'left',clickCount:1});
-        endLineY=await browser.evaluate('window.__shotEndLine?.getY()');
-        assert(Math.abs(endLineY-1600)<=2,`Dragging adjusts the target in document coordinates (got ${endLineY})`);
+      if(endLineAnchor&&endLineInternal){
+        const before=endLineY;
+        await browser.evaluate('document.querySelector("main section").style.height="130px";true');
+        assert(Math.abs(await browser.evaluate('window.__shotEndLine.getY()')-before-50)<2,'The internal marker follows content inserted above its anchor');
+        await browser.evaluate('document.querySelector("main section").style.height="";document.getElementById("main-pane").scrollTop=1100;true');
+        assert(Math.abs(await browser.evaluate('window.__shotEndLine.getY()')-before)<2,'The internal anchor returns to its original content coordinate');
       }
-      if(dark&&!endLineMdn)await browser.evaluate('window.__endLinePreviewSection=document.querySelectorAll("main section")[3];window.__endLinePreviewOldBackground=window.__endLinePreviewSection.style.background;window.__endLinePreviewSection.style.background="rgb(20,25,35)";true');
+      if(endLineDrag){
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:650});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:pickX,y:650,button:'left',clickCount:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:700,buttons:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:pickX,y:700,button:'left',clickCount:1});
+        endLineY=await browser.evaluate('window.__shotEndLine?.getY()');
+        assert(Math.abs(endLineY-(endLineInternal?1740:1600))<=2,`Dragging adjusts the target in content coordinates (got ${endLineY})`);
+      }
+      if(dark&&!endLineMdn&&!endLineInternal)await browser.evaluate('window.__endLinePreviewSection=document.querySelectorAll("main section")[3];window.__endLinePreviewOldBackground=window.__endLinePreviewSection.style.background;window.__endLinePreviewSection.style.background="rgb(20,25,35)";true');
       const preview=await browser.cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
       fs.writeFileSync(path.join(outputDir,'end-line-preview'+(mobile?'-mobile':'-desktop')+(dark?'-dark':'-light')+'.png'),Buffer.from(preview.data,'base64'));
-      if(dark&&!endLineMdn)await browser.evaluate('window.__endLinePreviewSection.style.background=window.__endLinePreviewOldBackground;delete window.__endLinePreviewSection;delete window.__endLinePreviewOldBackground;true');
+      if(dark&&!endLineMdn&&!endLineInternal)await browser.evaluate('window.__endLinePreviewSection.style.background=window.__endLinePreviewOldBackground;delete window.__endLinePreviewSection;delete window.__endLinePreviewOldBackground;true');
+      endLineScreenY=await browser.evaluate('window.__shotEndLine.getScreenY()');
+      if(endLineStale){
+        await browser.evaluate('window.chrome.runtime.sendMessage=()=>{throw Error("Extension context invalidated.")};true');
+        const staleX=(mobile?390:1920)-92,staleY=endLineScreenY+31;
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:staleX,y:staleY,button:'left',clickCount:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:staleX,y:staleY,button:'left',clickCount:1});
+        assert(await browser.evaluate('!window.__shotEndLine&&!document.getElementById("__shot_end_line")'),'A synchronous invalidated-context error removes the stale disabled line');
+        await browser.evaluate('window.chrome.runtime.sendMessage=async m=>{(window.__endLineMessages||=[]).push(m);return {armed:true,started:true}};true');
+        await browser.evaluate(readSource('end-line.js'));
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:pickX,y:pickY});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:pickX,y:pickY,button:'left',clickCount:1});
+        await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:pickX,y:pickY,button:'left',clickCount:1});
+        assert.equal(await browser.evaluate('document.querySelectorAll("#__shot_end_line").length'),1,'A retry creates exactly one working line');
+      }
       if(endLineButton){
-        const buttonX=(mobile?390:1920)-92,buttonY=(endLineY-900)+31;
+        const buttonX=(mobile?390:1920)-92,buttonY=endLineScreenY+31;
         await browser.cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:buttonX,y:buttonY});
         await browser.cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:buttonX,y:buttonY,button:'left',clickCount:1});
         await browser.cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:buttonX,y:buttonY,button:'left',clickCount:1});
@@ -549,6 +615,7 @@ async function checkNavigationPixels(source) {
       height:document.documentElement.scrollHeight,remaining:document.querySelectorAll('[data-screenshot-area-pane],[data-screenshot-scroll],[data-screenshot-area-scroll]').length})`);
     assert.equal(restored.control,false);assert.equal(restored.styles,true,'Original sidebar styles and priorities restored');
     assert.equal(restored.adsStyles,true,'Original advertisement positions and priorities restored');
+    if(endLineInternal)assert(await browser.evaluate('window.__internalInitial.every(rec=>Math.abs(rec.el.scrollTop-rec.y)<1&&rec.el.getAttribute("style")===rec.style)&&scrollY===0'),'Every internal pane retains its original scroll and style after success, Stop or error');
     assert.equal(restored.stickyVisibility,true,'Original sticky visibility restored');
     if(modal){
       const state=await browser.evaluate(`(()=>{const w=document.getElementById('wizard');return {present:!!w,open:w.tagName==='DIALOG'?w.open:w.hasAttribute('popover')?w.matches(':popover-open'):true,style:w.getAttribute('style')===window.__modalOriginal,inert:document.querySelector('main').inert,overlay:!!document.getElementById('__screenshot_area_overlay'),noSelect:!!document.getElementById('__screenshot_noselect')};})()`);
@@ -577,7 +644,8 @@ async function checkNavigationPixels(source) {
       assert.equal(outputs.length,0,'Interrupted capture produces no file');
       if(multi)assert.deepEqual(session.multi.pieces,[previousPiece],'Interrupted Multi preserves old pieces');
       if(compositionGap){
-        assert(JSON.stringify(messages).includes('The page moved during capture'),'The actual composition error reaches the UI');
+        const expectedError=endLineInternal?'The scrolling content ended before the capture was complete':'The page moved during capture';
+        assert(messages.some(m=>m.type==='error'&&m.message.includes(expectedError)),'The actual composition error reaches the UI');
         assert(!JSON.stringify(messages).includes('Image too large'),'A missing frame is not called an oversized image');
       }
       if(stopWait){assert(stopWaitAt,'Stop reached the actual bottom wait');assert(cancelMs<2000,'Stop interrupts the wait promptly');assert(!messages.some(m=>m.type==='error'),'Stop is not reported as a loading error');}
@@ -592,9 +660,18 @@ async function checkNavigationPixels(source) {
       assert.equal(session.multi.pieces.length,2,'Multi adds exactly one piece');
       outputs.push(session.multi.pieces[1].img);
     }
-    const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
+    const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:endLineInternal?'internal':independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-after.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+    if(endLineInternal){
+      const checked=await browser.evaluate('('+checkInternalEndPixels.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(endViewSource)+','+endLineY+','+endLineScreenY+')');
+      assert.equal(checked.height,checked.expectedHeight,'Output ends exactly at the internal end line');
+      assert.equal(checked.mainWrong,0,'Every content row is present exactly once, including fractional zoom joins');
+      assert.equal(checked.railsWrong,0,'Both independent sidebars exactly match their end-view pixels');
+      assert.equal(checked.earlyRailWrong,0,'Independent sidebars are not repeated at the top or in intermediate bands');
+      fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-diagnostic.json'),JSON.stringify({checked,frames,compositions,messages,restored},null,2));
+      console.log('Internal end-line pixels',JSON.stringify(checked));return;
+    }
     if(endLineMdn){
       const bottomPng=await browser.evaluate(`(async()=>{const im=new Image();await new Promise((yes,no)=>{im.onload=yes;im.onerror=no;im.src=${JSON.stringify(outputs[0])}});
         const c=document.createElement('canvas');c.width=im.width;c.height=Math.min(900,im.height);

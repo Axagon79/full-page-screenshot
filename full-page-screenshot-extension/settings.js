@@ -1,6 +1,10 @@
 // Changelog per versione: solo le voci rivolte all'utente (niente dettagli
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
+  '9.14': [
+    'Fixed: Capture to here now works when the main content scrolls inside a panel, keeping independent side columns as you see them. Also available in Multi Snip.',
+    'Fixed: an old end line no longer leaves a stuck button or an unhandled error after the extension is reloaded. Refresh the page before placing a new line.'
+  ],
   '9.13': [
     'New: Capture to here — right-click a page to set an end line, adjust it, then capture from the top to that point using the nearby button or the extension icon. Also available in Multi Snip.',
     'Fixed: Select Area now works over pop-up windows, including login dialogs, without closing them. Also fixed when adding a piece in Multi Snip.'
