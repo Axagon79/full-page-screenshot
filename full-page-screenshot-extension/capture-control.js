@@ -806,7 +806,7 @@ async function runControlledCapture(job) {
     // Drain pending progress updates before removing the HUD and restoring the icon.
     // Late updates must not resurrect a completed capture's percentage.
     if (job.progressUpdate) await job.progressUpdate;
-    await cleanupCaptureJob(job, job.cancelled || job.failed || !job.committed);
+    await cleanupCaptureJob(job, job.mode === 'area' || job.cancelled || job.failed || !job.committed);
     // Keep the job locked until all in-flight work and restoration are done.
     try {
       await restoreCaptureAction();

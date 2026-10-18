@@ -440,6 +440,21 @@ test('Stop during composition prevents download and clipboard writes', async () 
   restored(e);
 });
 
+for (const multi of [false, true]) {
+  for (const mode of ['area', 'full']) {
+    test(`${multi ? 'Multi' : 'normal'} ${mode}: successful cleanup preserves its scroll policy`, async () => {
+      const e = environment({ multi: multi ? collection() : undefined,
+        hooks: { pipeline() { e.page.scrollY = 900; e.scroller.scrollTop = 800; } } });
+      const { job } = e.start(mode, multi ? { multi: true, sourceRequestTabId: 1 } : undefined);
+      await job.done;
+      assert.equal(job.committed, true);
+      assert.equal(e.page.scrollY, mode === 'area' ? 75 : 900);
+      assert.equal(e.scroller.scrollTop, mode === 'area' ? 42 : 800);
+      restored(e);
+    });
+  }
+}
+
 test('cleanup restores DOM/scroll before icon restoration and unlock', async () => {
   const captureGate = deferred(), cleanupGate = deferred();
   const e = environment({ hooks: { capture: () => captureGate.promise, cleanup: () => cleanupGate.promise } });

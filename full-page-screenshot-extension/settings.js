@@ -3,7 +3,10 @@
 var CHANGELOG = {
   '9.14': [
     'Fixed: Capture to here now works when the main content scrolls inside a panel, keeping independent side columns as you see them. Also available in Multi Snip.',
-    'Fixed: an old end line no longer leaves a stuck button or an unhandled error after the extension is reloaded. Refresh the page before placing a new line.'
+    'Fixed: an old end line no longer leaves a stuck button or an unhandled error after the extension is reloaded. Refresh the page before placing a new line.',
+    'Fixed: Select Area avoids repeated message boxes on chat pages, including when adding a piece in Multi Snip.',
+    'Changed: after Select Area, return to the position before selection. Full Page returns to the top; Stop restores the position before capture.',
+    'Changed: no more NEW badge on the extension icon. Release notes remain available here in Settings.'
   ],
   '9.13': [
     'New: Capture to here — right-click a page to set an end line, adjust it, then capture from the top to that point using the nearby button or the extension icon. Also available in Multi Snip.',
@@ -55,8 +58,7 @@ if (badgeVer) badgeVer.textContent = 'v' + chrome.runtime.getManifest().version;
 
 // Novita' della versione installata: il pulsantino accanto al titolo apre una
 // finestrella che si chiude con la X, con Esc o cliccando fuori. Sta sopra la
-// pagina, quindi non la allunga. Aprire le impostazioni spegne comunque il
-// badge NEW sull'icona.
+// pagina, quindi non la allunga. Nessun avviso di novità sull'icona.
 var versioneNews = chrome.runtime.getManifest().version;
 var vociNews = CHANGELOG[versioneNews];
 if (vociNews && vociNews.length) {
@@ -76,7 +78,6 @@ if (vociNews && vociNews.length) {
   newsModal.addEventListener('click', function(e) { if (e.target === newsModal) chiudiNews(); });
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') chiudiNews(); });
 }
-chrome.runtime.sendMessage({ action: 'clearNewsBadge' });
 
 // Interruttore "Copia negli appunti": stesso schema di captureMode ma e' un
 // on/off, non una scelta radio. Default acceso (true) come da specifica.

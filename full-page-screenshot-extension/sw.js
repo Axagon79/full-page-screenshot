@@ -11,7 +11,7 @@ chrome.action.onClicked.addListener(function(tab) {
 });
 
 // Menu contestuale per Capture Mode
-chrome.runtime.onInstalled.addListener(function(details) {
+chrome.runtime.onInstalled.addListener(function() {
   chrome.contextMenus.removeAll(function() {
     chrome.contextMenus.create({
       id: 'captureMode',
@@ -25,21 +25,11 @@ chrome.runtime.onInstalled.addListener(function(details) {
     });
   });
 
-  // Changelog in-app: dopo un AGGIORNAMENTO accendi il badge NEW sull'icona e
-  // segna la versione come "da leggere". Il badge si spegne quando l'utente
-  // apre le impostazioni (che mostrano le novita'). Mai al primo install:
-  // le novita' hanno senso solo per chi gia' usava l'estensione.
-  if (details.reason === 'update') {
-    var v = chrome.runtime.getManifest().version;
-    if (details.previousVersion !== v) {
-      chrome.storage.local.set({ newsUnread: v });
-      chrome.action.setBadgeText({ text: 'NEW' });
-      chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
-      if (chrome.action.setBadgeTextColor) {
-        chrome.action.setBadgeTextColor({ color: '#1a1a2e' });
-      }
-    }
-  }
+  // Release notes stay in Settings. Updates never advertise themselves on
+  // the toolbar; remove any unread marker left by an older installation.
+  chrome.storage.local.remove('newsUnread').then(function() {
+    return multiAggiornaBadge();
+  }).catch(function(error) { console.warn('Toolbar badge:', error); });
 });
 
 chrome.contextMenus.onClicked.addListener(function(info, tab) {
@@ -97,8 +87,11 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;  // risposta asincrona
   }
   if (msg.action === 'clearNewsBadge') {
-    if (!activeCaptureJob) chrome.action.setBadgeText({ text: '' });
-    chrome.storage.local.remove('newsUnread');
+    // Compatibility with an older Settings tab: never clear a live Multi
+    // count or disturb Stop just because release notes have been opened.
+    chrome.storage.local.remove('newsUnread').then(function() {
+      return multiAggiornaBadge();
+    }).catch(function(error) { console.warn('Toolbar badge:', error); });
     return;
   }
   if (msg.action === 'startCapture') {
@@ -223,8 +216,8 @@ var multiCatturaTab = null;
 var multiTornaAllEditor = false;
 
 // Badge sull'icona: durante la sessione mostra il conteggio pezzi (così la
-// sessione resta visibile anche cambiando scheda); a sessione chiusa torna
-// il badge "NEW" delle novità, se ancora da leggere, o niente.
+// sessione resta visibile anche cambiando scheda); a sessione chiusa nessun
+// testo. Le novità restano consultabili solo nelle impostazioni.
 async function multiAggiornaBadge() {
   if (activeCaptureJob) return;
   var m = await multiSessione();
@@ -236,11 +229,7 @@ async function multiAggiornaBadge() {
     }
     chrome.action.setBadgeText({ text: String(m.pieces.length) });
   } else {
-    var st = await chrome.storage.local.get('newsUnread');
-    if (activeCaptureJob) return;
-    chrome.action.setBadgeBackgroundColor({ color: '#00d4ff' });
-    if (chrome.action.setBadgeTextColor) chrome.action.setBadgeTextColor({ color: '#1a1a2e' });
-    chrome.action.setBadgeText({ text: st.newsUnread ? 'NEW' : '' });
+    chrome.action.setBadgeText({ text: '' });
   }
 }
 
@@ -1134,21 +1123,21 @@ async function registraCatturaRiuscita(tabId) {
 }
 
 // === FULL PAGE ===
-async function cleanupMultiPaneCapture(tabId, panesData) {
+async function cleanupMultiPaneCapture(tabId, panesData, returnToTop) {
   await chrome.scripting.executeScript({
     target: { tabId: tabId },
-    func: function(savedPanes) {
+    func: function(savedPanes, toTop) {
       var fixed = window.__screenshotMultiFixed || [];
       for (var f = 0; f < fixed.length; f++) fixed[f].el.style.visibility = fixed[f].oldVisibility;
       window.__screenshotMultiFixed = null;
       for (var i = 0; i < savedPanes.length; i++) {
         var pane = document.querySelector('[data-screenshot-pane="' + savedPanes[i].index + '"]');
         if (!pane) continue;
-        pane.scrollTop = savedPanes[i].oldScroll;
+        pane.scrollTo({ top: toTop ? 0 : savedPanes[i].oldScroll, left: pane.scrollLeft, behavior: 'instant' });
         pane.removeAttribute('data-screenshot-pane');
       }
     },
-    args: [panesData || []]
+    args: [panesData || [], !!returnToTop]
   });
 }
 
@@ -1367,7 +1356,7 @@ async function doMultiPaneFullCapture(tabId, d) {
 
   var saved = await saveCapturedImage(compResult[0].result, tabId, 'full');
 
-  await cleanupMultiPaneCapture(tabId, d.panes);
+  await cleanupMultiPaneCapture(tabId, d.panes, true);
 
   await resumeCssAnims(tabId);
   if (saved.rejected) sendError('Piece too large for the session (10 MB limit)');
@@ -2221,12 +2210,14 @@ async function doFullCapture(tabId) {
         }
         if (custom) {
           var el = document.querySelector('[data-screenshot-scroll]');
-          if (el) { el.scrollTop = y; el.removeAttribute('data-screenshot-scroll'); }
+          if (el) { el.scrollTo({ top: y, left: el.scrollLeft, behavior: 'instant' }); el.removeAttribute('data-screenshot-scroll'); }
         } else {
-          window.scrollTo(0, y);
+          window.scrollTo({ top: y, left: window.scrollX, behavior: 'instant' });
         }
       },
-      args: [d.sy, d.hasCustomScroll]
+      // Normal Full Page ends at the top; capture-to-line keeps its chosen
+      // view, and cancellation/error still restores the pre-capture snapshot.
+      args: [endLineRequested ? d.sy : 0, d.hasCustomScroll]
     });
 
     if (captureBackgrounds) {
@@ -3790,6 +3781,7 @@ async function doAreaCapture(tabId) {
                            // per ancorare ogni slice alla sua POSIZIONE assoluta in cucitura
     var bottomOverlay = null;
     var bottomOverlayTop = null;
+    var inputOverlay = false;
 
     sendProgress('Cattura area...', 5);
 
@@ -3849,6 +3841,19 @@ async function doAreaCapture(tabId) {
             return t;
           }
 
+          // Chat inputs can be absolute children of the app shell rather than
+          // fixed/sticky bars. Only consider small, bottom-aligned input panels;
+          // the micro-scroll below must still prove that they stay anchored.
+          // Do not classify arbitrary overlapping siblings/backgrounds as UI.
+          function isAreaInputOverlay(el, css) {
+            if (css.position !== 'absolute' || css.visibility !== 'visible' ||
+                !el.querySelector('textarea, [contenteditable="true"], [role="textbox"], input:not([type="hidden"])')) return false;
+            var r = el.getBoundingClientRect();
+            return r.height > 0 && r.height <= innerHeight * 0.35 &&
+              r.width > r.height * 1.5 && r.top >= innerHeight * 0.5 &&
+              r.bottom <= innerHeight + 2 && r.bottom >= innerHeight - 64;
+          }
+
           // Censimento sticky/fixed una volta sola, con visibility originale salvata.
           if (!window.__screenshotStickies) {
             window.__screenshotStickies = [];
@@ -3868,7 +3873,8 @@ async function doAreaCapture(tabId) {
                 parentIdx: -1,
                 classified: false,
                 bottomRoot: false,
-                bottomGroup: false
+                bottomGroup: false,
+                inputPanel: !!el.querySelector('textarea, [contenteditable="true"], [role="textbox"], input:not([type="hidden"])')
               };
               var itemCss = window.getComputedStyle(el);
               var itemRect = el.getBoundingClientRect();
@@ -3912,8 +3918,9 @@ async function doAreaCapture(tabId) {
             var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
               if (allEls[k].id === '__screenshot_area_overlay') continue;
-              var p = window.getComputedStyle(allEls[k]).position;
-              if (p === 'fixed' || p === 'sticky') {
+              var candidateCss = window.getComputedStyle(allEls[k]);
+              var p = candidateCss.position;
+              if (p === 'fixed' || p === 'sticky' || isAreaInputOverlay(allEls[k], candidateCss)) {
                 // Stesse esclusioni della Full Page: il contenitore scrollato (o
                 // un suo antenato) e gli elementi a schermo quasi intero non vanno
                 // mai nascosti — sono la scocca/sfondo dell'app, non barre fisse
@@ -3985,8 +3992,9 @@ async function doAreaCapture(tabId) {
           var addedNow = false;
           for (var dk = 0; dk < currentEls.length; dk++) {
             if (currentEls[dk].id === '__screenshot_area_overlay') continue;
-            var dp = window.getComputedStyle(currentEls[dk]).position;
-            if (dp !== 'fixed' && dp !== 'sticky') continue;
+            var dynamicCss = window.getComputedStyle(currentEls[dk]);
+            var dp = dynamicCss.position;
+            if (dp !== 'fixed' && dp !== 'sticky' && !isAreaInputOverlay(currentEls[dk], dynamicCss)) continue;
             if (scrollAncNow && currentEls[dk].contains(scrollAncNow)) continue;
             var dr = currentEls[dk].getBoundingClientRect();
             if (dr.width >= window.innerWidth * 0.9 && dr.height >= window.innerHeight * 0.9) continue;
@@ -4002,7 +4010,8 @@ async function doAreaCapture(tabId) {
               parentIdx: -1,
               classified: false,
               bottomRoot: false,
-              bottomGroup: false
+              bottomGroup: false,
+              inputPanel: !!currentEls[dk].querySelector('textarea, [contenteditable="true"], [role="textbox"], input:not([type="hidden"])')
             };
             var dynamicViewH = scrollAncNow ? scrollAncNow.clientHeight : window.innerHeight;
             if (dp === 'sticky' && dr.height > dynamicViewH + 2) {
@@ -4164,6 +4173,15 @@ async function doAreaCapture(tabId) {
             }
           }
 
+          // A fractional zoom may round the first requested position down or
+          // up. For a bottom input panel, start above the selected edge so
+          // exact composition never loses its first physical row.
+          if (idx === 0 && window.__screenshotStickies.some(function(item) {
+            var r = item.el.getBoundingClientRect();
+            return item.inputPanel && r.top >= innerHeight * 0.5 &&
+              r.bottom <= innerHeight + 2 && r.bottom >= innerHeight - 64;
+          })) targetScroll = Math.floor(targetScroll * (devicePixelRatio || 1)) / (devicePixelRatio || 1);
+
           var el = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
           if (el) {
             el.scrollTop = targetScroll;
@@ -4213,12 +4231,21 @@ async function doAreaCapture(tabId) {
         target: { tabId: tabId },
         func: function(custom) {
           var el = custom ? document.querySelector('[data-screenshot-area-scroll]') : null;
-          return el ? el.scrollTop : window.scrollY;
+          return { y: el ? el.scrollTop : window.scrollY,
+            inputPanel: (window.__screenshotStickies || []).some(function(item) { return item.bottomRoot && item.inputPanel; }) };
         },
         args: [area.hasCustomScroll]
       });
       if (riletto && riletto[0] && typeof riletto[0].result === 'number') {
         realScroll = riletto[0].result;
+      } else if (riletto && riletto[0] && riletto[0].result && typeof riletto[0].result.y === 'number') {
+        realScroll = riletto[0].result.y;
+        // Restrict coordinate overlap to this input-panel path. One physical
+        // pixel handles fractional pane sizes without changing other Areas.
+        if (i === 0 && numSlices > 1 && riletto[0].result.inputPanel) {
+          sliceH = Math.max(1, sliceH - 1 / meta.dpr);
+          numSlices = Math.ceil((area.h_doc + (meta.topCover || 0)) / sliceH);
+        }
       }
       // Prima fetta: delta misurato rispetto alla posizione NON arretrata,
       // così il ritaglio parte sotto la barra fissa (delta = spessore barra).
@@ -4293,7 +4320,7 @@ async function doAreaCapture(tabId) {
             if (fermo < 2 && giri < 20) return;
             clearInterval(timer);
 
-            var minTop = Infinity;
+            var minTop = Infinity, hasInputPanel = false;
             for (var j = 0; j < list.length; j++) {
               if (list[j].bottomGroup) {
                 list[j].el.style.visibility = list[j].oldVis;
@@ -4307,11 +4334,14 @@ async function doAreaCapture(tabId) {
                 for (var k = 0; k < list.length; k++) {
                   if (!list[k].bottomRoot) continue;
                   var r = list[k].el.getBoundingClientRect();
-                  if (r.height > 0 && r.width > 0) minTop = Math.min(minTop, r.top);
+                  if (r.height > 0 && r.width > 0) {
+                    minTop = Math.min(minTop, r.top);
+                    if (list[k].inputPanel) hasInputPanel = true;
+                  }
                 }
                 // Include avviso, distanza e ombra insieme al campo.
                 resolve(minTop < Infinity
-                  ? { top: Math.max(0, Math.floor(minTop - 64)) }
+                  ? { top: Math.max(0, Math.floor(minTop - (hasInputPanel ? 0 : 64))), inputPanel: hasInputPanel }
                   : null);
             }
             timeout = setTimeout(finishBottom, 250);
@@ -4330,6 +4360,7 @@ async function doAreaCapture(tabId) {
           if (captureBackgrounds) await syncCaptureBackgrounds(tabId);
           bottomOverlay = await captureStitchedFrame(tabId);
           bottomOverlayTop = bottomInfo.top;
+          inputOverlay = bottomInfo.inputPanel === true;
           break;
         } catch (overlayErr) {
           if (overlayRetry < 2 && overlayErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -4347,7 +4378,7 @@ async function doAreaCapture(tabId) {
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop, unfoldedDocument, selectedDocY) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop, unfoldedDocument, selectedDocY, inputOverlay) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -4387,8 +4418,9 @@ async function doAreaCapture(tabId) {
           // Unfolded document navigation has stable document coordinates. Match
           // those coordinates exactly: the legacy overlap search can mistake
           // the white space beside a long menu for matching rows and trim text.
-          // Custom/independent scrollers retain their existing composition.
-          if (unfoldedDocument && visStart < 0) {
+          // Bottom input overlays use these coordinates too, clipped to their
+          // pane; other custom/independent scrollers keep legacy composition.
+          if ((unfoldedDocument || inputOverlay) && visStart < 0) {
             // innerHeight is rounded to CSS pixels. At browser zoom 110%, a
             // 911px frame has a viewport of 828.18 CSS px, reported as 828.
             // Dividing 911/828 accumulates false gaps. Use the captured DPR
@@ -4408,8 +4440,11 @@ async function doAreaCapture(tabId) {
             var exactCtx = exact.getContext('2d'), covered = 0;
             loaded.forEach(function(img, idx) {
               var dest = Math.round(realScrolls[idx] * exactRatio) - originY;
-              var skip = Math.max(0, -dest, covered - dest);
-              var count = Math.min(img.height - skip, exact.height - dest - skip);
+              var sourceTop = Math.max(0, Math.round(offsetY * exactRatio));
+              if (idx === 0 && selectedDocY < realScrolls[idx] + offsetY) sourceTop = 0;
+              var sourceBottom = Math.min(img.height, Math.round((offsetY + contH) * exactRatio));
+              var skip = Math.max(sourceTop, -dest, covered - dest);
+              var count = Math.min(sourceBottom - skip, exact.height - dest - skip);
               if (count <= 0) return;
               if (dest + skip > covered) throw new Error('The page moved during capture. Please try again.');
               exactCtx.drawImage(img, exactX, skip, exact.width, count, 0, dest + skip, exact.width, count);
@@ -4418,7 +4453,7 @@ async function doAreaCapture(tabId) {
             if (covered < exact.height) throw new Error('The page ended before the selected area. Please try again.');
             if (overlayImg && typeof bottomOverlayTop === 'number') {
               var exactTop = Math.round(Math.max(0, bottomOverlayTop) * exactRatio);
-              var exactBottom = Math.min(overlayImg.height, Math.round(contH * exactRatio));
+              var exactBottom = Math.min(overlayImg.height, Math.round((offsetY + contH) * exactRatio));
               var exactBand = Math.min(exact.height, exactBottom - exactTop);
               if (exactBand > 0) exactCtx.drawImage(overlayImg, exactX, exactBottom - exactBand,
                 exact.width, exactBand, 0, exact.height - exactBand, exact.width, exactBand);
@@ -4616,7 +4651,7 @@ async function doAreaCapture(tabId) {
       // perché la cattura è alta quanto la finestra. Con un contenitore più
       // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
       // e il ritaglio usciva spostato rispetto alla selezione.
-      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop, meta.unfoldedDocument, area.y_doc]
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop, meta.unfoldedDocument, area.y_doc, inputOverlay]
     });
     }
 
@@ -4624,10 +4659,9 @@ async function doAreaCapture(tabId) {
     if (composedArea && composedArea.captureError) throw new Error(composedArea.captureError);
     var savedA = await saveCapturedImage(composedArea, tabId, 'area');
 
-    // Ripristino: visibility dei fixed/sticky + pagina riportata IN CIMA.
-    // (Richiesta esplicita: a fine cattura Area si torna in alto come nella
-    // Full Page, invece di restare in fondo dove il drag con auto-scroll
-    // aveva lasciato la pagina.)
+    // Restore the bars here; the shared Area controller then restores the
+    // window and every pane to their saved positions BEFORE selection.
+    // Full Page keeps its separate return-to-top behaviour.
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: function(hasCustomScroll) {
@@ -4651,10 +4685,7 @@ async function doAreaCapture(tabId) {
         if (startMark) startMark.removeAttribute('data-screenshot-start-sticky');
         var el = hasCustomScroll ? document.querySelector('[data-screenshot-area-scroll]') : null;
         if (el) {
-          el.scrollTop = 0;
           el.removeAttribute('data-screenshot-area-scroll');
-        } else {
-          window.scrollTo(0, 0);
         }
       },
       args: [area.hasCustomScroll]

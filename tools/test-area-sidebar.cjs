@@ -69,6 +69,44 @@ async function checkAdPixels(source, origin) {
   });
 }
 
+function chatAreaFixture(documentScroll) {
+  const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.head.innerHTML='<style>*{box-sizing:border-box}html,body{margin:0;height:100%;'+(documentScroll?'':'overflow:hidden;')+'}body{background:'+(dark?'#141923':'#fff')+';font:16px Arial}header{height:50px;background:#dce9f3;padding:15px}.chat-app{position:relative;height:calc(100vh - 50px)}.thread{height:100%;overflow:auto;scroll-behavior:smooth}.messages{padding-bottom:100px}.message{height:80px;padding:30px}.composer{position:absolute;bottom:0;left:0;width:100%;height:100px;background:rgb(113,51,199);padding:15px;z-index:3}.composer form{visibility:visible;height:60px;max-width:800px;margin:auto;background:#fff;border-radius:20px;padding:15px}textarea{height:30px;max-width:100%;resize:none}@media(max-width:500px){.composer{padding:15px 30px}}</style>';
+  if(documentScroll)document.head.innerHTML+='<style>.chat-app{height:auto}.thread{height:auto;overflow:visible}.composer{position:fixed}</style>';
+  document.body.innerHTML='<header>LOCAL CHAT — no account</header><main class="chat-app"><div class="thread"><div class="messages">'+Array.from({length:60},(_,i)=>'<section class="message" style="background:rgb('+(i%2?'180,220,240':'240,220,180')+')">MESSAGE '+i+'</section>').join('')+'</div></div><div class="composer"><form><textarea aria-label="Write a message">Write a message</textarea></form></div></main>';
+  const pane=document.querySelector('.thread');
+  (documentScroll?window:pane).scrollTo({top:640,behavior:'instant'});
+  window.__chatInitial={documentScroll,y:documentScroll?scrollY:pane.scrollTop,style:document.querySelector('.composer').getAttribute('style')};
+}
+
+function selectChatArea(short) {
+  const overlay=document.getElementById('__screenshot_area_overlay');
+  const x=18,right=innerWidth-2,start=140;
+  const mouse=(type,mx,my)=>overlay.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,clientX:mx,clientY:my,buttons:type==='mouseup'?0:1}));
+  mouse('mousemove',x,start);mouse('mousedown',x,start);mouse('mousemove',right,350);
+  if(!short)overlay.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:right,clientY:350,deltaY:100000}));
+  mouse('mousemove',right,short?390:innerHeight-1);mouse('mouseup',right,short?390:innerHeight-1);
+  return {area:window.__screenshotArea};
+}
+
+async function checkChatArea(source,area) {
+  const img=new Image();await new Promise((yes,no)=>{img.onload=yes;img.onerror=no;img.src=source;});
+  const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+  const p=ctx.getImageData(2,0,1,c.height).data;let barRows=0,wrong=0;
+  const k=devicePixelRatio,origin=area.y_doc-50;
+  for(let y=0;y<c.height;y++){
+    const a=y*4,isBar=p[a]===113&&p[a+1]===51&&p[a+2]===199;
+    if(isBar){barRows++;continue;}
+    const contentY=origin+(y+.5)/k;
+    if(contentY>=4800)continue;
+    const color=Math.floor(contentY/80)%2?[180,220,240]:[240,220,180];
+    if(color.some((v,i)=>p[a+i]!==v)||p[a+3]!==255)wrong++;
+  }
+  const pane=document.querySelector('.thread'),initial=window.__chatInitial;
+  return {width:c.width,height:c.height,barRows,wrong,scroll:initial.documentScroll?scrollY:pane.scrollTop,initial:initial.y,
+    style:(document.querySelector('.composer').getAttribute('style')||'')===(initial.style||'')};
+}
+
 function internalEndFixture() {
   const dark=matchMedia('(prefers-color-scheme: dark)').matches;
   document.head.innerHTML='<style>*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0;background:'+(dark?'#141923':'#fff')+';font:16px Arial}header{height:60px;background:rgb(226,237,245);padding:18px}.app{display:flex;height:calc(100vh - 60px)}aside{width:180px;flex:none;overflow:auto}main{flex:1;min-width:0;overflow:auto}section{height:80px;padding:20px}.right{width:140px}nav div{height:70px;padding:20px}@media(max-width:500px){aside{width:80px}.right{width:70px}}</style>';
@@ -354,6 +392,9 @@ async function checkNavigationPixels(source) {
   if(site&&!sites[site])throw Error('Unknown site '+site);
   const live = process.argv.includes('--live') || tailwind || !!site;
   const mode = process.argv.includes('--full') ? 'full' : process.argv.includes('--visible') ? 'visible' : 'area';
+  const chat=process.argv.includes('--chat'),chatDocument=process.argv.includes('--chat-document'),chatShort=process.argv.includes('--chat-short');
+  const startScrolled=process.argv.includes('--start-scrolled');
+  if(chat&&(mode!=='area'||live))throw Error('--chat requires local Area capture');
   const multi = process.argv.includes('--multi');
   const editor = process.argv.includes('--editor');
   const endLineInternal = process.argv.includes('--end-line-internal');
@@ -419,10 +460,12 @@ async function checkNavigationPixels(source) {
         assert(await browser.evaluate('!!document.querySelector("[role=dialog]")'),'The real pricing login popup is open');
         await browser.evaluate('window.__pricingDialog=document.querySelector("[role=dialog]");window.__pricingBodyStyle=document.body.getAttribute("style");true');
       }
-    } else if(endLineInternal)await browser.evaluate('('+internalEndFixture.toString()+')()');
+    } else if(chat)await browser.evaluate('('+chatAreaFixture.toString()+')('+chatDocument+')');
+    else if(endLineInternal)await browser.evaluate('('+internalEndFixture.toString()+')()');
     else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
     else if(growth)await browser.evaluate('('+growthFixture.toString()+')('+JSON.stringify(growth)+')');
     else await browser.evaluate('('+fixture.toString()+')('+independent+','+release+','+ads+')');
+    if(startScrolled)await browser.evaluate('(()=>{const pane=[...document.querySelectorAll("*")].find(el=>getComputedStyle(el).overflowY==="auto"&&el.scrollHeight>el.clientHeight+640);window.__startedPane=pane||null;(pane||window).scrollTo({top:640,behavior:"instant"});return true;})()');
     if(zoomArg)assert(Math.abs(await browser.evaluate('devicePixelRatio')-zoom)<0.001,'Actual browser zoom matches the requested value');
     const initial = await browser.evaluate(`({url:location.href,title:document.title,y:scrollY,height:document.documentElement.scrollHeight,inner:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,
       scrollers:[...document.querySelectorAll('*')].filter(el=>/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)&&el.scrollHeight>el.clientHeight+10).map(el=>({
@@ -512,7 +555,7 @@ async function checkNavigationPixels(source) {
             assert(context.cancelCapture(),'Stop cancels a live modal selection');await wait(100);
             assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Stop removes the top-layer overlay before any shot');
           }:null;
-          selection=site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
+          selection=chat?await browser.evaluate('('+selectChatArea.toString()+')('+chatShort+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
           if(fromContent||nativeEdge)await browser.evaluate('window.__navExpected=[]');
           console.log('Selected',JSON.stringify(selection));
         }
@@ -608,6 +651,7 @@ async function checkNavigationPixels(source) {
     await context.activeCaptureJob.done;
     const cancelMs=stopWaitAt?Date.now()-stopWaitAt:null;
     assert.equal(context.activeCaptureJob,null,'The job unlocks after restoration');
+    if(startScrolled)assert.equal(await browser.evaluate('window.__startedPane?window.__startedPane.scrollTop:scrollY'),mode==='full'&&!stop&&!failure?0:640,'Full Page returns to the top; Area, Stop and errors restore the initial position');
     const restored=await browser.evaluate(`({control:!!window.__shotCaptureControl,
       stickyVisibility:(window.__testStickyElements||[]).every(rec=>!rec.el.isConnected||rec.el.style.visibility===rec.oldVis),
       styles:(window.__sidebarExpected||[]).every(rec=>rec.properties.every(prop=>rec.el.style.getPropertyValue(prop.name)===prop.value&&rec.el.style.getPropertyPriority(prop.name)===prop.priority)),
@@ -637,10 +681,11 @@ async function checkNavigationPixels(source) {
       }
     }
     if(site!=='yahoo'&&!growth)assert.equal(restored.height,initial.height,'Original document height restored');assert.equal(restored.remaining,0);
-    if(independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
+    if(chat||independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
     else if(!live&&!baseline&&!release&&!ads&&!growth&&!modal)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
     const growthLimit=mode==='full'&&['continuous','stalled'].includes(growth);
     if(stop||failure||compositionGap||stopWait||growthLimit){
+      if(chat)assert(await browser.evaluate('Math.abs((window.__chatInitial.documentScroll?scrollY:document.querySelector(".thread").scrollTop)-window.__chatInitial.y)<1'),'Chat scroll is restored after Stop/error');
       assert.equal(outputs.length,0,'Interrupted capture produces no file');
       if(multi)assert.deepEqual(session.multi.pieces,[previousPiece],'Interrupted Multi preserves old pieces');
       if(compositionGap){
@@ -663,6 +708,20 @@ async function checkNavigationPixels(source) {
     const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:endLineInternal?'internal':independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-after.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+    if(chat){
+      const checked=await browser.evaluate('('+checkChatArea.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection.area)+')');
+      console.log('Chat Area pixels',JSON.stringify(checked));
+      fs.writeFileSync(path.join(outputDir,'chat-area'+(chatDocument?'-document':'-internal')+(mobile?'-mobile':'')+(dark?'-dark':'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(sourceRef?'-ref-'+sourceRef:'')+'.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+      if(sourceRef){
+        assert(!chatShort&&checked.barRows>Math.round(100*(zoom||1)),'Old capture repeats the composer');
+        assert(Math.abs(checked.scroll-checked.initial)>1,'Old Area returns to the top');
+        console.log('Old-code reproduction confirmed');return;
+      }
+      assert.equal(checked.wrong,0,'Selected message rows have no gaps or overlays');
+      assert.equal(checked.barRows,chatShort?0:Math.round(100*(zoom||1)),'Composer appears once at the end, or not at all outside a short selection');
+      assert(Math.abs(checked.scroll-checked.initial)<1,'Area returns to the position before selection');
+      assert.equal(checked.style,true,'Composer style is restored');return;
+    }
     if(endLineInternal){
       const checked=await browser.evaluate('('+checkInternalEndPixels.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(endViewSource)+','+endLineY+','+endLineScreenY+')');
       assert.equal(checked.height,checked.expectedHeight,'Output ends exactly at the internal end line');
