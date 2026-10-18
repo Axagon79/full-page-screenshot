@@ -2,6 +2,171 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Area su chat: casella duplicata e posizione iniziale — 18/10/2026, in lavorazione
+
+L'utente segnala la casella «Chiedi a ChatGPT» duplicata e sovrapposta al testo
+in Area, più il ritorno molto sopra il punto iniziale dopo il salvataggio.
+Autorizzate correzione e prove locali. Precisazione esplicita: **Full Page
+deve continuare a tornare in cima; solo Area deve tornare alla posizione
+precedente alla selezione**, anche quando usata in Multi Snip.
+
+**Seguito del 18/10:** lo screenshot del menu Chrome dell'utente conferma
+zoom **100%**. Riprese soltanto le verifiche indipendenti a quel livello;
+nessun terzo tentativo sul 125%. Il caso al 100% è pronto per la verifica
+dell'utente sulla sua chat, non ancora dichiarato concluso.
+
+Riproduzione con `node tools/test-area-sidebar.cjs --chat --ref=ca87492`:
+pagina locale senza account, contenitore interno e casella assoluta
+sovrapposta ai messaggi. Il codice precedente riprende cinque volte la
+fascia di 100 px della casella (500 righe viola) e torna a scroll 0 invece
+di 640. Non è una riproduzione nella conversazione autenticata dell'utente.
+
+Modifiche locali in corso:
+
+- Area considera anche piccole barre assolute con campi di scrittura in
+  fondo; il micro-scorrimento deve confermare che restino ancorate. La barra
+  è esclusa dagli scatti del contenuto e ripresa una volta sola in fondo.
+- Per questo percorso con campo di scrittura viene usata la composizione
+  per coordinate, evitando il taglio cumulativo delle giunture del vecchio
+  confronto fra immagini; controlli di copertura mantenuti.
+- Il controller comune ripristina tutte le posizioni salvate prima della
+  selezione Area, anche dopo successo. Rimosso l'azzeramento finale del suo
+  scorrimento; Full Page non viene convertita a questa politica.
+
+Il primo controllo dopo il riconoscimento della barra dava una sola casella
+e scroll 640, ma 88 righe del contenuto non coincidevano: la vecchia
+composizione sottraeva almeno un pixel anche fra scatti contigui. Il percorso
+con campo di scrittura è stato quindi collegato alla composizione esatta,
+senza ridurre le aspettative del confronto. Lo stile era inoltre confrontato
+come stringa: attributo assente e vuoto sono stati resi equivalenti, senza
+ignorare proprietà residue. La ripetizione al 100% è passata.
+
+**Prime prove passate, prima dell'ultimo ritocco per il 125%:** Area normale
+su chat locale, Multi pannello in scuro, Multi editor a 390 px, selezione
+corta entro lo schermo (nessuna barra estranea), Stop Multi e chat con
+scorrimento del documento. Casella una volta, posizioni ripristinate a 640,
+nessuna differenza nelle righe del contenuto nei percorsi completati.
+Passati anche zoom reale 110% e Area su documento normale da editor Multi
+iniziando da scroll 640. Non sono prove sulla pagina ChatGPT dell'utente.
+
+**125% non superato, due tentativi:** il primo viene rifiutato per copertura
+incompleta; dopo arrotondamento iniziale e sovrapposizione di un pixel nel
+solo percorso con campo di scrittura, il secondo produce una sola casella
+di 125 px e ripristina scroll 640, ma il confronto rileva differenze su 50
+righe di pixel. Non è ancora accertato se siano dovute alla composizione,
+alla resa frazionaria o al confronto della prova. Nessuna aspettativa sui
+pixel indebolita. Dopo il secondo tentativo i lavori si fermano per chiedere
+indicazioni all'utente, come da regole; nessun terzo tentativo.
+
+Suite Stop sul codice attuale: 75 passati, 0 falliti, 21 casi obsoleti
+saltati. Aggiunti quattro casi per la diversa politica di ripristino Area/
+Full, normali e Multi. Nel primo lancio i due nuovi casi Multi erano privi
+della raccolta simulata; corretta la preparazione della prova, non il codice
+di produzione, e suite ripetuta con successo. Il confronto dello stile
+della casella considera equivalenti un attributo style assente e vuoto;
+non ignora proprietà rimaste modificate.
+
+**Prove ripetute sul codice corrente al 100%, passate:**
+
+- `--chat`: PNG 1900×4169, casella una volta (100 righe), zero differenze
+  nei colori del contenuto, scroll iniziale/finale 640.
+- `--chat --multi --dark` e `--chat --multi --editor --mobile`, anche
+  `--dark`: stesso risultato, PNG stretto 370×4169. I pezzi precedenti sono
+  conservati. Immagini desktop e a 390 px aperte e controllate.
+- `--chat --chat-short`: PNG 1900×250, nessuna casella aggiunta fuori dalla
+  selezione, zero differenze e posizione conservata.
+- `--chat --multi --stop`, `--chat --multi --editor --failure` e
+  `--chat --multi --editor --composition-gap`: annullamento, errore di scatto
+  e foto rimossa deliberatamente. Nessun nuovo file/pezzo, raccolta
+  conservata, tutte le posizioni ripristinate e errore di copertura effettivo
+  riportato, senza produrre un'immagine incompleta.
+- `--growth=static --start-scrolled --multi`: Area sul documento da scroll
+  640 torna a 640, contenuto selezionato senza differenze. Già passata la
+  variante da editor.
+- `--independent --multi --editor --start-scrolled`: Area a più colonne,
+  PNG 1918×4118 e posizione principale ripristinata a 640.
+- `--full --growth=static --start-scrolled --multi --editor` e
+  `--full --independent --start-scrolled --multi`: Full Page termina in cima,
+  con confronto immagine e ripristino degli stili passati.
+- `--full --growth=static --start-scrolled --multi --stop`: Stop conserva
+  invece la posizione iniziale 640, senza risultato incompleto.
+- `--full --end-line --end-line-internal --multi --editor`: la riga mantiene
+  la vista scelta e le colonne laterali, confronto pixel senza differenze.
+- Suite Stop ripetuta: 75 passati, 0 falliti, 21 casi obsoleti saltati;
+  sintassi dei quattro file JavaScript modificati e `git diff --check`
+  passati. Sono prove con codice reale e API Chrome adattate in Edge
+  isolato, non una prova della conversazione/account dell'utente.
+
+**Precisazione sul ritorno di Full Page:** il primo nuovo controllo iniziato
+da scroll 640 falliva perché quel percorso del codice precedente tornava a
+`d.sy`, cioè alla posizione precedente, non in cima. Per rispettare la
+richiesta esplicita dell'utente è stato corretto il solo ritorno finale di
+Full Page normale e a più colonne. Riga, Stop ed errori mantengono la
+posizione scelta/precedente. Entrambe le ripetizioni Full Page sopra sono
+passate; il motore che acquisisce le immagini non è stato cambiato per
+questa distinzione.
+
+**Conferma manuale successiva del 18/10:** l'utente riferisce «funziona» con
+una cattura ChatGPT al 100%; successivamente riferisce il funzionamento
+anche al 125% e allega un'altra cattura. Nell'immagine ridimensionata
+esaminata la casella compare una volta in fondo e non sono visibili testo
+sovrapposto o ripetizioni evidenti. Non è una verifica dei singoli pixel né
+un superamento del confronto automatico al 125%, che resta separatamente
+aperto. La posizione finale non è stata confermata separatamente in chat;
+le prove locali del ripristino sono quelle sopra.
+
+**Salvataggio richiesto dall'utente:** codice, note delle impostazioni e
+prove in `5ec508e`; documentazione in questo successivo commit. Lo ZIP 9.14
+è stato aggiornato su richiesta: vedere il controllo del pacchetto sotto.
+Nessun nuovo invio allo Store, nessuna nuova prova al 125% e nessuna
+archiviazione complessiva dell'attività decisa dall'agente.
+
+## Niente bollino NEW sull'icona — 18/10/2026
+
+Richiesta esplicita dell'utente: nessun annuncio di novità sull'icona, sia
+nell'estensione caricata dalla cartella locale sia nel pacchetto 9.14.
+Rimosse l'attivazione all'aggiornamento e la riattivazione a fine sessione;
+il vecchio stato `newsUnread` viene eliminato durante l'installazione/
+aggiornamento e comunque ignorato quando il badge viene ricostruito.
+Le novità restano consultabili volontariamente nelle impostazioni.
+
+Il contatore dei pezzi Multi Snip resta; durante la cattura il bollino non
+disturba Stop. Una vecchia scheda delle impostazioni che invia ancora il
+messaggio di cancellazione non azzera il contatore Multi e non tocca Stop.
+
+Prove esplicitamente autorizzate: `node --test tools/test-news-badge.cjs`,
+8 passati, 0 falliti. Eseguiti i gestori reali di installazione, aggiornamento
+e messaggi con API Chrome adattate: vecchio avviso presente, contatore 0/3,
+sessione chiusa, vecchia scheda impostazioni e cattura attiva. Non è una
+prova del disegno dell'icona nel profilo Chrome dell'utente. Suite Stop
+ripetuta dopo la modifica: 75 passati, 0 falliti, 21 vecchi casi saltati.
+Sintassi di `sw.js`, `settings.js`, nuovo test e `git diff --check` passati.
+Codice, note e prove nel commit `5ec508e`.
+
+## ZIP 9.14 aggiornato dopo il fix chat — 18/10/2026
+
+Aggiornamento e confronto esplicitamente richiesti/autorizzati dall'utente.
+Pacchetto: `full-page-screenshot-extension/9.14.zip`, versione 9.14,
+26 file, **1.621.424 byte**. Tutti i file estratti in lettura confrontati
+tramite SHA-256 con quelli della cartella attuale dell'estensione: identici.
+Elenco dei file uguale alla 9.13, incluse tutte le immagini già presenti;
+nessun file di prova o archivio ZIP annidato. Comprende anche `sw.js` e
+`settings.js` con rimozione del bollino NEW e le correzioni Area/ritorno.
+
+ZIP 9.13 confrontato prima e dopo, invariato. Il vecchio ZIP 9.14 del 03/10
+è stato spostato senza sovrascriverlo in
+`full-page-screenshot-extension/Versioni precedenti zip/9.14-2026-10-03-prima-fix-chat.zip`;
+verificato identico alla copia precedente, quindi recuperabile. Il nuovo
+ZIP è stato controllato prima di sostituire il percorso 9.14.zip.
+
+SHA-256 nuovo ZIP 9.14: `19F32530734E623F08D3AA92A1331926CA687EE55337CBC21EE631115ADE5254`.
+SHA-256 ZIP 9.13 invariato: `008478FCD5A2C7B13BAB13A287DD867A4C09F7B82F6BAC417692342776F69C8C`.
+SHA-256 copia precedente 9.14: `E8B1A6DA5636ABB17DCC44B9C3C9D10A9F91A69C6ACD7AF3B1744AEAF7D278FE`.
+
+I pacchetti restano locali e ignorati da Git. Nessuna pubblicazione della
+9.14 sullo Store: il pacchetto è ancora provvisorio secondo la decisione
+dell'utente e va rigenerato dopo eventuali ulteriori modifiche.
+
 ## Avvio della 9.14 e controllo del pacchetto — 03/10/2026
 
 Su richiesta dell'utente, il manifest

@@ -3,7 +3,7 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **3 ottobre 2026**.
+Ultimo aggiornamento: **18 ottobre 2026**.
 Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
@@ -20,7 +20,18 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Situazione della versione
 
-**Stato corrente — 03/10/2026:** l'utente precisa che la 9.13 è stata inviata
+**Stato corrente — 18/10/2026:** la 9.14 locale include anche il fix Area
+sulle chat (casella unica e ritorno alla posizione precedente), il ritorno
+in cima di Full Page e la rimozione del bollino NEW dall'icona. Codice e
+prove salvati in `5ec508e`; ZIP 9.14 aggiornato e controllato, con tutti i
+26 file identici ai sorgenti. L'utente riferisce il funzionamento su ChatGPT
+al 100% e al 125%; il confronto sintetico al 125% resta da chiarire e non è
+stato dichiarato superato. Risultati e copie dei pacchetti in `tools/README.md`.
+Nessuna pubblicazione della 9.14; resta valida la decisione dell'utente di
+tenerla in lavorazione. Ultimo stato della 9.13 riferito dall'utente: in
+revisione il 03/10, non verificato nuovamente qui. Lo ZIP 9.13 è intatto.
+
+**Preparazione iniziale — 03/10/2026:** l'utente precisa che la 9.13 è stata inviata
 allo Store ed è **ancora in revisione**, non già disponibile. Su sua richiesta
 inizia la **9.14**, con il fix confermato della
 riga nei contenitori interni e la gestione della vecchia riga dopo ricarica
