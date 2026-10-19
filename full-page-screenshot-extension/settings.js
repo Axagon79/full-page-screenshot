@@ -5,6 +5,7 @@ var CHANGELOG = {
     'Fixed: Capture to here now works when the main content scrolls inside a panel, keeping independent side columns as you see them. Also available in Multi Snip.',
     'Fixed: an old end line no longer leaves a stuck button or an unhandled error after the extension is reloaded. Refresh the page before placing a new line.',
     'Fixed: Select Area avoids repeated message boxes on chat pages, including when adding a piece in Multi Snip.',
+    'Fixed: Select Area respects the selected boundaries on chat pages. The input bar is included only when selected, and only for the selected portion. Also available in Multi Snip.',
     'Changed: after Select Area, return to the position before selection. Full Page returns to the top; Stop restores the position before capture.',
     'Changed: no more NEW badge on the extension icon. Release notes remain available here in Settings.'
   ],

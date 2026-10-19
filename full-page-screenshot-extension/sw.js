@@ -3497,6 +3497,9 @@ async function doAreaCapture(tabId) {
             y_doc: y_doc,
             w: w,
             h_doc: h_doc,
+            // The lower selected edge can belong to the release view or,
+            // when dragging upwards, to the view where selection started.
+            bottomScroll: endY_doc >= startY_doc ? getScrollY() : startY_doc - selectionStartY,
             hasCustomScroll: !!scrollTarget,
             panes: paneData,
             dpr: window.devicePixelRatio || 1
@@ -3749,6 +3752,7 @@ async function doAreaCapture(tabId) {
       args: [area.hasCustomScroll]
     });
     var meta = metaResult[0].result;
+    var selectedBottomScroll = typeof area.bottomScroll === 'number' ? area.bottomScroll : meta.sy;
 
 
     // Usa l'altezza del container scrollabile (non del viewport del tab) per calcolare le slice
@@ -3781,6 +3785,7 @@ async function doAreaCapture(tabId) {
                            // per ancorare ogni slice alla sua POSIZIONE assoluta in cucitura
     var bottomOverlay = null;
     var bottomOverlayTop = null;
+    var bottomOverlayBottom = null;
     var inputOverlay = false;
 
     sendProgress('Cattura area...', 5);
@@ -3817,7 +3822,7 @@ async function doAreaCapture(tabId) {
         : (coverTop ? Math.max(0, basePos - coverTop) : basePos);
       var scrollResult = await chrome.scripting.executeScript({
         target: { tabId: tabId },
-        func: function(targetScroll, hasCustomScroll, idx, lastIdx, selectedWidth) {
+        func: function(targetScroll, hasCustomScroll, idx, lastIdx, selectedWidth, alreadyVisible) {
           function allElementsDeep(root) {
             var result = [];
             var scopes = [root];
@@ -4085,8 +4090,10 @@ async function doAreaCapture(tabId) {
               window.__screenshotStickies[s].el.style.visibility = window.__screenshotStickies[s].oldVis;
               window.__screenshotStickies[s].hiddenByCapture = false;
             }
-            // Una sola fetta rappresenta già esattamente ciò che è a schermo.
-            if (lastIdx === 0) return;
+            // A single frame is literal only if no scrolling was needed.
+            // Otherwise an unselected bottom bar can cover selected content
+            // after moving the shorter selection to the top of its pane.
+            if (lastIdx === 0 && alreadyVisible) return;
 
             var base = getS();
             var rects1 = [];
@@ -4213,7 +4220,7 @@ async function doAreaCapture(tabId) {
             }, 50);
           });
         },
-        args: [wantedScroll, area.hasCustomScroll, i, numSlices - 1, area.w]
+        args: [wantedScroll, area.hasCustomScroll, i, numSlices - 1, area.w, giaVisibile]
       });
       var realScroll = scrollResult[0].result;
 
@@ -4240,6 +4247,9 @@ async function doAreaCapture(tabId) {
         realScroll = riletto[0].result;
       } else if (riletto && riletto[0] && riletto[0].result && typeof riletto[0].result.y === 'number') {
         realScroll = riletto[0].result.y;
+        // Exact stitching is needed even if this input is outside selection
+        // and therefore must NOT be copied into the final image.
+        if (riletto[0].result.inputPanel) inputOverlay = true;
         // Restrict coordinate overlap to this input-panel path. One physical
         // pixel handles fractional pane sizes without changing other Areas.
         if (i === 0 && numSlices > 1 && riletto[0].result.inputPanel) {
@@ -4285,16 +4295,19 @@ async function doAreaCapture(tabId) {
       captures.push(dataUrl);
     }
 
-    // Le barre inferiori non partecipano alle fette normali: altererebbero dedup
-    // e overlap. Per renderle stabili anche quando la selezione finisce prima,
-    // questa ripresa separata viene fatta al fondo REALE dello scroller.
+    // Lower bars are excluded from content frames. Copy them only if they
+    // intersect the selected lower edge, from the user's chosen view rather
+    // than from the unrelated end of the entire page.
     var bottomInfoResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(hasCustomScroll) {
+      func: function(hasCustomScroll, chosenScroll, selectedTop, selectedBottom, selectionX, selectionWidth) {
         var list = window.__screenshotStickies || [];
         var haBarraBassa = false;
         for (var i = 0; i < list.length; i++) {
-          if (list[i].bottomRoot) haBarraBassa = true;
+          if (!list[i].bottomRoot) continue;
+          var initialRect = list[i].el.getBoundingClientRect();
+          if (initialRect.top < selectedBottom && initialRect.bottom > selectedTop &&
+              initialRect.left < selectionX + selectionWidth && initialRect.right > selectionX) haBarraBassa = true;
         }
         if (!haBarraBassa) return null;
 
@@ -4303,9 +4316,9 @@ async function doAreaCapture(tabId) {
           : null;
         function leggiScroll() { return scrollEl ? scrollEl.scrollTop : window.scrollY; }
         if (scrollEl) {
-          scrollEl.scrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+          scrollEl.scrollTo({ top: chosenScroll, left: scrollEl.scrollLeft, behavior: 'instant' });
         } else {
-          window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+          window.scrollTo({ top: chosenScroll, left: window.scrollX, behavior: 'instant' });
         }
 
         return new Promise(function(resolve) {
@@ -4334,14 +4347,16 @@ async function doAreaCapture(tabId) {
                 for (var k = 0; k < list.length; k++) {
                   if (!list[k].bottomRoot) continue;
                   var r = list[k].el.getBoundingClientRect();
-                  if (r.height > 0 && r.width > 0) {
+                  if (r.height > 0 && r.width > 0 && r.top < selectedBottom && r.bottom > selectedTop &&
+                      r.left < selectionX + selectionWidth && r.right > selectionX) {
                     minTop = Math.min(minTop, r.top);
                     if (list[k].inputPanel) hasInputPanel = true;
                   }
                 }
-                // Include avviso, distanza e ombra insieme al campo.
+                // Clamp both edges to the actual selection. A bar outside it
+                // is not content to append, even on a multi-frame capture.
                 resolve(minTop < Infinity
-                  ? { top: Math.max(0, Math.floor(minTop - (hasInputPanel ? 0 : 64))), inputPanel: hasInputPanel }
+                  ? { top: Math.max(0, selectedTop, minTop), bottom: Math.min(innerHeight, selectedBottom), inputPanel: hasInputPanel }
                   : null);
             }
             timeout = setTimeout(finishBottom, 250);
@@ -4349,7 +4364,8 @@ async function doAreaCapture(tabId) {
           }, 50);
         });
       },
-      args: [area.hasCustomScroll]
+      args: [area.hasCustomScroll, selectedBottomScroll, area.y_doc - selectedBottomScroll,
+        area.y_doc + area.h_doc - selectedBottomScroll, area.x, area.w]
     });
     var bottomInfo = bottomInfoResult && bottomInfoResult[0] && bottomInfoResult[0].result;
     if (bottomInfo && typeof bottomInfo.top === 'number') {
@@ -4360,7 +4376,8 @@ async function doAreaCapture(tabId) {
           if (captureBackgrounds) await syncCaptureBackgrounds(tabId);
           bottomOverlay = await captureStitchedFrame(tabId);
           bottomOverlayTop = bottomInfo.top;
-          inputOverlay = bottomInfo.inputPanel === true;
+          bottomOverlayBottom = bottomInfo.bottom;
+          if (bottomInfo.inputPanel) inputOverlay = true;
           break;
         } catch (overlayErr) {
           if (overlayRetry < 2 && overlayErr.message.indexOf('MAX_CAPTURE') !== -1) {
@@ -4378,7 +4395,7 @@ async function doAreaCapture(tabId) {
     // Se hasCustomScroll, sposta la source per saltare l'offset del container
     compResult = await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop, unfoldedDocument, selectedDocY, inputOverlay) {
+      func: function(imgs, ax, aw, ah_doc, viewH, ratio, offsetX, offsetY, deltas, realScrolls, selTopVpVisibile, contH, bottomOverlay, bottomOverlayTop, unfoldedDocument, selectedDocY, inputOverlay, bottomOverlayBottom) {
         function loadImg(src) {
           return new Promise(function(res, rej) {
             var im = new Image();
@@ -4453,7 +4470,8 @@ async function doAreaCapture(tabId) {
             if (covered < exact.height) throw new Error('The page ended before the selected area. Please try again.');
             if (overlayImg && typeof bottomOverlayTop === 'number') {
               var exactTop = Math.round(Math.max(0, bottomOverlayTop) * exactRatio);
-              var exactBottom = Math.min(overlayImg.height, Math.round((offsetY + contH) * exactRatio));
+              var exactBottom = Math.min(overlayImg.height, Math.round((typeof bottomOverlayBottom === 'number'
+                ? bottomOverlayBottom : offsetY + contH) * exactRatio));
               var exactBand = Math.min(exact.height, exactBottom - exactTop);
               if (exactBand > 0) exactCtx.drawImage(overlayImg, exactX, exactBottom - exactBand,
                 exact.width, exactBand, 0, exact.height - exactBand, exact.width, exactBand);
@@ -4622,11 +4640,10 @@ async function doAreaCapture(tabId) {
           var outCtx = out.getContext('2d');
           outCtx.drawImage(canvas, 0, 0);
 
-          // La cattura separata è allineata al fondo della selezione. Copiando
-          // la sua fascia inferiore sul fondo del risultato, il composer resta
-          // intero e non viene troncato dall'overlap dell'ultima fetta.
+          // Align only the selected part of the lower bar to the selection's
+          // actual bottom. Never extend it to include the whole input panel.
           if (overlayImg && typeof bottomOverlayTop === 'number') {
-            var bandBottomCss = offsetY + contH;
+            var bandBottomCss = typeof bottomOverlayBottom === 'number' ? bottomOverlayBottom : offsetY + contH;
             var overlayTopCss = Math.max(offsetY, Math.min(bottomOverlayTop, bandBottomCss));
             var srcY = Math.round(overlayTopCss * realRatio);
             var srcBottom = Math.min(overlayImg.height, Math.round(bandBottomCss * realRatio));
@@ -4651,7 +4668,7 @@ async function doAreaCapture(tabId) {
       // perché la cattura è alta quanto la finestra. Con un contenitore più
       // basso del viewport (console Mistral) usare sliceH gonfiava il rapporto
       // e il ritaglio usciva spostato rispetto alla selezione.
-      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop, meta.unfoldedDocument, area.y_doc, inputOverlay]
+      args: [captures, area.x, area.w, area.h_doc, meta.vh, meta.dpr, meta.offsetX, meta.offsetY, deltas, realScrolls, (giaVisibile ? Math.max(0, selTopVp) : -1), meta.containerH, bottomOverlay, bottomOverlayTop, meta.unfoldedDocument, area.y_doc, inputOverlay, bottomOverlayBottom]
     });
     }
 

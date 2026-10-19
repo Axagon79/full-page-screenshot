@@ -79,13 +79,18 @@ function chatAreaFixture(documentScroll) {
   window.__chatInitial={documentScroll,y:documentScroll?scrollY:pane.scrollTop,style:document.querySelector('.composer').getAttribute('style')};
 }
 
-function selectChatArea(short) {
+function selectChatArea(short, beforeInput, partialInput, reverse, singleScroll) {
   const overlay=document.getElementById('__screenshot_area_overlay');
-  const x=18,right=innerWidth-2,start=140;
+  const x=18,right=innerWidth-2,start=reverse?850:140;
   const mouse=(type,mx,my)=>overlay.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,clientX:mx,clientY:my,buttons:type==='mouseup'?0:1}));
   mouse('mousemove',x,start);mouse('mousedown',x,start);mouse('mousemove',right,350);
-  if(!short)overlay.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:right,clientY:350,deltaY:100000}));
-  mouse('mousemove',right,short?390:innerHeight-1);mouse('mouseup',right,short?390:innerHeight-1);
+  if(!short)overlay.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:right,clientY:350,deltaY:singleScroll?290:reverse?-400:(beforeInput||partialInput)?1200:100000}));
+  const end=reverse?140:short?390:beforeInput?650:partialInput?innerHeight-50:innerHeight-1;
+  mouse('mousemove',right,end);mouse('mouseup',right,end);
+  const a=window.__screenshotArea,r=document.querySelector('.composer').getBoundingClientRect();
+  const position=typeof a.bottomScroll==='number'?a.bottomScroll:window.__chatInitial.documentScroll?scrollY:document.querySelector('.thread').scrollTop;
+  const top=Math.max(r.top,a.y_doc-position),bottom=Math.min(r.bottom,a.y_doc+a.h_doc-position);
+  window.__chatExpectedBarRows=Math.max(0,Math.round(bottom*devicePixelRatio)-Math.round(top*devicePixelRatio));
   return {area:window.__screenshotArea};
 }
 
@@ -103,7 +108,7 @@ async function checkChatArea(source,area) {
     if(color.some((v,i)=>p[a+i]!==v)||p[a+3]!==255)wrong++;
   }
   const pane=document.querySelector('.thread'),initial=window.__chatInitial;
-  return {width:c.width,height:c.height,barRows,wrong,scroll:initial.documentScroll?scrollY:pane.scrollTop,initial:initial.y,
+  return {width:c.width,height:c.height,barRows,expectedBarRows:window.__chatExpectedBarRows,wrong,scroll:initial.documentScroll?scrollY:pane.scrollTop,initial:initial.y,
     style:(document.querySelector('.composer').getAttribute('style')||'')===(initial.style||'')};
 }
 
@@ -393,6 +398,8 @@ async function checkNavigationPixels(source) {
   const live = process.argv.includes('--live') || tailwind || !!site;
   const mode = process.argv.includes('--full') ? 'full' : process.argv.includes('--visible') ? 'visible' : 'area';
   const chat=process.argv.includes('--chat'),chatDocument=process.argv.includes('--chat-document'),chatShort=process.argv.includes('--chat-short');
+  const chatSingleScroll=process.argv.includes('--chat-before-input-one-frame');
+  const chatBeforeInput=process.argv.includes('--chat-before-input')||chatSingleScroll,chatPartialInput=process.argv.includes('--chat-partial-input'),chatReverse=process.argv.includes('--chat-reverse');
   const startScrolled=process.argv.includes('--start-scrolled');
   if(chat&&(mode!=='area'||live))throw Error('--chat requires local Area capture');
   const multi = process.argv.includes('--multi');
@@ -555,7 +562,7 @@ async function checkNavigationPixels(source) {
             assert(context.cancelCapture(),'Stop cancels a live modal selection');await wait(100);
             assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Stop removes the top-layer overlay before any shot');
           }:null;
-          selection=chat?await browser.evaluate('('+selectChatArea.toString()+')('+chatShort+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
+          selection=chat?await browser.evaluate('('+selectChatArea.toString()+')('+[chatShort,chatBeforeInput,chatPartialInput,chatReverse,chatSingleScroll].join(',')+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
           if(fromContent||nativeEdge)await browser.evaluate('window.__navExpected=[]');
           console.log('Selected',JSON.stringify(selection));
         }
@@ -711,14 +718,20 @@ async function checkNavigationPixels(source) {
     if(chat){
       const checked=await browser.evaluate('('+checkChatArea.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection.area)+')');
       console.log('Chat Area pixels',JSON.stringify(checked));
-      fs.writeFileSync(path.join(outputDir,'chat-area'+(chatDocument?'-document':'-internal')+(mobile?'-mobile':'')+(dark?'-dark':'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(sourceRef?'-ref-'+sourceRef:'')+'.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+      fs.writeFileSync(path.join(outputDir,'chat-area'+(chatDocument?'-document':'-internal')+(chatSingleScroll?'-before-input-one-frame':chatBeforeInput?'-before-input':chatPartialInput?'-partial-input':chatReverse?'-reverse':chatShort?'-short':'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(sourceRef?'-ref-'+sourceRef:'')+'.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
       if(sourceRef){
-        assert(!chatShort&&checked.barRows>Math.round(100*(zoom||1)),'Old capture repeats the composer');
-        assert(Math.abs(checked.scroll-checked.initial)>1,'Old Area returns to the top');
+        if(chatBeforeInput){
+          assert.equal(checked.expectedBarRows,0,'The selection ends before the input');
+          assert(checked.barRows>0,'Old capture adds an input outside the selection');
+        }else{
+          assert(!chatShort&&checked.barRows>Math.round(100*(zoom||1)),'Old capture repeats the composer');
+          assert(Math.abs(checked.scroll-checked.initial)>1,'Old Area returns to the top');
+        }
         console.log('Old-code reproduction confirmed');return;
       }
       assert.equal(checked.wrong,0,'Selected message rows have no gaps or overlays');
-      assert.equal(checked.barRows,chatShort?0:Math.round(100*(zoom||1)),'Composer appears once at the end, or not at all outside a short selection');
+      assert.equal(checked.barRows,checked.expectedBarRows,'Only the selected part of the composer appears, never unselected UI');
+      assert.equal(checked.height,Math.round((selection.area.y_doc+selection.area.h_doc)*(zoom||1))-Math.round(selection.area.y_doc*(zoom||1)),'The image keeps the selected vertical boundaries');
       assert(Math.abs(checked.scroll-checked.initial)<1,'Area returns to the position before selection');
       assert.equal(checked.style,true,'Composer style is restored');return;
     }
