@@ -3,7 +3,7 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **18 ottobre 2026**.
+Ultimo aggiornamento: **19 ottobre 2026**.
 Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
@@ -20,11 +20,21 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Situazione della versione
 
-**Stato corrente — 18/10/2026:** la 9.14 locale include anche il fix Area
+**Stato corrente — 19/10/2026:** corretto il caso Area che aggiungeva la
+barra di input anche quando la selezione finiva prima. L'utente ha provato
+su ChatGPT e confermato la chiusura; dettagli in [IDEE_FATTE.md](IDEE_FATTE.md),
+voce del 19/10. Correzione, prove e nota nelle impostazioni salvate nel commit
+`fddc31b`; ZIP 9.14 aggiornato su richiesta dell'utente e confrontato con i
+26 file dell'estensione sul PC: identici. La copia del 18/10 è conservata.
+Dettagli e impronte dei pacchetti in `tools/README.md`. Nessuna pubblicazione.
+Restano separati il confronto sintetico al 125% e l'errore intermittente
+che l'utente ha scelto di lasciare invariato.
+
+**Pacchetto precedente — 18/10/2026:** la 9.14 locale include anche il fix Area
 sulle chat (casella unica e ritorno alla posizione precedente), il ritorno
 in cima di Full Page e la rimozione del bollino NEW dall'icona. Codice e
 prove salvati in `5ec508e`; ZIP 9.14 aggiornato e controllato, con tutti i
-26 file identici ai sorgenti. L'utente riferisce il funzionamento su ChatGPT
+26 file identici ai sorgenti di quel momento. L'utente riferisce il funzionamento su ChatGPT
 al 100% e al 125%; il confronto sintetico al 125% resta da chiarire e non è
 stato dichiarato superato. Risultati e copie dei pacchetti in `tools/README.md`.
 Nessuna pubblicazione della 9.14; resta valida la decisione dell'utente di

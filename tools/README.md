@@ -2,6 +2,96 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Area deve rispettare il taglio scelto — 19/10/2026, chiusura confermata
+
+Precisazione dell'utente: la selezione finiva a metà chat, prima della barra
+di input. Non si chiede di rimuovere sempre la barra, ma di catturare solo
+il rettangolo scelto, senza aggiungere UI e senza coprire il testo finale.
+Correzione e prove locali autorizzate esplicitamente.
+
+Riproduzioni con `node tools/test-area-sidebar.cjs --chat
+--chat-before-input --ref=d7f00f2` e `--chat
+--chat-before-input-one-frame --ref=d7f00f2`: il codice precedente aggiunge
+rispettivamente 100 e 50 righe della barra pur con intersezione selezionata
+pari a zero. Nel primo caso sostituisceva il fondo del contenuto con una
+barra ricatturata al fondo reale della chat. Nel secondo bastava uno scatto,
+ma lo spostamento necessario della selezione portava la barra sopra il testo.
+
+In `sw.js` viene ricordata la posizione del bordo inferiore della selezione,
+anche nei trascinamenti verso l'alto. Le barre inferiori sono escluse dagli
+scatti del contenuto; vengono ricopiate solo se incluse nel rettangolo,
+dalla vista scelta e solo per la porzione selezionata. Non si scorre più al
+fondo dell'intera pagina per fotografarle. La composizione esatta dei campi
+di chat rimane attiva anche quando la barra deve essere esclusa.
+Uno scatto singolo conserva letteralmente la vista solo quando era già
+visibile: se occorre spostarlo, vengono gestite anche le barre sovrapposte.
+Nessuna modifica a Full Page, Visible Only, riga o politica di ripristino.
+
+Prove locali al 100% passate, usando lo stesso motore Area e API Chrome
+adattate in Edge isolato, senza account o conversazioni reali:
+
+- `--chat --chat-before-input`, anche `--multi --editor --dark` e
+  `--multi --mobile --dark`: PNG 1900×1710 / 370×1710, zero righe della
+  barra, ogni riga di contenuto senza differenze, taglio esatto e scroll
+  ripristinato a 640. Immagini aperte e controllate.
+- `--chat --chat-before-input-one-frame --multi --editor`: PNG 1900×800,
+  zero barra e zero differenze pur dopo lo spostamento della selezione.
+- `--chat --chat-partial-input --multi`: solo le 50 righe effettivamente
+  selezionate della barra, PNG 1900×1910, nessun contenuto estraneo.
+- `--chat --multi --editor --mobile`: barra selezionata fino a un pixel
+  prima del fondo; 99 righe, non 100. Confini selezionati e contenuto corretti.
+- `--chat --chat-reverse --multi --editor`: trascinamento verso l'alto,
+  PNG 1900×1110, soltanto le 50 righe della barra incluse all'inizio del drag.
+- `--chat --chat-document --chat-before-input --multi --editor`: anche lo
+  scorrimento del documento rispetta il taglio, zero barra e zero differenze.
+- `--chat --chat-short`: selezione già visibile, PNG 1900×250 senza barra.
+- `--chat --chat-before-input --multi --stop`: nessun nuovo pezzo/file,
+  pezzi precedenti e posizione iniziale conservati.
+- `--release --multi --editor`: colonna laterale presente una volta per
+  tutte le 340 righe; barra inferiore realmente selezionata per 69 righe.
+  Il controllo precedente non è stato indebolito.
+- `--full --growth=static --start-scrolled --multi --editor`: Full Page
+  invariata, PNG 1920×2200 senza differenze, ritorno in cima.
+- Suite Stop: 75 passati, 0 falliti, 21 vecchi casi saltati; suite bollino
+  NEW: 8 passati. Sintassi dei due file modificati e `git diff --check` passati.
+
+File: `full-page-screenshot-extension/sw.js`, `tools/test-area-sidebar.cjs`.
+L'utente ha provato sulla propria chat, riferito «Adesso funziona» e
+confermato esplicitamente di considerare risolto questo problema il 19/10.
+Voce archiviata in `IDEE_FATTE.md`. Nessun nuovo test durante l'archiviazione.
+Nessun nuovo tentativo al
+125%, nessuna nuova diagnosi dell'errore intermittente lasciato invariato
+dall'utente il 18/10. Durante la sola archiviazione nessun commit/push o
+aggiornamento ZIP. Su successiva richiesta dell'utente codice, prove e nota
+nelle impostazioni salvati in `fddc31b`; pacchetto aggiornato come indicato
+qui sotto. Nessun invio allo Store.
+
+## ZIP 9.14 aggiornato con il taglio Area — 19/10/2026
+
+Commit, push e aggiornamento richiesti dall'utente; confronto del pacchetto
+autorizzato esplicitamente. `full-page-screenshot-extension/9.14.zip` contiene
+26 file, versione 9.14, **1.621.916 byte**. Ogni file letto nello ZIP è stato
+confrontato tramite SHA-256 con il sorgente sul PC: tutti identici. Inclusi
+la correzione Area confermata e la relativa nota nelle impostazioni, senza
+bollino NEW. Nessun file di lavoro, prova o ZIP annidato.
+
+La copia del 18/10 è conservata, senza sovrascriverla, in
+`full-page-screenshot-extension/Versioni precedenti zip/9.14-2026-10-18-prima-taglio-area.zip`;
+impronta identica al precedente `9.14.zip`. Il pacchetto del 03/10 resta
+anch'esso conservato. La 9.13 è stata soltanto letta per confronto: invariata.
+
+SHA-256 nuovo ZIP 9.14: `FC17C9F9E4773F0710B6FF6CA170989A86871C18FDEE60B3DDF32FBC0AC74B19`.
+SHA-256 copia 9.14 del 18/10: `19F32530734E623F08D3AA92A1331926CA687EE55337CBC21EE631115ADE5254`.
+SHA-256 ZIP 9.13 invariato: `008478FCD5A2C7B13BAB13A287DD867A4C09F7B82F6BAC417692342776F69C8C`.
+
+Il primo comando di creazione si è fermato prima di scrivere il pacchetto:
+mancava il caricamento dell'assembly `System.IO.Compression` nella sessione
+PowerShell. Caricato esplicitamente e ripetuto con successo; controllo dei
+26 file passato prima della sostituzione. Nessun nuovo test di cattura.
+ZIP locali ignorati da Git; su GitHub vanno codice, prove e documentazione.
+La 9.14 resta in lavorazione, senza pubblicazione sullo Store. Restano
+separati il confronto sintetico al 125% e la segnalazione intermittente.
+
 ## Area su chat: casella duplicata e posizione iniziale — 18/10/2026, in lavorazione
 
 L'utente segnala la casella «Chiedi a ChatGPT» duplicata e sovrapposta al testo

@@ -1,12 +1,26 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **03/10/2026**; commit e verifiche indicati nelle singole voci.
+Aggiornato il **19/10/2026**; commit e verifiche indicati nelle singole voci.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 19/10/2026 — Area su chat: rispettare il rettangolo scelto
+
+**Ideata il:** 19/10/2026, dalla precisazione dell'utente che la selezione terminava a metà chat, prima della barra di input.
+**Realizzata il:** 19/10/2026; l'utente ha provato su ChatGPT, riferito «Adesso funziona» e approvato esplicitamente la chiusura.
+
+- La barra non viene più ricopiata al fondo dell'immagine quando è fuori dalla selezione, evitando che copra le ultime righe del testo.
+- Se viene selezionata, si conserva soltanto la porzione effettivamente inclusa, nella vista scelta dall'utente. Vale anche trascinando verso l'alto o quando basta uno scatto ma occorre spostare la pagina.
+- Area normale e Area in Multi Snip usano il motore comune. Full Page, Visible Only, riga e regole di ritorno alla posizione iniziale non cambiano per questa correzione.
+- Prove locali autorizzate al 100% passate: barra esclusa, parzialmente inclusa, trascinamento inverso, selezione corta, scorrimento interno e del documento; Multi Snip dal pannello e dall'editor, Stop, chiaro/scuro e finestra stretta. Controllate anche Full Page e finestre di dialogo. Risultati e limiti in `tools/README.md`; la conferma manuale riguarda la chat dell'utente.
+- Questa chiusura non dichiara risolti il confronto sintetico al 125% né l'errore intermittente che l'utente ha scelto di lasciare invariato il 18/10.
+
+File: `full-page-screenshot-extension/sw.js`, `tools/test-area-sidebar.cjs`; documentazione in `tools/README.md` e `IDEE.md`.
+**Commit:** `fddc31b` per codice, prove e nota nelle impostazioni, su successiva richiesta esplicita dell'utente di commit, push e aggiornamento del pacchetto. ZIP 9.14 rigenerato con la correzione e confrontato, previa autorizzazione, con tutti i 26 file dell'estensione sul PC: identici. Copia del 18/10 conservata; dettagli in `tools/README.md`. Nessun nuovo test di cattura o invio allo Store. Nessun `TODO.md` o sezione dedicata nelle idee future da rimuovere; lasciato il rimando nella situazione della versione.
 
 ## 03/10/2026 — Full Page fino a qui: riga e scorrimento interno confermati
 
