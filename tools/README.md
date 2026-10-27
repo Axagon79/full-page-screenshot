@@ -2,6 +2,106 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Avvio della 9.15 e pacchetto provvisorio — 27/10/2026
+
+Su richiesta dell'utente, creato `full-page-screenshot-extension/9.15.zip`
+con la correzione Area della finestra mail come prima modifica rispetto
+alla 9.14. Manifest alla 9.15 e voce dedicata nelle note delle impostazioni;
+nessuna modifica al bollino dell'icona, che rimane senza NEW.
+
+Controllo del pacchetto esplicitamente autorizzato e passato: versione 9.15,
+26 file, **1.622.148 byte**. Ogni file nello ZIP confrontato tramite SHA-256
+con i sorgenti correnti: identico. Elenco dei file uguale alla 9.14, senza
+file di lavoro, prove o archivi annidati. Nessun nuovo test di cattura in
+questa preparazione; valgono le prove e la conferma manuale qui sotto.
+
+SHA-256 ZIP 9.15: `2A3588B11FFF6FAD361A0EC42B5F9FA3F0A9E21D6AD1CCE7956373189EEBAFF6`.
+SHA-256 ZIP 9.14, letto prima e dopo e invariato:
+`FC17C9F9E4773F0710B6FF6CA170989A86871C18FDEE60B3DDF32FBC0AC74B19`.
+
+I vecchi pacchetti non vengono sostituiti o spostati. Gli ZIP rimangono
+locali e ignorati da Git. Su successiva richiesta dell'utente di commit e
+push, codice, prove, manifest e nota nelle impostazioni salvati in `bf4c711`;
+documentazione nel successivo commit. Nessun nuovo test durante questi
+commit e nessun invio allo Store.
+La 9.15 resta in preparazione per eventuali altre modifiche concordate;
+il pacchetto andrà rigenerato dopo ogni ulteriore modifica ai sorgenti.
+
+## Area nella finestra di composizione mail — 27/10/2026, funzionamento confermato dall'utente
+
+Segnalazione su Gmail: `The page ended before the selected area`, selezione
+che comprende intestazione, corpo scorrevole e parte bassa della finestra.
+Diagnosi, correzione e prove locali autorizzate dall'utente. Nessun accesso
+alla sua posta, al profilo del browser o a messaggi reali.
+
+Riproduzione con `node tools/test-area-sidebar.cjs --mail-compose
+--ref=2ed7ce8`: pannello da y=160, altezza 578, corsa interna 160; selezione
+da y=49, altezza 901. Il codice precedente raggiunge il fondo del corpo,
+fotografa separatamente i 52 pixel selezionati della fascia inferiore, poi
+rifiuta la composizione perché pretende che anche quella fascia sia coperta
+dalle foto del corpo. È lo stesso errore segnalato, riprodotto localmente;
+non è un'ispezione del DOM della finestra Gmail autenticata.
+
+Correzione minima in `sw.js`: prima di controllare la copertura finale si
+calcola la porzione inferiore realmente selezionata e fotografata. Le foto
+del corpo devono coprire tutte le righe fino a quella fascia; la foto della
+fascia copre le restanti. Non si allarga la selezione né si inventano righe.
+Senza una fascia selezionata e fotografata il controllo resta quello di
+prima. I buchi intermedi e la mancanza di contenuto prima della fascia
+continuano a produrre un errore, senza file o pezzi incompleti.
+Motore Area comune, quindi vale anche per Multi Snip. Full Page, Visible
+Only, riga, ripristino, Stop e bollino NEW non modificati.
+
+Prove autorizzate su Edge isolato al 100%, passate:
+
+- `--mail-compose`: PNG 1784×901, intestazione selezionata per 111 righe,
+  corpo per 738 e fascia inferiore per 52; zero righe diverse dai colori
+  attesi, dimensioni esatte. Immagine aperta e controllata.
+- `--mail-compose --multi --editor --dark` e
+  `--mail-compose --multi --mobile --dark`: stessa copertura esatta; PNG
+  stretto 334×901. Conservato il pezzo precedente.
+- `--mail-compose --mail-inside --multi`: solo il corpo, PNG 1784×690,
+  nessuna intestazione o fascia inferiore estranea; zero differenze.
+- `--mail-compose --mail-short`: selezione corta, PNG 1784×350,
+  intestazione per 111 righe e nessuna fascia inferiore; zero differenze.
+- `--mail-compose --mail-reverse --multi --editor`: trascinamento verso
+  l'alto, stesso rettangolo completo di 901 righe, senza differenze.
+- `--mail-compose --multi --stop` e `--mail-compose --multi --editor
+  --failure`: nessun file/pezzo nuovo; raccolta precedente, finestra aperta,
+  stili e scorrimento iniziali conservati.
+- `--mail-compose --multi --editor --composition-gap`: rimossa
+  deliberatamente l'ultima foto del corpo. La sola fascia inferiore non
+  basta: errore di copertura effettivo e nessun risultato incompleto.
+- Regressioni `--chat --chat-before-input --multi --editor` e
+  `--chat --chat-partial-input --multi`: zero differenze, rispettivamente
+  zero e 50 righe della barra selezionata; ritorno a scroll 640.
+- `--modal=dialog --multi --editor`: contenuto della finestra nativa,
+  dimensioni e ripristino passati. `--full --growth=static
+  --start-scrolled --multi`: PNG 1920×2200 senza differenze, 128 righe
+  finali confrontate, ritorno in cima.
+- Suite `test-capture-stop.cjs` e `test-news-badge.cjs` passate; vecchi casi
+  già saltati invariati. Sintassi dei file modificati e `git diff --check`
+  passati.
+
+Preparazione della prova: la prima versione della mail finta non riproduceva
+l'errore (ultimo blocco più alto del previsto per il padding e form troppo
+corto per rappresentare la barra). Sistemata la geometria, la riproduzione
+con codice precedente è passata. Il primo confronto dell'immagine corretta
+campionava testo e pulsanti, scambiandoli per sfondi mancanti: spostato il
+campione nello spazio libero a destra, mantenendo colori e conteggi attesi.
+Tutti i confronti elencati sopra sono passati dopo questa correzione della
+prova; nessuna ulteriore modifica al codice di produzione necessaria.
+
+File: `full-page-screenshot-extension/sw.js`, `tools/test-area-sidebar.cjs`.
+L'utente ha provato su Gmail e riferito «Bravo adesso funziona», allegando
+lo screenshot della finestra e della mail complete. Ha poi richiesto di
+includere questa prima correzione nella nuova 9.15 in preparazione.
+Manifest e nota nelle impostazioni portati alla 9.15, senza modificare lo
+ZIP 9.14 del 19/10. Successivamente l'utente ha richiesto commit e push:
+correzione e prove in `bf4c711`, note nel successivo commit documentale.
+Nessun invio allo Store. Nessuna nuova prova sul caso sintetico al 125% o
+diagnosi dell'errore intermittente su ChatGPT lasciato invariato dall'utente.
+
 ## Area deve rispettare il taglio scelto — 19/10/2026, chiusura confermata
 
 Precisazione dell'utente: la selezione finiva a metà chat, prima della barra

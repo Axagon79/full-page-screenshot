@@ -3,7 +3,7 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **19 ottobre 2026**.
+Ultimo aggiornamento: **27 ottobre 2026**.
 Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
@@ -20,7 +20,21 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Situazione della versione
 
-**Stato corrente — 19/10/2026:** corretto il caso Area che aggiungeva la
+**Stato corrente — 27/10/2026:** avvio della **9.15 in preparazione**, su
+richiesta dell'utente. Prima correzione: Area nella finestra di composizione
+mail non rifiuta più la selezione che comprende testo scorrevole e fascia
+inferiore ferma, già fotografata separatamente. Vale anche in Multi Snip.
+L'utente ha provato su Gmail e riferito che funziona, allegando il risultato.
+Manifest e note nelle impostazioni passano alla 9.15; la 9.14 resta intatta.
+Nessuna nuova funzione o pubblicazione della 9.15; raccoglierà eventuali
+altre modifiche concordate. Prove e pacchetto in `tools/README.md`.
+Su successiva richiesta dell'utente di commit e push, codice, prove e avvio
+della versione salvati in `bf4c711`; note nel successivo commit documentale.
+Gli ZIP restano locali e non vengono caricati su GitHub. Lo stato online
+della 9.14 non è stato verificato: il 20/10 l'utente aveva caricato il
+pacchetto e si accingeva a pubblicarlo.
+
+**Pacchetto precedente — 19/10/2026:** corretto il caso Area che aggiungeva la
 barra di input anche quando la selezione finiva prima. L'utente ha provato
 su ChatGPT e confermato la chiusura; dettagli in [IDEE_FATTE.md](IDEE_FATTE.md),
 voce del 19/10. Correzione, prove e nota nelle impostazioni salvate nel commit
