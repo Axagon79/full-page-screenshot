@@ -4467,15 +4467,21 @@ async function doAreaCapture(tabId) {
               exactCtx.drawImage(img, exactX, skip, exact.width, count, 0, dest + skip, exact.width, count);
               covered = dest + skip + count;
             });
-            if (covered < exact.height) throw new Error('The page ended before the selected area. Please try again.');
+            var exactTop = 0, exactBottom = 0, exactBand = 0;
             if (overlayImg && typeof bottomOverlayTop === 'number') {
-              var exactTop = Math.round(Math.max(0, bottomOverlayTop) * exactRatio);
-              var exactBottom = Math.min(overlayImg.height, Math.round((typeof bottomOverlayBottom === 'number'
+              exactTop = Math.round(Math.max(0, bottomOverlayTop) * exactRatio);
+              exactBottom = Math.min(overlayImg.height, Math.round((typeof bottomOverlayBottom === 'number'
                 ? bottomOverlayBottom : offsetY + contH) * exactRatio));
-              var exactBand = Math.min(exact.height, exactBottom - exactTop);
-              if (exactBand > 0) exactCtx.drawImage(overlayImg, exactX, exactBottom - exactBand,
-                exact.width, exactBand, 0, exact.height - exactBand, exact.width, exactBand);
+              exactBand = Math.max(0, Math.min(exact.height, exactBottom - exactTop));
             }
+            // A selection can continue below an internal scroller into the
+            // dialog's stationary footer. Those selected rows are supplied by
+            // the separately captured bottom band, not by scrolling the body.
+            // Require complete coverage of every row before that band; never
+            // turn a missing content frame into blank or repeated message rows.
+            if (covered < exact.height - exactBand) throw new Error('The page ended before the selected area. Please try again.');
+            if (exactBand > 0) exactCtx.drawImage(overlayImg, exactX, exactBottom - exactBand,
+              exact.width, exactBand, 0, exact.height - exactBand, exact.width, exactBand);
             return exact.toDataURL('image/png');
           }
           var sliceCanvases = loaded.map(function(img, idx) {

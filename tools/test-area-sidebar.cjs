@@ -112,6 +112,48 @@ async function checkChatArea(source,area) {
     style:(document.querySelector('.composer').getAttribute('style')||'')===(initial.style||'')};
 }
 
+function mailComposeFixture() {
+  const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.head.innerHTML='<style>*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}body{background:'+(dark?'#141923':'#eee')+';font:16px Arial}#mail-compose{position:fixed;left:50px;right:50px;top:30px;bottom:50px;background:white}#mail-head{height:130px;background:rgb(65,105,155)}#mail-head h1{margin:0;padding:14px}#mail-body{height:calc(100% - 242px);overflow:auto;outline:none}#mail-body section{height:90px;padding:20px}#mail-body section:last-child{padding:0}#mail-footer{height:112px;background:rgb(113,51,199)}#mail-footer form{height:100%;padding:15px;visibility:visible}#mail-footer input{width:110px}@media(max-width:500px){#mail-compose{left:10px;right:10px}}</style>';
+  document.body.innerHTML='<main inert>LOCAL MAIL — no account or real message</main><div id="mail-compose" role="dialog" aria-modal="true"><div id="mail-head"><h1>Draft title</h1><p>To: local@example.invalid</p></div><div id="mail-body" contenteditable="true" role="textbox">'+Array.from({length:9},(_,i)=>'<section style="height:'+(i===8?18:90)+'px;background:rgb('+(i%2?'180,220,240':'240,220,180')+')">FAKE MAIL '+i+'</section>').join('')+'</div><div id="mail-footer"><form><input aria-label="Formatting" value="Local only"><button type="button">Do not send</button></form></div></div>';
+  // 738px of body, 578px visible at the 900px viewport: 160px travel.
+  const pane=document.getElementById('mail-body'),r=pane.getBoundingClientRect();
+  window.__mailInitial={top:r.top,bottom:r.bottom,scroll:pane.scrollTop,styles:[...document.querySelectorAll('#mail-compose,#mail-compose *')].map(el=>({el,style:el.getAttribute('style')||''}))};
+}
+
+function selectMailComposeArea(short, inside, reverse) {
+  const overlay=document.getElementById('__screenshot_area_overlay');
+  const pane=document.getElementById('mail-body'),r=pane.getBoundingClientRect(),dialog=document.getElementById('mail-compose').getBoundingClientRect();
+  const x=dialog.left+18,right=dialog.right-18,top=inside?r.top+20:49,bottom=inside?r.bottom-28:r.bottom+52;
+  if(reverse)pane.scrollTop=160;
+  const start=reverse?bottom:top,end=reverse?top:short?Math.min(bottom,top+350):bottom;
+  const mouse=(type,mx,my)=>overlay.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,clientX:mx,clientY:my,buttons:type==='mouseup'?0:1}));
+  mouse('mousemove',x,start);mouse('mousedown',x,start);mouse('mousemove',right,(top+bottom)/2);
+  if(!short)overlay.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:right,clientY:(r.top+r.bottom)/2,deltaY:reverse?-160:160}));
+  mouse('mousemove',right,end);mouse('mouseup',right,end);
+  const a=window.__screenshotArea;
+  const lowerScroll=typeof a.bottomScroll==='number'?a.bottomScroll:pane.scrollTop;
+  window.__mailExpected={prefix:Math.max(0,r.top-(a.y_doc-(reverse?pane.scrollTop:0))),suffix:Math.max(0,a.y_doc+a.h_doc-lowerScroll-r.bottom)};
+  return {area:a};
+}
+
+async function checkMailCompose(source,area) {
+  const img=new Image();await new Promise((yes,no)=>{img.onload=yes;img.onerror=no;img.src=source;});
+  const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+  // Sample clear space to the right of text/buttons, inside the selected body
+  // and outside its scrollbar. Glyphs are not missing background rows.
+  const data=ctx.getImageData(c.width-24,0,1,c.height).data,k=devicePixelRatio,initial=window.__mailInitial;
+  const prefix=Math.round(window.__mailExpected.prefix*k),suffix=Math.round(window.__mailExpected.suffix*k);
+  let wrong=0,header=0,footer=0;
+  for(let y=0;y<c.height;y++){
+    const p=y*4,color=y<prefix?[65,105,155]:y>=c.height-suffix?[113,51,199]:Math.floor((area.y_doc+(y+.5)/k-initial.top)/90)%2?[180,220,240]:[240,220,180];
+    if(color.some((v,i)=>data[p+i]!==v)||data[p+3]!==255)wrong++;
+    if([65,105,155].every((v,i)=>data[p+i]===v))header++;
+    if([113,51,199].every((v,i)=>data[p+i]===v))footer++;
+  }
+  return {width:c.width,height:c.height,expectedHeight:Math.round((area.y_doc+area.h_doc)*k)-Math.round(area.y_doc*k),wrong,header,footer,prefix,suffix};
+}
+
 function internalEndFixture() {
   const dark=matchMedia('(prefers-color-scheme: dark)').matches;
   document.head.innerHTML='<style>*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0;background:'+(dark?'#141923':'#fff')+';font:16px Arial}header{height:60px;background:rgb(226,237,245);padding:18px}.app{display:flex;height:calc(100vh - 60px)}aside{width:180px;flex:none;overflow:auto}main{flex:1;min-width:0;overflow:auto}section{height:80px;padding:20px}.right{width:140px}nav div{height:70px;padding:20px}@media(max-width:500px){aside{width:80px}.right{width:70px}}</style>';
@@ -401,6 +443,8 @@ async function checkNavigationPixels(source) {
   const chatSingleScroll=process.argv.includes('--chat-before-input-one-frame');
   const chatBeforeInput=process.argv.includes('--chat-before-input')||chatSingleScroll,chatPartialInput=process.argv.includes('--chat-partial-input'),chatReverse=process.argv.includes('--chat-reverse');
   const startScrolled=process.argv.includes('--start-scrolled');
+  const mailCompose=process.argv.includes('--mail-compose'),mailShort=process.argv.includes('--mail-short'),mailInside=process.argv.includes('--mail-inside'),mailReverse=process.argv.includes('--mail-reverse');
+  if(mailCompose&&(mode!=='area'||live))throw Error('--mail-compose requires local Area capture');
   if(chat&&(mode!=='area'||live))throw Error('--chat requires local Area capture');
   const multi = process.argv.includes('--multi');
   const editor = process.argv.includes('--editor');
@@ -467,7 +511,8 @@ async function checkNavigationPixels(source) {
         assert(await browser.evaluate('!!document.querySelector("[role=dialog]")'),'The real pricing login popup is open');
         await browser.evaluate('window.__pricingDialog=document.querySelector("[role=dialog]");window.__pricingBodyStyle=document.body.getAttribute("style");true');
       }
-    } else if(chat)await browser.evaluate('('+chatAreaFixture.toString()+')('+chatDocument+')');
+    } else if(mailCompose)await browser.evaluate('('+mailComposeFixture.toString()+')()');
+    else if(chat)await browser.evaluate('('+chatAreaFixture.toString()+')('+chatDocument+')');
     else if(endLineInternal)await browser.evaluate('('+internalEndFixture.toString()+')()');
     else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
     else if(growth)await browser.evaluate('('+growthFixture.toString()+')('+JSON.stringify(growth)+')');
@@ -523,7 +568,7 @@ async function checkNavigationPixels(source) {
         if(spec.func.toString().includes('function(imgs, ax, aw, ah_doc')){
           // Deliberately omit a source frame: the real composer must refuse the
           // incomplete image, and the real controller must restore Multi state.
-          if(compositionGap){spec.args[0].splice(2,1);spec.args[8].splice(2,1);spec.args[9].splice(2,1);}
+          if(compositionGap){const missing=mailCompose?1:2;spec.args[0].splice(missing,1);spec.args[8].splice(missing,1);spec.args[9].splice(missing,1);}
           const bytes=Buffer.from(spec.args[0][0].split(',')[1],'base64');
           const comp={frames:spec.args[0].length,width:spec.args[2],height:spec.args[3],viewportHeight:spec.args[4],dpr:spec.args[5],scrolls:spec.args[9],selectedY:spec.args[15],
             screenshotWidth:bytes.readUInt32BE(16),screenshotHeight:bytes.readUInt32BE(20),unfolded:spec.args[14]};
@@ -562,7 +607,7 @@ async function checkNavigationPixels(source) {
             assert(context.cancelCapture(),'Stop cancels a live modal selection');await wait(100);
             assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Stop removes the top-layer overlay before any shot');
           }:null;
-          selection=chat?await browser.evaluate('('+selectChatArea.toString()+')('+[chatShort,chatBeforeInput,chatPartialInput,chatReverse,chatSingleScroll].join(',')+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
+          selection=mailCompose?await browser.evaluate('('+selectMailComposeArea.toString()+')('+[mailShort,mailInside,mailReverse].join(',')+')'):chat?await browser.evaluate('('+selectChatArea.toString()+')('+[chatShort,chatBeforeInput,chatPartialInput,chatReverse,chatSingleScroll].join(',')+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
           if(fromContent||nativeEdge)await browser.evaluate('window.__navExpected=[]');
           console.log('Selected',JSON.stringify(selection));
         }
@@ -688,7 +733,13 @@ async function checkNavigationPixels(source) {
       }
     }
     if(site!=='yahoo'&&!growth)assert.equal(restored.height,initial.height,'Original document height restored');assert.equal(restored.remaining,0);
-    if(chat||independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
+    if(mailCompose)assert(await browser.evaluate('document.getElementById("mail-body").scrollTop===window.__mailInitial.scroll&&window.__mailInitial.styles.every(rec=>(rec.el.getAttribute("style")||"")===rec.style)&&!!document.getElementById("mail-compose")'),'Draft remains open with original styles and scroll');
+    if(mailCompose&&sourceRef&&!stop){
+      assert.equal(outputs.length,0,'Old capture refuses the selected draft');
+      assert(messages.some(m=>m.type==='error'&&m.message.includes('The page ended before the selected area')),'Reproduce the reported coverage error');
+      console.log('Mail baseline error reproduced',JSON.stringify({selection,compositions,messages}));return;
+    }
+    if(mailCompose||chat||independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
     else if(!live&&!baseline&&!release&&!ads&&!growth&&!modal)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
     const growthLimit=mode==='full'&&['continuous','stalled'].includes(growth);
     if(stop||failure||compositionGap||stopWait||growthLimit){
@@ -696,7 +747,7 @@ async function checkNavigationPixels(source) {
       assert.equal(outputs.length,0,'Interrupted capture produces no file');
       if(multi)assert.deepEqual(session.multi.pieces,[previousPiece],'Interrupted Multi preserves old pieces');
       if(compositionGap){
-        const expectedError=endLineInternal?'The scrolling content ended before the capture was complete':'The page moved during capture';
+        const expectedError=mailCompose?'The page ended before the selected area':endLineInternal?'The scrolling content ended before the capture was complete':'The page moved during capture';
         assert(messages.some(m=>m.type==='error'&&m.message.includes(expectedError)),'The actual composition error reaches the UI');
         assert(!JSON.stringify(messages).includes('Image too large'),'A missing frame is not called an oversized image');
       }
@@ -714,6 +765,16 @@ async function checkNavigationPixels(source) {
     }
     const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:endLineInternal?'internal':independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
+    if(mailCompose){
+      const checked=await browser.evaluate('('+checkMailCompose.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection.area)+')');
+      const name='mail-compose'+(mailShort?'-short':'')+(mailInside?'-inside':'')+(mailReverse?'-reverse':'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(multi?editor?'-multi-editor':'-multi-widget':'');
+      fs.writeFileSync(path.join(outputDir,name+'.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+      console.log('Mail selected rows',JSON.stringify(checked));
+      assert.equal(checked.height,checked.expectedHeight,'Selected draft height is exact');
+      assert.equal(checked.header,checked.prefix,'Only the selected title band appears once');
+      assert.equal(checked.footer,checked.suffix,'Only the selected footer band appears once');
+      assert.equal(checked.wrong,0,'All selected message rows are present exactly once');return;
+    }
     fs.writeFileSync(path.join(outputDir,mode+'-'+label+'-after.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
     if(chat){
       const checked=await browser.evaluate('('+checkChatArea.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection.area)+')');
