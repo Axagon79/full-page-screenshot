@@ -261,6 +261,64 @@ async function createCaptureProgress(job) {
   });
 }
 
+// Shared discovery for Full/Area (including Multi pieces): a short absolute
+// sibling above an internal scrollport can be an anchored top toolbar too.
+// No hostnames/classes, no blanket hiding of absolute elements/backgrounds.
+async function prepareCaptureTopOverlays(tabId, selector) {
+  checkCaptureCancelled();
+  await chrome.scripting.executeScript({ target: { tabId: tabId },
+    func: function(selector) {
+      var control = window.__shotCaptureControl;
+      if (!control) return;
+      var panes = Array.from(document.querySelectorAll(selector || '*')).filter(function(el) {
+        var css = getComputedStyle(el), r = el.getBoundingClientRect();
+        return /^(auto|scroll)$/.test(css.overflowY) && el.scrollHeight > el.clientHeight + 10 &&
+          r.width >= 80 && r.height >= 50 && r.bottom > 0 && r.top < innerHeight &&
+          css.visibility === 'visible' && css.display !== 'none';
+      });
+      var found = new Set();
+      panes.forEach(function(pane) {
+        var pr = pane.getBoundingClientRect(), top = Math.max(0, pr.top + pane.clientTop);
+        var left = Math.max(0, pr.left), right = Math.min(innerWidth, pr.right);
+        var candidates = new Set();
+        for (var node = pane; node && node !== document.body && node.parentElement; node = node.parentElement) {
+          Array.from(node.parentElement.children).forEach(function(el) {
+            if (el === node || el.contains(pane) || el.id === '__shot_capture_progress') return;
+            var css = getComputedStyle(el), r = el.getBoundingClientRect();
+            if (css.position !== 'absolute' || !(Number(css.zIndex) > 0) ||
+                css.visibility !== 'visible' || css.display === 'none' ||
+                r.height < 8 || r.height > Math.min(160, pr.height * 0.25) ||
+                Math.abs(r.top - top) > 2 || r.width <= r.height * 1.5 ||
+                Math.min(right, r.right) - Math.max(left, r.left) < (right - left) * 0.5) return;
+            for (var ancestor = el; ancestor; ancestor = ancestor.parentElement) {
+              if (Number(getComputedStyle(ancestor).opacity) === 0) return;
+            }
+            candidates.add(el);
+          });
+        }
+        if (!candidates.size) return;
+        var base = pane.scrollTop, before = new Map();
+        candidates.forEach(function(el) { before.set(el, el.getBoundingClientRect().top); });
+        try {
+          pane.scrollTo({ top: base > 20 ? base - 12 : base + 12, left: pane.scrollLeft, behavior: 'instant' });
+          if (Math.abs(pane.scrollTop - base) <= 1) return;
+          candidates.forEach(function(el) {
+            if (Math.abs(el.getBoundingClientRect().top - before.get(el)) >= 2) return;
+            found.add(el);
+            // An explicitly visible descendant can survive visibility:hidden
+            // on its parent. Include the whole small toolbar in the same
+            // existing capture/restoration mechanism, not just its background.
+            el.querySelectorAll('*').forEach(function(child) { found.add(child); });
+          });
+        } finally {
+          pane.scrollTo({ top: base, left: pane.scrollLeft, behavior: 'instant' });
+        }
+      });
+      control.topOverlays = Array.from(found);
+    }, args: [selector || null]
+  });
+}
+
 // Document navigation is content, not a repeating viewport decoration. Unfold
 // only sticky navigation scrollers, before Full measures the page or Area lets
 // the user select it. Independent app/feed/dialog scrollers keep their engine.

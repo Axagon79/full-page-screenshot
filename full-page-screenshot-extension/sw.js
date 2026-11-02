@@ -1167,7 +1167,8 @@ async function doMultiPaneFullCapture(tabId, d) {
           for (var k = 0; k < all.length; k++) {
             if (all[k].id === '__shot_capture_progress') continue;
             var css = window.getComputedStyle(all[k]);
-            if (css.position !== 'fixed' && css.position !== 'sticky') continue;
+            if (css.position !== 'fixed' && css.position !== 'sticky' &&
+                !(window.__shotCaptureControl.topOverlays || []).includes(all[k])) continue;
             var contienePane = false;
             for (var pa = 0; pa < panes.length; pa++) {
               if (all[k].contains(panes[pa])) { contienePane = true; break; }
@@ -1586,9 +1587,11 @@ async function doFullCapture(tabId) {
       throw new Error('The end line needs a normally scrolling page. Use Full Page or Area for this page.');
     }
     if (d.multiPane) {
+      await prepareCaptureTopOverlays(tabId, '[data-screenshot-pane]');
       await doMultiPaneFullCapture(tabId, d);
       return;
     }
+    if (d.hasCustomScroll) await prepareCaptureTopOverlays(tabId, '[data-screenshot-scroll]');
     // Preserve all regions outside the selected pane exactly at the chosen
     // end. captureFrame excludes both the marker and the progress indicator.
     if (d.endPane) d.endPane.image = await captureFrame(tabId);
@@ -1725,7 +1728,8 @@ async function doFullCapture(tabId) {
             var allEls = allElementsDeep(document);
             for (var k = 0; k < allEls.length; k++) {
               var st = window.getComputedStyle(allEls[k]);
-              if (st.position === 'fixed' || st.position === 'sticky') {
+              if (st.position === 'fixed' || st.position === 'sticky' ||
+                  (window.__shotCaptureControl.topOverlays || []).includes(allEls[k])) {
                 // MAI censire il contenitore che scrolliamo o un suo antenato:
                 // visibility si eredita, nasconderlo cancella TUTTO il contenuto.
                 // (Dashboard con "scocca" fixed a schermo intero e scroll interno:
@@ -2426,10 +2430,14 @@ async function captureAreaPanes(tabId, area) {
         panes.forEach(function(p) {
           (p.isWindow ? window : p.el).scrollTo({ top: p.origin,
             left: p.isWindow ? window.scrollX : p.el.scrollLeft, behavior: 'instant' });
-          p.el.querySelectorAll('*').forEach(function(el) {
+          var topOverlays = (window.__shotCaptureControl.topOverlays || []).filter(function(el) {
+            var r = el.getBoundingClientRect();
+            return Math.min(r.right, p.right) - Math.max(r.left, p.left) >= (p.right - p.left) * 0.6;
+          });
+          Array.from(p.el.querySelectorAll('*')).concat(topOverlays).forEach(function(el) {
             if (el.id === '__shot_capture_progress') return;
             var css = getComputedStyle(el);
-            if (css.position !== 'sticky' && css.position !== 'fixed') return;
+            if (css.position !== 'sticky' && css.position !== 'fixed' && !topOverlays.includes(el)) return;
             var r = el.getBoundingClientRect();
             if (r.width < (p.right - p.left) * 0.6 || r.height <= 0 ||
                 r.height > (p.bottom - p.top) * 0.3 || css.visibility === 'hidden') return;
@@ -2584,6 +2592,7 @@ async function doAreaCapture(tabId) {
   var areaScrollbarsHidden = false;
   var captureBackgrounds = false;
   try {
+    await prepareCaptureTopOverlays(tabId);
     // (le animazioni JS sono già congelate dal listener startCapture)
     // In sessione Multi Snip l'overlay mostra un testo dedicato, così si
     // capisce che il pezzo finirà nell'editor e non nel download.
@@ -3358,7 +3367,8 @@ async function doAreaCapture(tabId) {
           if (oldStart) oldStart.removeAttribute('data-screenshot-start-sticky');
           while (elUnder && elUnder !== document.body && elUnder !== document.documentElement) {
             var pos2 = window.getComputedStyle(elUnder).position;
-            if (pos2 === 'fixed' || pos2 === 'sticky') {
+            if (pos2 === 'fixed' || pos2 === 'sticky' ||
+                (window.__shotCaptureControl.topOverlays || []).includes(elUnder)) {
               // Solo BARRE VERE, con gli stessi criteri di forma usati per
               // misurarle (larghe almeno mezza finestra, basse meno di un
               // terzo). Senza questo filtro bastava la SCOCCA dell'app —
@@ -3667,6 +3677,10 @@ async function doAreaCapture(tabId) {
 
     // === Step 3: multi-slice capture ===
 
+    if (area.hasCustomScroll || (area.panes && area.panes.length)) {
+      await prepareCaptureTopOverlays(tabId, '[data-screenshot-area-scroll], [data-screenshot-area-pane]');
+    }
+
     var compResult;
     if (area.panes && area.panes.length) {
       areaScrollbarsHidden = true;
@@ -3726,7 +3740,8 @@ async function doAreaCapture(tabId) {
           if (barraPartenza && (tutti[k] === barraPartenza ||
               tutti[k].contains(barraPartenza) || barraPartenza.contains(tutti[k]))) continue;
           var pz = window.getComputedStyle(tutti[k]);
-          if (pz.position !== 'fixed' && pz.position !== 'sticky') continue;
+          if (pz.position !== 'fixed' && pz.position !== 'sticky' &&
+              !(window.__shotCaptureControl.topOverlays || []).includes(tutti[k])) continue;
           if (pz.visibility === 'hidden' || pz.display === 'none') continue;
           var rz = tutti[k].getBoundingClientRect();
           if (rz.top <= bordoTop + 2 && rz.bottom > bordoTop &&
@@ -3925,7 +3940,8 @@ async function doAreaCapture(tabId) {
               if (allEls[k].id === '__screenshot_area_overlay') continue;
               var candidateCss = window.getComputedStyle(allEls[k]);
               var p = candidateCss.position;
-              if (p === 'fixed' || p === 'sticky' || isAreaInputOverlay(allEls[k], candidateCss)) {
+              if (p === 'fixed' || p === 'sticky' || isAreaInputOverlay(allEls[k], candidateCss) ||
+                  (window.__shotCaptureControl.topOverlays || []).includes(allEls[k])) {
                 // Stesse esclusioni della Full Page: il contenitore scrollato (o
                 // un suo antenato) e gli elementi a schermo quasi intero non vanno
                 // mai nascosti — sono la scocca/sfondo dell'app, non barre fisse

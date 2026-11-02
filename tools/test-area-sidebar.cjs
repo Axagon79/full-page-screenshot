@@ -112,6 +112,42 @@ async function checkChatArea(source,area) {
     style:(document.querySelector('.composer').getAttribute('style')||'')===(initial.style||'')};
 }
 
+function claudeStructureFixture(sidebarScroll) {
+  const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.head.innerHTML='<style>*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}body{font:16px Arial;background:'+(dark?'#141923':'#fff')+'}.dframe-root{position:relative;height:100vh;overflow:clip}.dframe-sidebar{position:absolute;left:0;top:0;width:288px;height:100%;background:#fafafa;z-index:20}.dframe-nav-scroll{height:'+(sidebarScroll?'88%':'200px')+';overflow:auto}.dframe-nav-scroll div{height:70px}.dframe-content{position:absolute;inset:0;overflow:hidden;padding-left:288px}.pane{position:relative;height:100%;overflow:clip;display:flex;flex-direction:column}.contents{display:contents}.chat-parent{display:flex;flex:1;min-height:0;flex-direction:column}.claude-thread{flex:1;overflow-y:auto;overflow-x:hidden;padding-top:53px;scroll-padding-top:45px}.message{height:80px;padding:20px 60px}.dframe-header{position:absolute;top:0;left:0;right:8px;height:45px;z-index:11;pointer-events:none}.header-surface{position:absolute;inset:0;background:rgb(250,250,250);border-bottom:1px solid #aaa;visibility:visible}.composer{position:sticky;bottom:0;margin:auto;width:92%;height:108px;padding:24px 0 0;pointer-events:none;z-index:5}.composer form{height:84px;background:rgb(113,51,199);visibility:visible}.composer textarea{margin:12px}.decoration{position:absolute;inset:0;pointer-events:none;z-index:0;background:transparent}.hidden-panel{position:absolute;top:0;right:0;width:55%;height:45px;opacity:0;z-index:30;background:white}@media(max-width:500px){.dframe-sidebar{display:none}.dframe-content{padding-left:0}}</style>';
+  document.body.innerHTML='<div class="dframe-root"><aside class="dframe-sidebar"><div class="dframe-nav-scroll">'+Array.from({length:18},(_,i)=>'<div>LOCAL NAV '+i+'</div>').join('')+'</div></aside><main class="dframe-content"><div class="pane"><div class="contents"><div class="chat-parent"><div class="claude-thread"><div class="messages">'+Array.from({length:40},(_,i)=>'<section class="message" style="background:rgb('+(i%2?'180,220,240':'240,220,180')+')">LOCAL MESSAGE '+i+'</section>').join('')+'</div><div class="composer"><form><textarea>Fake input</textarea></form></div></div></div></div><div class="dframe-header"><div class="header-surface"></div></div><div class="decoration"></div><div class="hidden-panel"></div></div></main></div>';
+  document.querySelector('.claude-thread').scrollTop=640;
+  window.__claudeInitial={scroll:document.querySelector('.claude-thread').scrollTop,styles:[...document.querySelectorAll('body *')].map(el=>({el,style:el.getAttribute('style')||''}))};
+}
+
+function selectClaudeArea(short, both) {
+  const overlay=document.getElementById('__screenshot_area_overlay'),pane=document.querySelector('.claude-thread'),r=pane.getBoundingClientRect();
+  const x=both?18:r.left+18,right=r.right-20,start=140,end=short?350:650;
+  const mouse=(type,mx,my)=>overlay.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,clientX:mx,clientY:my,buttons:type==='mouseup'?0:1}));
+  mouse('mousemove',x,start);mouse('mousedown',x,start);mouse('mousemove',right,350);
+  if(!short)overlay.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:right,clientY:350,deltaY:1200}));
+  mouse('mousemove',right,end);mouse('mouseup',right,end);
+  return {area:window.__screenshotArea};
+}
+
+async function checkClaudeRows(source,area,full) {
+  const im=new Image();await new Promise((yes,no)=>{im.onload=yes;im.onerror=no;im.src=source;});
+  const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const ctx=c.getContext('2d');ctx.drawImage(im,0,0);
+  const pane=document.querySelector('.claude-thread').getBoundingClientRect(),k=devicePixelRatio;
+  const x=full?Math.round((pane.left+20)*k):Math.max(2,Math.round((pane.left+20-area.x)*k)),p=ctx.getImageData(x,0,1,c.height).data;
+  let headerRows=0,headerAfterFirst=0,wrong=0;
+  const origin=full?0:area.y_doc+(area.panes?.find(p=>p.left>200)?.origin||0);
+  for(let y=0;y<c.height;y++){
+    const at=y*4,isHeader=[250,250,250].every((v,i)=>p[at+i]===v);
+    if(isHeader){headerRows++;if(y>=Math.round(innerHeight*k))headerAfterFirst++;}
+    const contentY=origin+(y+.5)/k-53;
+    if(contentY<0||contentY>=3200)continue;
+    const color=Math.floor(contentY/80)%2?[180,220,240]:[240,220,180];
+    if(color.some((v,i)=>p[at+i]!==v)||p[at+3]!==255)wrong++;
+  }
+  return {width:c.width,height:c.height,headerRows,headerAfterFirst,wrong};
+}
+
 function mailComposeFixture() {
   const dark=matchMedia('(prefers-color-scheme: dark)').matches;
   document.head.innerHTML='<style>*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}body{background:'+(dark?'#141923':'#eee')+';font:16px Arial}#mail-compose{position:fixed;left:50px;right:50px;top:30px;bottom:50px;background:white}#mail-head{height:130px;background:rgb(65,105,155)}#mail-head h1{margin:0;padding:14px}#mail-body{height:calc(100% - 242px);overflow:auto;outline:none}#mail-body section{height:90px;padding:20px}#mail-body section:last-child{padding:0}#mail-footer{height:112px;background:rgb(113,51,199)}#mail-footer form{height:100%;padding:15px;visibility:visible}#mail-footer input{width:110px}@media(max-width:500px){#mail-compose{left:10px;right:10px}}</style>';
@@ -443,6 +479,7 @@ async function checkNavigationPixels(source) {
   const chatSingleScroll=process.argv.includes('--chat-before-input-one-frame');
   const chatBeforeInput=process.argv.includes('--chat-before-input')||chatSingleScroll,chatPartialInput=process.argv.includes('--chat-partial-input'),chatReverse=process.argv.includes('--chat-reverse');
   const startScrolled=process.argv.includes('--start-scrolled');
+  const claude=process.argv.includes('--claude-structure'),claudeBoth=process.argv.includes('--claude-both'),claudeSidebar=process.argv.includes('--claude-sidebar')||claudeBoth,claudeShort=process.argv.includes('--claude-short');
   const mailCompose=process.argv.includes('--mail-compose'),mailShort=process.argv.includes('--mail-short'),mailInside=process.argv.includes('--mail-inside'),mailReverse=process.argv.includes('--mail-reverse');
   if(mailCompose&&(mode!=='area'||live))throw Error('--mail-compose requires local Area capture');
   if(chat&&(mode!=='area'||live))throw Error('--chat requires local Area capture');
@@ -484,7 +521,7 @@ async function checkNavigationPixels(source) {
   const zoom=zoomArg?Number(zoomArg.slice(7))/100:undefined;
   const refArg=process.argv.find(arg=>arg.startsWith('--ref='));
   const sourceRef=refArg?refArg.slice(6):baseline?baselineRef:null;
-  const browser = await openBrowser(mobile?390:1920,zoomArg?911:900,zoomArg?{zoom}:{});
+  const browser = await openBrowser(mobile?390:claude?1241:1920,zoomArg?911:900,zoomArg?{zoom}:{});
   const outputDir = path.join(root,'tools/artifacts'); fs.mkdirSync(outputDir,{recursive:true});
   try {
     if(dark)await browser.cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'dark'}]});
@@ -511,7 +548,8 @@ async function checkNavigationPixels(source) {
         assert(await browser.evaluate('!!document.querySelector("[role=dialog]")'),'The real pricing login popup is open');
         await browser.evaluate('window.__pricingDialog=document.querySelector("[role=dialog]");window.__pricingBodyStyle=document.body.getAttribute("style");true');
       }
-    } else if(mailCompose)await browser.evaluate('('+mailComposeFixture.toString()+')()');
+    } else if(claude)await browser.evaluate('('+claudeStructureFixture.toString()+')('+claudeSidebar+')');
+    else if(mailCompose)await browser.evaluate('('+mailComposeFixture.toString()+')()');
     else if(chat)await browser.evaluate('('+chatAreaFixture.toString()+')('+chatDocument+')');
     else if(endLineInternal)await browser.evaluate('('+internalEndFixture.toString()+')()');
     else if(modal)await browser.evaluate('('+modalFixture.toString()+')('+JSON.stringify(modal)+')');
@@ -534,7 +572,8 @@ async function checkNavigationPixels(source) {
       async set(values){Object.assign(data,clone(values));},async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[key];}});
     const frames=[],outputs=[],messages=[],compositions=[],measurements=[];let selection=null,context,preparation=null,adPreparation=null,stopWaitAt=0,lastFrameSource=null,endLineY=null,endLineScreenY=null,endViewSource=null;
     const previousPiece={id:1,tipo:'visible',img:'data:image/png;base64,previous'};
-    const session=multi?{multi:{active:true,sessionId:'area-diagnostic',sourceTabId:1,editorTabId:editor?2:null,nextId:1,pieces:[previousPiece],trash:[]}}:{};
+    const previousTrashPiece={id:77,tipo:'area',img:'data:image/png;base64,discarded'};
+    const session=multi?{multi:{active:true,sessionId:'area-diagnostic',sourceTabId:1,editorTabId:editor?2:null,nextId:1,pieces:[previousPiece],trash:[previousTrashPiece]}}:{};
     const chrome={
       runtime:{onInstalled:event(),onMessage:event(),getManifest:()=>({name:'Area diagnostic',version:'9.11'}),getURL:file=>'chrome-extension://fixture/'+file,sendMessage:async m=>{messages.push(clone(m));}},
       action:{onClicked:event(),setIcon:async()=>{},setPopup:async()=>{},setTitle:async()=>{},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setBadgeTextColor:async()=>{}},
@@ -607,7 +646,7 @@ async function checkNavigationPixels(source) {
             assert(context.cancelCapture(),'Stop cancels a live modal selection');await wait(100);
             assert.equal(await browser.evaluate("!!document.getElementById('__screenshot_area_overlay')"),false,'Stop removes the top-layer overlay before any shot');
           }:null;
-          selection=mailCompose?await browser.evaluate('('+selectMailComposeArea.toString()+')('+[mailShort,mailInside,mailReverse].join(',')+')'):chat?await browser.evaluate('('+selectChatArea.toString()+')('+[chatShort,chatBeforeInput,chatPartialInput,chatReverse,chatSingleScroll].join(',')+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
+          selection=claude?await browser.evaluate('('+selectClaudeArea.toString()+')('+[claudeShort,claudeBoth].join(',')+')'):mailCompose?await browser.evaluate('('+selectMailComposeArea.toString()+')('+[mailShort,mailInside,mailReverse].join(',')+')'):chat?await browser.evaluate('('+selectChatArea.toString()+')('+[chatShort,chatBeforeInput,chatPartialInput,chatReverse,chatSingleScroll].join(',')+')'):site==='pricing'?await selectPricingArea(browser,process.argv.includes('--popup-inside')):modal?await selectModalArea(browser,cancelModalSelection):nativeEdge?await selectNativeRightEdge(browser,dragEdge,outsideRight):await browser.evaluate('('+selectArea.toString()+')('+[overshoot,rightEdge,fromContent].join(',')+')');
           if(fromContent||nativeEdge)await browser.evaluate('window.__navExpected=[]');
           console.log('Selected',JSON.stringify(selection));
         }
@@ -739,15 +778,22 @@ async function checkNavigationPixels(source) {
       assert(messages.some(m=>m.type==='error'&&m.message.includes('The page ended before the selected area')),'Reproduce the reported coverage error');
       console.log('Mail baseline error reproduced',JSON.stringify({selection,compositions,messages}));return;
     }
-    if(mailCompose||chat||independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
+    if(claude)assert(await browser.evaluate('window.__claudeInitial.styles.every(rec=>(rec.el.getAttribute("style")||"")===rec.style)&&Math.abs(document.querySelector(".claude-thread").scrollTop-'+(mode==='full'&&!stop&&!failure?'0':'window.__claudeInitial.scroll')+')<1'),'Claude-like styles and expected scroll restored');
+    if(claude||mailCompose||chat||independent||mobile||mode==='visible')assert.equal(preparation?.changed||0,0,'Independent/narrow/visible layout is not unfolded');
     else if(!live&&!baseline&&!release&&!ads&&!growth&&!modal)assert(preparation?.changed>0,'The local long document navigation is unfolded before selection/capture');
     const growthLimit=mode==='full'&&['continuous','stalled'].includes(growth);
+    if(multi){
+      assert.equal(session.multi.sessionId,'area-diagnostic','The same Multi Snip collection remains active');
+    }
     if(stop||failure||compositionGap||stopWait||growthLimit){
       if(chat)assert(await browser.evaluate('Math.abs((window.__chatInitial.documentScroll?scrollY:document.querySelector(".thread").scrollTop)-window.__chatInitial.y)<1'),'Chat scroll is restored after Stop/error');
       assert.equal(outputs.length,0,'Interrupted capture produces no file');
-      if(multi)assert.deepEqual(session.multi.pieces,[previousPiece],'Interrupted Multi preserves old pieces');
+      if(multi){
+        assert.deepEqual(session.multi.pieces,[previousPiece],'Interrupted Multi preserves old pieces');
+        assert.deepEqual(session.multi.trash,[previousTrashPiece],'Stop and errors preserve previously discarded pieces');
+      }
       if(compositionGap){
-        const expectedError=mailCompose?'The page ended before the selected area':endLineInternal?'The scrolling content ended before the capture was complete':'The page moved during capture';
+        const expectedError=(mailCompose||claude)?'The page ended before the selected area':endLineInternal?'The scrolling content ended before the capture was complete':'The page moved during capture';
         assert(messages.some(m=>m.type==='error'&&m.message.includes(expectedError)),'The actual composition error reaches the UI');
         assert(!JSON.stringify(messages).includes('Image too large'),'A missing frame is not called an oversized image');
       }
@@ -761,10 +807,22 @@ async function checkNavigationPixels(source) {
       assert.equal(outputs.length,0,'Multi does not download an ordinary image');
       assert.deepEqual(session.multi.pieces[0],previousPiece,'The previous piece is preserved');
       assert.equal(session.multi.pieces.length,2,'Multi adds exactly one piece');
+      assert.deepEqual(session.multi.trash,[],'A completed new piece clears redo, preserving the established behavior');
       outputs.push(session.multi.pieces[1].img);
     }
     const label=(site|| (tailwind?'tailwind':live?'deepseek':modal?'modal-'+modal:growth?'growth-'+growth:endLineInternal?'internal':independent?'independent':release?'release':ads?'ads':'fixture'))+(endLine?'-end-line':'')+(cold?'-cold':'')+(multi?(editor?'-multi-editor':'-multi-widget'):'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(baseline?'-baseline':'')+(refArg?'-ref-'+sourceRef:'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(overshoot?'-overshoot'+overshoot:'')+(rightEdge?'-right-edge':'')+(fromContent?'-from-content':'')+(nativeEdge?'-native-edge':'')+(dragEdge?'-drag':'')+(outsideRight?'-outside':'');
     assert.equal(outputs.length,1,'Area returns one complete PNG');
+    if(claude){
+      const checked=await browser.evaluate('('+checkClaudeRows.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection?.area||null)+','+(mode==='full')+')');
+      console.log('Claude-like rows',JSON.stringify(checked));
+      const label='claude-'+mode+(claudeSidebar?'-panes':'')+(claudeShort?'-short':'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(zoomArg?'-zoom'+Math.round(zoom*100):'')+(sourceRef?'-ref':'');
+      fs.writeFileSync(path.join(outputDir,label+'.png'),Buffer.from(outputs[0].split(',')[1],'base64'));
+      if(sourceRef){assert(checked.headerAfterFirst>0,'Previous code repeats the header over selected message rows');return;}
+      assert.equal(checked.headerAfterFirst,0,'The top overlay never covers later message frames');
+      if(mode==='area')assert.equal(checked.wrong,0,'Every selected message row is retained exactly');
+      if(mode==='full'&&!mobile&&!zoomArg)assert.equal(checked.wrong,0,'Desktop Full Page retains every message row at 100%');
+      return;
+    }
     if(mailCompose){
       const checked=await browser.evaluate('('+checkMailCompose.toString()+')('+JSON.stringify(outputs[0])+','+JSON.stringify(selection.area)+')');
       const name='mail-compose'+(mailShort?'-short':'')+(mailInside?'-inside':'')+(mailReverse?'-reverse':'')+(mobile?'-mobile':'')+(dark?'-dark':'')+(multi?editor?'-multi-editor':'-multi-widget':'');

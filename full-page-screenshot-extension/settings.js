@@ -2,7 +2,8 @@
 // tecnici). Aggiungere una riga qui ad ogni versione con novita' visibili.
 var CHANGELOG = {
   '9.15': [
-    'Fixed: Select Area captures mail compose windows when the selection includes both the scrolling message and the stationary bottom toolbar, instead of incorrectly reporting that the page ended. Also available in Multi Snip.'
+    'Fixed: Select Area captures mail compose windows when the selection includes both the scrolling message and the stationary bottom toolbar, instead of incorrectly reporting that the page ended. Also available in Multi Snip.',
+    'Fixed: short top bars layered over internal scrolling content no longer repeat over the text in Full Page or Select Area captures. Also available in Multi Snip.'
   ],
   '9.14': [
     'Fixed: Capture to here now works when the main content scrolls inside a panel, keeping independent side columns as you see them. Also available in Multi Snip.',
