@@ -23,6 +23,10 @@ Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche s
 File: `full-page-screenshot-extension/capture-control.js`, `sw.js`, `settings.js`; prove in `tools/test-area-sidebar.cjs`, `tools/test-top-overlays.cjs`, `tools/compare-top-overlay-images.cjs`; documentazione in `tools/README.md` e `IDEE.md`.
 **Commit:** `9ac8777` per codice, prove e nota nelle impostazioni. Questa chiusura è registrata nel successivo commit documentale. Seconda correzione della 9.15 locale: lo ZIP del 27/10 non è aggiornato in questo passaggio e la 9.14 resta invariata; nessun invio allo Store. Nessun nuovo test durante il commit o l'archiviazione. Nessun `TODO.md` o voce dedicata nelle idee future da rimuovere; lasciato il puntatore nella situazione della versione.
 
+**Seguito del 02/11/2026:** commit e push completati fino a `842b2ce`. Su successiva richiesta dell'utente aggiornato anche lo ZIP 9.15 con questa seconda correzione e tutti i 28 file attuali della cartella estensione, comprese le due immagini promozionali. Confronto del pacchetto autorizzato e passato: tutti i file identici ai sorgenti. La copia intermedia del 27/10, inizialmente conservata per errore nell'archivio, è stata poi spostata nel Cestino su richiesta dell'utente insieme alle due copie intermedie 9.14. Regola definitiva: fuori dall'archivio soltanto `9.15 in lavorazione.zip`; archivio riservato ai pacchetti completi pubblicati, ora fino alla 9.14. Audit di 9.13/9.14 rispetto alle rispettive versioni Git passato; contenuti dei tre ZIP invariati dopo spostamenti e rinomina. Dettagli e impronte in `tools/README.md`, regola in `AGENTS.md`. Nessun nuovo test di cattura, commit, push o invio allo Store durante queste operazioni locali.
+
+La cartella archivio è stata poi rinominata **`Versioni pubblicate/`** su conferma dell'utente, lasciando fuori soltanto lo ZIP in lavorazione e senza cambiare il contenuto dei pacchetti.
+
 ## 19/10/2026 — Area su chat: rispettare il rettangolo scelto
 
 **Ideata il:** 19/10/2026, dalla precisazione dell'utente che la selezione terminava a metà chat, prima della barra di input.

@@ -2,6 +2,95 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Organizzazione definitiva dei pacchetti e audit — 02/11/2026
+
+L'utente ha chiarito che l'archivio non deve contenere bozze o copie
+intermedie. Ha poi scelto esplicitamente una regola più semplice rispetto
+agli ultimi tre ZIP fuori: **fuori rimane soltanto la versione in lavoro**.
+Regola persistente salvata in `AGENTS.md`; non avvia automaticamente nuove
+versioni o pubblicazioni.
+
+Situazione corrente:
+
+- `full-page-screenshot-extension/9.15 in lavorazione.zip`: unico ZIP fuori,
+  versione completa attuale in preparazione, 28 file, 2.090.062 byte.
+- `full-page-screenshot-extension/Versioni pubblicate/`: soltanto i
+  pacchetti pubblicati presenti 9.8, 9.9, 9.10, 9.11, 9.12, 9.13 e 9.14.
+  Un solo ZIP per numero, senza copie con date/suffissi. La classificazione
+  come pubblicati segue la disposizione esplicita dell'utente; nessuna
+  consultazione della dashboard privata dello Store.
+
+Su successiva conferma dell'utente la cartella è stata rinominata da
+`Versioni precedenti zip` a **`Versioni pubblicate`**, senza modificare il
+contenuto degli ZIP. I percorsi con il vecchio nome nelle note storiche
+qui sotto descrivono la collocazione di quel momento, non quella attuale.
+
+Su richiesta di pulizia, spostate nel Cestino Windows le sole tre copie
+intermedie create dall'agente: `9.14-2026-10-03-prima-fix-chat.zip`,
+`9.14-2026-10-18-prima-taglio-area.zip` e
+`9.15-2026-10-27-prima-fix-barre-chat.zip`. Recuperabili dal Cestino finché
+non viene svuotato; non sono state spostate in un'altra cartella di backup.
+Poi spostati 9.13.zip e 9.14.zip nell'archivio e rinominato 9.15.zip in
+`9.15 in lavorazione.zip`, su conferma esplicita dell'utente. Tutti i
+percorsi esatti risolti e controllati prima di agire, senza sovrascrivere
+destinazioni esistenti o usare operazioni ricorsive.
+
+L'utente ha richiesto esplicitamente di assicurare la completezza dei tre
+pacchetti. Audit in lettura passato prima degli spostamenti:
+
+- 9.13: manifest 9.13, elenco completo di 26 file corrispondente al commit
+  `5df4873`; 25 identici byte per byte e un solo file di testo equivalente
+  dopo la normale conversione CRLF/LF dei ritorni a capo Windows/Git.
+- 9.14: manifest 9.14, elenco completo di 26 file corrispondente al commit
+  `2ed7ce8`; 25 identici byte per byte e un solo file di testo equivalente
+  dopo la stessa conversione. Non sono state ignorate altre differenze.
+- 9.15: manifest 9.15, tutti i 28 file esattamente identici, byte per byte,
+  ai file correnti della cartella estensione sul PC. Nessun file vuoto o
+  elemento mancante; inclusi i due fix 9.15 e le immagini attuali.
+
+Impronte verificate anche dopo spostamenti e rinomina, invariate:
+
+- 9.13: `008478FCD5A2C7B13BAB13A287DD867A4C09F7B82F6BAC417692342776F69C8C`.
+- 9.14: `FC17C9F9E4773F0710B6FF6CA170989A86871C18FDEE60B3DDF32FBC0AC74B19`.
+- 9.15: `D8B132DB5C6170C1E9FF32A6C9400201FC287DFD8D9A5B16A2855FF8500C5AF4`.
+
+Nessuna nuova prova di cattura, modifica ai sorgenti dell'estensione,
+pubblicazione, commit o push. Questo audit attesta la completezza dei
+pacchetti e la loro corrispondenza alle versioni indicate, non l'assenza
+universale di bug o la corrispondenza a un upload Store non ispezionato.
+Le note più vecchie qui sotto conservano la cronologia: le collocazioni
+precedenti e le copie intermedie descritte lì sono superate da questa voce.
+
+## ZIP 9.15 aggiornato con il secondo fix — 02/11/2026
+
+Dopo i commit/push fino a `842b2ce`, l'utente ha chiesto esplicitamente di
+aggiornare lo ZIP 9.15 con gli stessi file attuali della cartella da cui
+usa l'estensione. Il confronto del pacchetto e la conservazione della copia
+precedente sono stati approvati separatamente.
+
+Creato `full-page-screenshot-extension/9.15.zip`, manifest **9.15**,
+**28 file**, **2.090.062 byte**. Elenco completo confrontato con i sorgenti;
+ogni file nello ZIP letto e confrontato tramite SHA-256: identico. Inclusi
+entrambi i fix 9.15, note aggiornate e le due immagini promozionali aggiunte
+al repository su richiesta. Niente archivi ZIP annidati o file di lavoro
+VS Code: sono inclusi tutti i file dell'estensione, non la cronologia dei
+pacchetti e le impostazioni personali dell'editor.
+
+La copia precedente non è stata sovrascritta: spostata in
+`full-page-screenshot-extension/Versioni precedenti zip/9.15-2026-10-27-prima-fix-barre-chat.zip`,
+quindi recuperabile. Confronto della sua impronta prima/dopo passato. Il
+nuovo pacchetto è stato verificato prima di sostituire il percorso 9.15.zip.
+Le altre versioni non sono state aperte, spostate o modificate.
+
+SHA-256 ZIP 9.15 aggiornato: `D8B132DB5C6170C1E9FF32A6C9400201FC287DFD8D9A5B16A2855FF8500C5AF4`.
+SHA-256 copia 9.15 del 27/10: `2A3588B11FFF6FAD361A0EC42B5F9FA3F0A9E21D6AD1CCE7956373189EEBAFF6`.
+
+Nessun nuovo test di cattura, cambio versione o modifica ai sorgenti
+dell'estensione durante il confezionamento. Nessun nuovo commit/push o
+invio allo Store: pacchetti locali ignorati da Git, note aggiornate solo
+localmente in questo passaggio. La 9.15 resta in preparazione secondo la
+decisione dell'utente.
+
 ## Barre assolute sopra le chat — 02/11/2026, chiusura confermata
 
 Segnalazione Area su Claude web: una fascia chiara copre il secondo punto
@@ -115,15 +204,17 @@ prima coperto è completo e riferito «Sembra tutto ok»; ha poi confermato
 esplicitamente la chiusura e richiesto tutti i commit e push. Codice, prove
 e nota utente 9.15 in `9ac8777`; archiviazione in `IDEE_FATTE.md` e note nel
 successivo commit documentale. Nessun nuovo test durante questi commit.
-Nessun cambio versione, aggiornamento ZIP o pubblicazione: lo ZIP 9.15 del
-27/10 non contiene ancora questa seconda correzione. La 9.14 resta intatta.
+Durante quei commit nessun cambio versione, aggiornamento ZIP o
+pubblicazione. Su successiva richiesta il pacchetto è stato aggiornato:
+vedere la voce ZIP 9.15 del 02/11 qui sopra. La 9.14 resta intatta.
 Nessuna nuova prova sul vecchio caso sintetico ChatGPT al 125%, separato.
 
 Le due immagini promozionali già presenti, `riquadro_grande_1400x560.png`
 e `riquadro_v2_440x280.png`, vengono incluse nel commit separato `24cadae` su
 richiesta dell'utente: il repository remoto conserva già icona e cinque
 immagini Store. Immagini ispezionate e conservate senza modifiche; nessun
-inserimento nel pacchetto ZIP o caricamento allo Store in questo passaggio.
+inserimento nel pacchetto ZIP durante quei commit. Sono poi incluse nello
+ZIP aggiornato su richiesta, come indicato sopra. Nessun upload allo Store.
 
 ## Avvio della 9.15 e pacchetto provvisorio — 27/10/2026
 

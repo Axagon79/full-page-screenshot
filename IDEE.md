@@ -27,9 +27,22 @@ specifiche per siti o classi. L'utente ha riprovato su Claude web, mostrato
 lo screenshot senza fascia e confermato esplicitamente la chiusura.
 Codice, prove e nota nelle impostazioni in `9ac8777`; voce archiviata in
 [IDEE_FATTE.md](IDEE_FATTE.md), dettagli e limiti in `tools/README.md`.
-Commit e push richiesti dall'utente. Lo ZIP 9.15 del 27/10 contiene ancora
-soltanto la prima correzione e non viene rigenerato in questo passaggio;
-la 9.14 resta intatta. Nessuna pubblicazione della 9.15.
+Commit e push completati, fino alle note in `842b2ce`. Su successiva
+richiesta esplicita dell'utente, ZIP 9.15 rigenerato il 02/11 con tutti i
+28 file attuali dell'estensione, comprese le due immagini promozionali;
+confronto autorizzato passato, ogni file identico al sorgente sul PC.
+**Organizzazione definitiva concordata il 02/11:** nella cartella estensione
+resta solo `9.15 in lavorazione.zip`; nell'archivio `Versioni pubblicate/`
+ci sono i pacchetti
+pubblicati presenti dalla 9.8 alla 9.14, uno per versione. Superata la
+precedente regola degli ultimi tre ZIP fuori. Le tre copie intermedie
+create dall'agente (due 9.14 e una 9.15) sono state spostate nel Cestino su
+richiesta dell'utente, non conservate in altre cartelle di backup.
+Audit autorizzato: 9.13 e 9.14 complete e corrispondenti alle rispettive
+versioni Git; tutti i 28 file della 9.15 identici ai sorgenti correnti.
+Spostamento/rinomina senza modificare i contenuti dei pacchetti. Regola in
+`AGENTS.md`, dettagli in `tools/README.md`. Nessuna pubblicazione della
+9.15 e nessun nuovo commit/push durante queste operazioni locali.
 
 **Preparazione iniziale — 27/10/2026:** avvio della **9.15 in preparazione**, su
 richiesta dell'utente. Prima correzione: Area nella finestra di composizione
