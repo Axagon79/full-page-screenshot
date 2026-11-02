@@ -3,7 +3,7 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **27 ottobre 2026**.
+Ultimo aggiornamento: **2 novembre 2026**.
 Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
@@ -20,7 +20,18 @@ L'archivio IDEE_FATTE è creato con questo riordino, non è una seconda lista da
 
 ## Situazione della versione
 
-**Stato corrente — 27/10/2026:** avvio della **9.15 in preparazione**, su
+**Stato corrente — 02/11/2026:** seconda correzione nei sorgenti della
+**9.15 in preparazione**: barre superiori assolute sovrapposte a scroller
+interni riconosciute anche in Area, Full Page e Multi Snip, senza regole
+specifiche per siti o classi. L'utente ha riprovato su Claude web, mostrato
+lo screenshot senza fascia e confermato esplicitamente la chiusura.
+Codice, prove e nota nelle impostazioni in `9ac8777`; voce archiviata in
+[IDEE_FATTE.md](IDEE_FATTE.md), dettagli e limiti in `tools/README.md`.
+Commit e push richiesti dall'utente. Lo ZIP 9.15 del 27/10 contiene ancora
+soltanto la prima correzione e non viene rigenerato in questo passaggio;
+la 9.14 resta intatta. Nessuna pubblicazione della 9.15.
+
+**Preparazione iniziale — 27/10/2026:** avvio della **9.15 in preparazione**, su
 richiesta dell'utente. Prima correzione: Area nella finestra di composizione
 mail non rifiuta più la selezione che comprende testo scorrevole e fascia
 inferiore ferma, già fotografata separatamente. Vale anche in Multi Snip.

@@ -2,6 +2,129 @@
 
 Eseguire i controlli soltanto dopo l'approvazione dell'utente, come indicato nelle regole del progetto.
 
+## Barre assolute sopra le chat — 02/11/2026, chiusura confermata
+
+Segnalazione Area su Claude web: una fascia chiara copre il secondo punto
+di un elenco. L'utente ha fornito la sola geometria della pagina, senza
+testi dei messaggi: finestra 1128×828 CSS, scala rilevata 1,1; scroller chat
+da y=0, intestazione assoluta alta 45 CSS sovrapposta in un antenato, livello
+11 e pointer-events:none; campo inferiore sticky. La scala rilevata da sola
+non dimostra il livello di zoom del browser. Le prove qui usano zoom reale
+110% per esercitare anche le coordinate frazionarie. Nessun accesso alla
+chat privata, all'account o al profilo del browser dell'utente.
+
+Correzione e prove autorizzate esplicitamente. L'utente precisa che deve
+essere una regola comune alle pagine con questa struttura, non un caso
+speciale per Claude, e richiede anche le modalità di cattura Multi Snip.
+
+Riproduzione locale basata sulla struttura fornita, con contenuti finti:
+`node tools/test-area-sidebar.cjs --claude-structure --zoom=110
+--ref=833a640`, anche `--full`. Il codice precedente ricopia l'intestazione:
+Area ha 97 righe chiare nel contenuto, di cui 48 oltre il primo viewport;
+Full Page 245, di cui 196 oltre il primo viewport. Il difetto è quindi
+riprodotto anche in Full, senza catturare la conversazione reale.
+
+`prepareCaptureTopOverlays` in `capture-control.js` riconosce solo fasce
+assolute basse, larghe, con livello positivo, allineate al bordo superiore
+di uno scroller interno e appartenenti a un ramo esterno al suo contenuto.
+Esclude pannelli con opacità zero, sfondi grandi, elementi bassi o stretti
+e normali blocchi assoluti dentro il contenuto. Un micro-scorrimento deve
+confermare che la fascia resti ancorata; la posizione viene ripristinata.
+Include anche i figli per non lasciare sfondi con visibility:visible sopra
+il testo. Non legge nomi di siti, classi, URL o contenuti dei messaggi.
+
+Il riconoscimento comune alimenta la gestione già esistente in Full Page,
+Full a più pannelli, Area singola e Area a colonne. Area compensa la barra
+superiore prima di acquisire la prima fetta; le altre non la ripetono.
+Stessi motori per i pezzi Multi Snip, senza copie separate. Nessuna modifica
+alla politica di Stop, alla raccolta, al cestino/redo o alla composizione
+delle immagini introdotta per le mail nella prima modifica 9.15.
+
+Prove locali autorizzate completate, con API Chrome adattate in Edge:
+
+- Area con `--claude-structure --zoom=110`, anche `--multi --editor --dark`
+  e `--claude-sidebar --multi --editor`: PNG 883×1881, zero righe chiare
+  estranee e zero differenze nelle righe selezionate. Immagine aperta.
+- Area `--claude-structure --multi --mobile --dark` e selezione corta
+  `--claude-short --multi --mobile`: zero differenze; la cattura già visibile
+  mantiene la vista. `--claude-both --multi --editor` acquisisce insieme
+  chat e navigazione, senza fascia ripetuta o righe della chat mancanti.
+- Full `--claude-structure --full --multi --editor`, anche
+  `--claude-sidebar`: a 100% nessuna differenza nelle righe dei messaggi;
+  intestazione una volta. Al 110%, singolo scroller e sidebar separata:
+  nessuna intestazione ricopiata oltre il primo viewport.
+- Full su finestra stretta in scuro: la barra non si ripete. Il confronto
+  con i colori ideali segnala ancora 84 righe del campo inferiore già
+  presenti nel vecchio motore. Full al 110% segnala 9 righe (13 con più
+  pannelli) rispetto alla griglia ideale: non dichiarate pixel-perfect.
+  Non si è modificato quel motore o abbassata l'aspettativa di Area.
+- `node tools/compare-top-overlay-images.cjs`: confronto completo dei PNG
+  Full prima/dopo su desktop al 110% e finestra stretta in scuro. Fuori
+  dalle fasce ripetute della vecchia intestazione (incluso un pixel per
+  bordo), **zero pixel cambiati** in entrambi. Cambiano rispettivamente
+  183.000 e 51.570 pixel nelle sole fasce. Le differenze residue appena
+  descritte non sono nuove modifiche provocate dalla correzione.
+- Stop in Area/Full, anche Full a più pannelli e con riga, da pannello e
+  da editor Multi: nessun nuovo pezzo incompleto, raccolta e pezzi precedenti
+  conservati, cestino/redo conservato e pagina ripristinata. Errore di scatto
+  e foto finale rimossa deliberatamente: stessi vincoli conservati e vero
+  errore di copertura, senza salvare un risultato incompleto.
+- Solo visibile Multi dal pannello e dall'editor, quest'ultimo stretto/scuro:
+  un solo pezzo nuovo, precedenti conservati, nessun file ordinario scaricato.
+- Riga con scroller interno da editor Multi, successo e Stop: dopo successo
+  contenuto e colonne laterali corrispondono ai riferimenti, senza righe
+  mancanti; Stop conserva raccolta, cestino e posizione iniziale.
+- Regressioni: mail `--mail-compose --multi --editor` e sua foto mancante;
+  chat prima del campo e con campo parzialmente incluso; finestra nativa;
+  Area con colonne indipendenti; menu laterale che termina prima della
+  pagina; Full documento normale da scroll iniziale 640. Confronti e
+  ripristino passati, senza peggioramenti nei casi provati.
+- `node tools/test-top-overlays.cjs`: riconoscimento positivo, figli
+  esplicitamente visibili, sei esclusioni, nessuna modifica persistente
+  agli stili o allo scroll; ripetizione con classi estranee passata.
+- Suite Stop e badge: 83 passati, zero falliti, 21 casi storici saltati.
+  Sintassi dei cinque file JS modificati/aggiunti e `git diff --check`
+  passati. Non sono prove di ogni pulsante dell'editor installato, né di
+  tutte le pagine possibili: i percorsi di cattura usano il controller reale
+  con interfacce Chrome adattate, non il clic sulla toolbar installata.
+
+Problemi nella preparazione delle prove, distinti dal codice dell'estensione:
+il primo controllo con foto finale rimossa attendeva l'errore di un buco
+intermedio, invece del corretto errore di fondo incompleto; aspettativa
+corretta e ripetizione passata. Il tentativo di confronto PNG passato a
+Node sulla riga di comando perdeva le virgolette in PowerShell: sostituito
+dal file di prova, passato. La prima prova isolata non simulava il recupero
+iniziale del worker e ne stampava l'avviso: ora estrae ed esegue soltanto
+la funzione di produzione sotto prova, senza quel falso avviso.
+
+Due controlli Solo visibile Multi avevano inoltre un'aspettativa sbagliata
+introdotta nella prova: conservare il cestino/redo anche dopo l'aggiunta
+riuscita di un pezzo. Il codice precedente lo azzera già intenzionalmente
+in `multiAggiungiPezzo`; Stop/errori invece lo conservano. Dopo i due esiti
+non superati i controlli sono stati sospesi e la distinzione spiegata
+all'utente. Corretta solo la prova: dopo Stop/errori pretende pezzi e redo
+intatti; dopo successo pretende il pezzo aggiunto, i precedenti conservati
+e redo vuoto. Entrambe le prove Solo visibile ripetute e passate, insieme
+ad Area, Full, riga, Stop ed errore. Nessun cambio al comportamento Multi.
+
+File: `full-page-screenshot-extension/capture-control.js`, `sw.js`,
+`tools/test-area-sidebar.cjs`, `tools/test-top-overlays.cjs`,
+`tools/compare-top-overlay-images.cjs`; questa documentazione.
+L'utente ha riprovato sulla chat reale, allegato una cattura dove il punto
+prima coperto è completo e riferito «Sembra tutto ok»; ha poi confermato
+esplicitamente la chiusura e richiesto tutti i commit e push. Codice, prove
+e nota utente 9.15 in `9ac8777`; archiviazione in `IDEE_FATTE.md` e note nel
+successivo commit documentale. Nessun nuovo test durante questi commit.
+Nessun cambio versione, aggiornamento ZIP o pubblicazione: lo ZIP 9.15 del
+27/10 non contiene ancora questa seconda correzione. La 9.14 resta intatta.
+Nessuna nuova prova sul vecchio caso sintetico ChatGPT al 125%, separato.
+
+Le due immagini promozionali già presenti, `riquadro_grande_1400x560.png`
+e `riquadro_v2_440x280.png`, vengono incluse nel commit separato `24cadae` su
+richiesta dell'utente: il repository remoto conserva già icona e cinque
+immagini Store. Immagini ispezionate e conservate senza modifiche; nessun
+inserimento nel pacchetto ZIP o caricamento allo Store in questo passaggio.
+
 ## Avvio della 9.15 e pacchetto provvisorio — 27/10/2026
 
 Su richiesta dell'utente, creato `full-page-screenshot-extension/9.15.zip`

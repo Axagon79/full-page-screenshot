@@ -1,12 +1,27 @@
 # IDEE_FATTE.md — Full Page Screenshot
 
 Archivio delle idee realizzate e delle note precedenti.
-Aggiornato il **19/10/2026**; commit e verifiche indicati nelle singole voci.
+Aggiornato il **02/11/2026**; commit e verifiche indicati nelle singole voci.
 Per le attività ancora aperte usare esclusivamente [IDEE.md](IDEE.md).
 
 Le date «Ideata il» indicano la data documentata, non una data inventata di prima discussione.
 «Realizzata il» indica la presenza nel codice; non implica pubblicazione sullo Store.
 Il riordino storico dell'11/09 non aveva eseguito nuovi collaudi; le verifiche successive sono indicate nelle singole voci.
+
+## 02/11/2026 — Barre superiori sopra le chat: fascia ripetuta risolta
+
+**Ideata il:** 02/11/2026, dalla segnalazione Area su Claude web di un punto dell'elenco coperto da una fascia chiara.
+**Realizzata il:** 02/11/2026; dopo la correzione e le prove autorizzate l'utente ha allegato una nuova cattura con il testo completo, riferito «Sembra tutto ok» e confermato esplicitamente la chiusura con richiesta di commit e push.
+
+- Riconosciute anche le barre superiori assolute che restano ferme sopra uno scroller interno. Prima sfuggivano al censimento e venivano ripetute sugli scatti successivi, coprendo il testo.
+- Regola strutturale comune, senza nomi di siti o classi: considera fasce basse e larghe sopra il pannello, esterne al contenuto e confermate ferme con un micro-scorrimento. Esclusi sfondi grandi, pannelli invisibili, piccoli elementi e normali blocchi dentro il contenuto.
+- Stesso riconoscimento in Area, Full Page e percorsi a colonne/pannelli; gli stessi motori valgono per aggiungere pezzi Multi Snip. Conservati stili, scroll e comportamento di Stop. La regola già esistente che svuota il redo dopo un nuovo pezzo completato non è cambiata; Stop ed errori conservano invece pezzi e redo.
+- Prove locali basate sulla struttura fornita dall'utente, senza accedere alla chat privata: riproduzione del difetto anche in Full, Area senza righe mancanti, Full desktop al 100% senza differenze nei messaggi, catture Multi da pannello/editor, Solo visibile, riga, Stop/errori, mail, chat precedenti, popup e colonne indipendenti. Chiaro/scuro e finestra stretta inclusi nei casi documentati.
+- Per Full al 110% e in finestra stretta, il confronto completo prima/dopo verifica zero pixel cambiati fuori dalle vecchie fasce ripetute. Non dichiara pixel-perfect la diversa griglia ideale: piccole differenze e il comportamento del campo inferiore già presenti nel modello Full restano descritti in `tools/README.md`.
+- La conferma manuale dell'utente riguarda la sua cattura Area su Claude, non ogni pagina o funzione dell'editor. Le prove automatiche usano il controller reale con API Chrome adattate; esiti non superati dovuti alle aspettative della prova sono conservati nelle note e distinti dal funzionamento dell'estensione.
+
+File: `full-page-screenshot-extension/capture-control.js`, `sw.js`, `settings.js`; prove in `tools/test-area-sidebar.cjs`, `tools/test-top-overlays.cjs`, `tools/compare-top-overlay-images.cjs`; documentazione in `tools/README.md` e `IDEE.md`.
+**Commit:** `9ac8777` per codice, prove e nota nelle impostazioni. Questa chiusura è registrata nel successivo commit documentale. Seconda correzione della 9.15 locale: lo ZIP del 27/10 non è aggiornato in questo passaggio e la 9.14 resta invariata; nessun invio allo Store. Nessun nuovo test durante il commit o l'archiviazione. Nessun `TODO.md` o voce dedicata nelle idee future da rimuovere; lasciato il puntatore nella situazione della versione.
 
 ## 19/10/2026 — Area su chat: rispettare il rettangolo scelto
 
