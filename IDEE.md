@@ -3,7 +3,7 @@
 Unico elenco delle idee future del progetto.
 Progetto: `C:\Progetti\full-page-screenshot`
 Sorgenti: `full-page-screenshot-extension/`
-Ultimo aggiornamento: **2 novembre 2026**.
+Ultimo aggiornamento: **5 novembre 2026**.
 Riordino delle idee dell'11/09; aggiornamenti e conferme nelle singole voci e in `IDEE_FATTE.md`.
 
 ## Quale documento usare
@@ -108,15 +108,149 @@ autorizzato commit e push anche delle note. Lo ZIP 9.13 non viene modificato.
 - Il fix delle colonne laterali è **corretto e confermato dall'utente il 21/09**: chiude il problema segnalato nella recensione dello Store. Le prove automatiche su Tailwind, DeepSeek e MDN erano passate in Full Page e Area, anche in Multi Snip. Codice in `02bd727`, voce archiviata in [IDEE_FATTE.md](IDEE_FATTE.md); risultati e limiti in `tools/README.md`. Restano aperte le pubblicità Yahoo; il riquadro laterale di Yahoo Finance è invece un **limite accettato**, non più in lavorazione (vedi «LIMITI NOTI ARCHIVIATI» in [IDEE_FATTE.md](IDEE_FATTE.md)). Manifest, ZIP e Store non aggiornati.
 - Il fondo tagliato sulle pagine che caricano in ritardo è **corretto e confermato dall'utente il 21/09**, con una cattura Yahoo che include la sezione finale. Codice e prove in `03915d8`, dettagli archiviati in [IDEE_FATTE.md](IDEE_FATTE.md). Vale per Full Page anche in Multi Snip; Area mantiene i confini selezionati e le colonne indipendenti restano invariate. Manifest, ZIP e Store non aggiornati.
 - Le pubblicità Yahoo **restano aperte**: la preparazione iniziale inclusa in `03915d8` è parziale. Una visita senza pre-scorrimento ha mostrato un contenitore che torna sticky e frammenti di annunci, anche se il fondo viene incluso. Il riquadro laterale di Yahoo Finance non rientra più fra le attività: il 22/09 il supervisore ha deciso di non investirci risorse, e il caso è descritto per intero fra i «LIMITI NOTI ARCHIVIATI» in [IDEE_FATTE.md](IDEE_FATTE.md), con la causa individuata e l'avvertenza di non danneggiare ciò che già funziona. Risultati distinti e limiti in `tools/README.md`; nessuna chiusura complessiva di Yahoo.
-- Per le pagine troppo lunghe è ora impedito il download di un'immagine vuota; la suddivisione in più immagini raccolte in ZIP, già richiesta nella chat, non è ancora implementata.
+- Per le pagine troppo lunghe è ora impedito il download di un'immagine vuota; lo sviluppo ancora da realizzare è descritto nella voce «Screenshot molto lunghi suddivisi in blocchi e raccolti in ZIP» fra le idee aperte.
 - Le vecchie diciture «candidata 9.10» erano proposte, non conferme di inclusione. Nessuna delle idee qui sotto è automaticamente assegnata alla 9.10.
 
 ## Idee ancora aperte
+
+**Principio comune alle proposte:** mantenere l'estensione semplice e veloce
+nell'uso quotidiano. Le funzioni avanzate devono essere facoltative,
+risparmiare tempo e offrire vantaggi concreti, senza complicare le operazioni
+più comuni. Sono idee da valutare per fattibilità tecnica, utilità e costi;
+la registrazione non autorizza lo sviluppo né assegna versioni o scadenze.
 
 La funzione «Full Page fino a qui» e la correzione per lo scorrimento interno
 sono confermate e archiviate in [IDEE_FATTE.md](IDEE_FATTE.md), voce del
 03/10/2026. La correzione più recente entra nella preparazione locale della
 9.14, salvata in `a4d8a52`: non nello ZIP 9.13 già inviato in revisione.
+
+### Assistente di intelligenza artificiale nell'estensione
+
+**Ideata il:** 05/11/2026, registrata su richiesta dell'utente dopo la discussione.
+**Stato:** idea futura da valutare; non implementata.
+
+Valutare un assistente AI integrato direttamente nell'estensione,
+possibilmente attraverso un pannello nell'editor Multi Snip. L'utente
+potrebbe selezionare uno o più screenshot e chiedere all'assistente di:
+
+- Analizzare e descrivere il contenuto delle immagini.
+- Creare riassunti e relazioni approfondite.
+- Concentrarsi su un argomento specifico indicato dall'utente.
+- Confrontare grafici, classifiche, tabelle e dati.
+- Generare note, commenti e tag.
+- Organizzare i contenuti per argomento.
+- Individuare collegamenti tra le informazioni catturate.
+- Creare materiale didattico, guide e spiegazioni.
+- Analizzare screenshot di errori tecnici e proporre possibili soluzioni.
+
+Valutare analisi automatiche ed elaborazione nell'editor anche in background,
+con comandi rapidi che evitino di dover scrivere richieste complesse all'AI.
+L'obiettivo fondamentale è risparmiare tempo, non aggiungere lavoro all'utente.
+
+Valutare sia modelli locali, eseguiti sul dispositivo, sia servizi tramite
+API. Confrontare costi, prestazioni, privacy e sostenibilità economica,
+distinguendo l'elaborazione locale dall'eventuale invio delle immagini
+a un servizio esterno. L'eventuale invio deve essere una scelta esplicita
+dell'utente nell'ambito della funzione facoltativa.
+
+L'integrazione dovrà essere facoltativa e non compromettere le funzioni
+gratuite già esistenti. Non sono decisi fornitori, modelli, prezzi o
+funzioni Premium. È distinta dall'OCR locale già proposto: estrarre le
+parole da un'immagine e analizzarne il contenuto sono sviluppi diversi.
+
+### Condivisione diretta — Share / Condividi
+
+**Ideata il:** 05/11/2026, registrata su richiesta dell'utente dopo la discussione.
+**Stato:** idea futura da valutare; non implementata.
+
+Valutare un comando «Share / Condividi», accessibile dall'editor o dopo
+una cattura, per condividere rapidamente uno screenshot o una composizione
+tramite WhatsApp, Telegram, email o altre applicazioni compatibili.
+L'obiettivo è evitare di dover salvare e allegare manualmente ogni immagine.
+
+Durante la valutazione verificare le possibilità offerte da Chrome e dalle
+API di condivisione, la compatibilità delle applicazioni destinatarie e
+le autorizzazioni eventualmente necessarie. Distinguere chiaramente
+l'invio del file immagine dalla condivisione di un semplice collegamento:
+non sono la stessa operazione e non vanno presentate come equivalenti.
+
+La copia negli appunti e il salvataggio locale sono già disponibili;
+questa idea riguarda un comando dedicato alla condivisione. Non è deciso
+alcun servizio di caricamento o archiviazione delle immagini.
+
+### Screenshot programmati — Scheduled Capture
+
+**Ideata il:** 05/11/2026, su richiesta dell'utente di conservarla fra le idee.
+**Stato:** idea futura da valutare; non implementata.
+
+Programmare catture indicando URL, data e ora, con la possibilità di
+configurare più pagine con orari differenti. Prevedere sia operazioni
+singole sia ricorrenze, per esempio ogni giorno oppure ogni ora.
+
+L'estensione dovrebbe aprire automaticamente le pagine anche quando
+le relative schede non sono già aperte, attendere il caricamento dei
+contenuti, acquisire e salvare gli screenshot sul computer. Al termine
+dovrebbe chiudere le schede aperte appositamente per quelle catture.
+
+L'obiettivo è eseguire le operazioni senza intervento dell'utente,
+purché PC e Chrome siano in esecuzione. La fattibilità di questo
+comportamento e i vincoli del browser restano da valutare; non è una
+capacità già disponibile. Notifiche e registro sono descritti nella
+voce collegata seguente.
+
+### Notifiche e registro delle catture programmate
+
+**Ideata il:** 05/11/2026, insieme alla proposta di catture programmate.
+**Stato:** idea futura da valutare; non implementata, collegata a Scheduled Capture.
+
+Notificare se una cattura programmata è riuscita o fallita e mantenere
+un registro con data, ora, pagina acquisita ed esito. Prevedere un
+riepilogo delle operazioni riuscite e fallite e la possibilità di
+consultare successivamente tutti gli screenshot salvati.
+
+Valutare anche l'invio facoltativo di notifiche sul cellulare quando
+l'utente è fuori casa. Modalità di invio, servizi eventualmente necessari,
+privacy e costi sono da valutare, senza scegliere ora una soluzione.
+
+### Catturare tabelle larghe con scorrimento orizzontale
+
+**Ideata il:** 05/11/2026, su richiesta dell'utente di aggiungerla alle cose da fare.
+**Stato:** idea da realizzare; nessuna implementazione o assegnazione a una versione autorizzata.
+
+Catturare tutte le colonne di una tabella più larga dello schermo o del
+riquadro che la contiene, scorrendo anche verso destra e sinistra, non
+soltanto in verticale. Unire le parti nell'ordine corretto, senza colonne
+mancanti o ripetute e mantenendo allineate le righe.
+
+Da concordare come attivare lo scorrimento orizzontale e in quali modalità
+di cattura renderlo disponibile. Conservare ciò che già funziona per lo
+scorrimento verticale; quando applicata a una modalità usata in Multi Snip,
+riutilizzare lo stesso motore comune anche per i suoi pezzi.
+
+È distinta dalla suddivisione delle catture enormi in immagini dentro uno
+ZIP, descritta nella voce seguente e ancora non implementata: una riguarda la larghezza
+del contenuto da acquisire, l'altra il salvataggio di risultati molto grandi.
+
+### Screenshot molto lunghi suddivisi in blocchi e raccolti in ZIP
+
+**Ideata il:** già richiesta nella conversazione e richiamata nella cronologia;
+descrizione integrata il 05/11/2026.
+**Stato:** idea futura da realizzare; non implementata.
+
+Suddividere una cattura molto lunga in blocchi, salvare progressivamente
+le parti e continuare con gli scatti successivi, raccogliendo infine
+le immagini ordinate in un archivio ZIP. La richiesta comprende anche
+l'immagine lunga completa nello stesso archivio.
+
+Restano da definire numero di scatti o altezza per blocco, modalità di
+attivazione e nomi dei file. Va valutato come includere l'immagine completa
+quando supera i limiti di dimensione o memoria del browser: la suddivisione
+in blocchi non elimina automaticamente il limite della composizione unica.
+
+Il controllo che impedisce di scaricare un'immagine vuota è già presente;
+non equivale al salvataggio progressivo o alla generazione dello ZIP.
+Questa idea è distinta sia dallo scorrimento orizzontale sia dall'esportazione
+dei pezzi Multi Snip come file separati.
 
 ### Scorciatoia da tastiera per catturare / aggiungere un pezzo
 
@@ -196,7 +330,11 @@ Nessuna decisione su una versione a pagamento. Le vecchie stime tecniche sono co
 **Ideata il:** 06/08/2026.
 **Stato:** parcheggiata, non implementata.
 
-Catturare anche superfici esterne alla pagina, compresi gli strumenti sviluppatore.
+Catturare direttamente finestre o l'intero schermo, comprese superfici
+esterne alla pagina e Chrome DevTools, in particolare i pannelli Console
+e Network. È distinta dalla sola cattura del contenuto della scheda web.
+Servirebbe anche a documentare problemi tecnici e condividere le informazioni
+fra programmatori.
 L'idea prevedeva la scelta esplicita della finestra/schermo e un permesso dedicato, da valutare prima di procedere.
 La parte #12A, incollare immagini nell'editor con Ctrl+V, è invece già realizzata.
 

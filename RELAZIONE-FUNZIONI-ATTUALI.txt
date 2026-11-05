@@ -1,0 +1,799 @@
+FULL PAGE SCREENSHOT
+RELAZIONE SULLE FUNZIONI ATTUALI
+
+Destinazione: presentazione del prodotto a un possibile acquirente.
+Data: 5 novembre 2026.
+Base della relazione: sorgenti locali dell'estensione, versione 9.15 in lavorazione.
+
+Questo documento descrive le capacità presenti nel codice e nei comandi
+accessibili dell'estensione. Le proposte di sviluppo sono raccolte separatamente
+nel documento RELAZIONE-IDEE-FUTURE.txt.
+
+
+PROFILO DEL PRODOTTO
+
+Full Page Screenshot è un'estensione per Chrome che permette di acquisire
+contenuti di pagine web, raccogliere più catture e preparare immagini annotate
+con un editor integrato. Cattura ed elaborazione avvengono sul dispositivo.
+
+L'utente può scegliere fra quattro modalità: Full Page, Visible Only,
+Select Area e Multi Snip. È inoltre disponibile la funzione «Capture to here»,
+che usa una riga posizionata sulla pagina per indicare il punto finale della
+cattura. Non è necessario aprire un programma esterno per comporre, ritagliare,
+annotare ed esportare i pezzi raccolti in Multi Snip.
+
+Il percorso d'uso comprende tre attività: acquisire il contenuto desiderato,
+eventualmente raccoglierlo e modificarlo nell'editor, quindi salvarlo, copiarlo
+negli appunti o stamparlo.
+
+
+1. AVVIO, SCELTA DELLA MODALITÀ E PREFERENZE
+
+Cosa fa
+- Memorizza la modalità di cattura preferita sul dispositivo.
+- Permette di avviare la modalità salvata cliccando sull'icona dell'estensione.
+- Offre un pannello rapido opzionale con le quattro modalità di cattura.
+- Nel pannello rapido permette anche di attivare o disattivare la copia negli
+  appunti e la lente di precisione della selezione.
+- Nelle impostazioni permette di cambiare modalità, copia negli appunti,
+  lente di precisione e apertura del pannello rapido.
+- Le preferenze vengono registrate quando si modificano; il pulsante «Save»
+  mostra la conferma di salvataggio.
+
+Come si usa
+Fare clic destro sull'icona dell'estensione e scegliere «Capture Mode» per
+aprire le impostazioni. Se il pannello rapido è attivo, un clic normale
+sull'icona mostra le modalità: selezionarne una avvia la cattura e la memorizza.
+Dal pannello rapido si possono anche aprire le impostazioni.
+
+Alla prima configurazione, i valori previsti sono Full Page come modalità,
+copia negli appunti attiva, lente di precisione spenta e pannello rapido spento.
+Multi Snip usa il proprio pannello sulla pagina: il pannello rapido viene
+escluso durante quella modalità, conservando la preferenza per le altre.
+
+A cosa serve e possibili utilizzi
+Riduce i passaggi per chi ripete spesso la stessa cattura e lascia una scelta
+rapida a chi alterna modalità. Per esempio, un utente può mantenere Full Page
+come scelta abituale e passare ad Area quando deve documentare un dettaglio.
+
+
+2. FULL PAGE: CATTURA VERTICALE COMPLETA
+
+Cosa fa
+- Scorre automaticamente il contenuto dall'inizio e unisce gli scatti in
+  un'immagine lunga.
+- Riconosce lo scorrimento della pagina, del corpo della pagina o di un
+  riquadro interno con scorrimento proprio.
+- Per le applicazioni con più riquadri verticali separati dispone di un
+  percorso che acquisisce e ricompone affiancate le colonne riconosciute,
+  fino a quattro riquadri nel percorso automatico Full Page.
+- Conserva una sola volta le fasce esterne al contenuto, secondo la struttura
+  individuata, invece di impilare indiscriminatamente schermate complete.
+- Nel percorso della pagina principale rilegge l'altezza durante la cattura,
+  attende contenuti e immagini che stanno caricando e aggiorna la parte finale
+  se il documento si allunga.
+- Al termine della normale Full Page riporta in alto il contenuto acquisito.
+
+Come si usa
+Scegliere Full Page e cliccare sull'icona. Lo scorrimento e la composizione
+sono automatici. Fuori da Multi Snip il risultato viene salvato come PNG;
+in una raccolta Multi Snip diventa un pezzo da utilizzare nell'editor.
+
+A cosa serve e possibili utilizzi
+Conserva un documento web più lungo dello schermo. Per esempio, può essere
+usata per articoli, istruzioni, pagine prodotto, elenchi, conversazioni,
+documentazione e pannelli di applicazioni web con contenuto verticale.
+
+
+3. VISIBLE ONLY: CATTURA DELLA SCHERMATA VISIBILE
+
+Cosa fa
+Acquisisce la parte della pagina visibile nella scheda attiva senza effettuare
+uno scorrimento di cattura. Può produrre un'immagine autonoma oppure un pezzo
+Multi Snip.
+
+Come si usa
+Scegliere Visible Only e cliccare sull'icona, oppure usare «+ Screen» nel
+pannello Multi Snip. Dall'editor si sceglie «Visible Only» in «+ Add piece».
+
+A cosa serve e possibili utilizzi
+Conserva uno stato momentaneo della pagina. Per esempio, è utile per un
+messaggio a schermo, una schermata di un'applicazione, un riepilogo o un popup.
+La superficie acquisita è quella della pagina web: non comprende i comandi
+esterni di Chrome o le altre applicazioni del computer.
+
+
+4. SELECT AREA: RETTANGOLO LIBERO E SELEZIONE CON SCORRIMENTO
+
+Cosa fa
+- Permette di disegnare un rettangolo sulla pagina trascinando il mouse.
+- Evidenzia la selezione e scurisce il contenuto esterno per facilitarne
+  l'individuazione.
+- Mostra larghezza e altezza della selezione mentre viene tracciata, anche
+  quando il punto iniziale è uscito dalla schermata.
+- Permette di selezionare un contenuto più alto dello schermo: avvicinando
+  il puntatore ai bordi superiore o inferiore si attiva lo scorrimento.
+- Modula la velocità e dispone di una fascia più veloce vicino al bordo.
+- Permette di usare la rotellina prima di iniziare il rettangolo e durante
+  il trascinamento.
+- Consente il trascinamento anche verso l'alto: i confini vengono ricavati
+  dai due estremi della selezione.
+- Individua il riquadro da far scorrere partendo dal punto e dal rettangolo
+  scelti, compresi contenitori annidati e finestre aperte sopra la pagina.
+- Prevede la selezione congiunta di più colonne verticali indipendenti,
+  compreso il caso di contenuto principale e colonna laterale separata.
+- Se il rettangolo è già interamente visibile, dispone di un percorso che
+  cattura e ritaglia quella vista senza spostarla per acquisirla.
+- Gestisce le barre inferiori delle chat e dei popup in rapporto ai confini
+  scelti: acquisisce solo la loro parte inclusa nella selezione.
+- Riconosce finestre modali native e finestre personalizzate, collocando
+  la selezione sopra il contenuto interessato.
+- Al termine ripristina la posizione che precedeva l'avvio della selezione,
+  sia per la pagina sia per i riquadri interni registrati.
+
+Come si usa
+Scegliere Select Area, cliccare e tenere premuto mentre si traccia il
+rettangolo. Per includere contenuto fuori schermo, mantenere il trascinamento
+vicino al bordo superiore o inferiore, oppure usare la rotellina. Rilasciare
+il mouse per avviare l'acquisizione del rettangolo. Esc annulla l'operazione.
+
+La stessa modalità è disponibile come «+ Area» in Multi Snip e come
+«Select Area» nel comando «+ Add piece» dell'editor.
+
+A cosa serve e possibili utilizzi
+Separa il contenuto utile dal resto della pagina. Per esempio, permette
+di acquisire una parte di conversazione, un messaggio lungo, una tabella
+verticale, una sezione di documentazione, un modulo o il contenuto di un popup.
+
+
+5. PAUSA DELLO SCORRIMENTO CON SPAZIO
+
+Cosa fa
+Mette in pausa lo scorrimento della selezione Area finché si tiene premuta
+la barra spaziatrice. La pausa comprende lo scorrimento automatico e quello
+con la rotellina; il rettangolo può continuare a essere disegnato. Un avviso
+mostra se lo scorrimento è in pausa. La funzione vale anche per i pezzi Area
+di Multi Snip.
+
+Come si usa
+Tenere premuto Spazio prima di iniziare il rettangolo oppure durante il
+trascinamento. Rilasciarlo per consentire di nuovo lo scorrimento.
+
+A cosa serve e possibili utilizzi
+Permette di mirare vicino ai bordi senza far partire la pagina. Per esempio,
+aiuta a prendere una barra superiore o a regolare con precisione l'estremo
+inferiore di un ritaglio.
+
+
+6. LENTE DI PRECISIONE DURANTE LA SELEZIONE
+
+Cosa fa
+Mostra vicino al puntatore un ingrandimento con griglia dei pixel e mirino
+rosso. La sorgente è una cattura della pagina; dopo lo scorrimento sono previsti
+l'aggiornamento dell'immagine e la compensazione del movimento. La lente aiuta
+a scegliere i bordi, senza cambiare la risoluzione del risultato finale.
+
+Come si usa
+Attivare «Pixel magnifier» nelle impostazioni o nel pannello rapido, quindi
+avviare Select Area. È disponibile anche nella selezione di un pezzo Multi Snip.
+
+A cosa serve e possibili utilizzi
+Aiuta a selezionare dettagli piccoli e margini precisi. Per esempio, può
+servire per ritagliare un'icona, un bordo, una riga o un elemento di interfaccia.
+È distinta dalla lente di richiamo dell'editor, descritta più avanti.
+
+
+7. CAPTURE TO HERE: RIGA DI FINE CATTURA DAL TASTO DESTRO
+
+Cosa fa
+- Aggiunge al menu del tasto destro sulla pagina «Set screenshot end line».
+- Mostra una riga orizzontale che segue il puntatore prima del posizionamento.
+- Fissa il punto finale con un clic e consente di regolarlo trascinando la riga.
+- Offre il pulsante «Capture to here» vicino alla riga.
+- Permette di avviare la stessa cattura anche cliccando sull'icona
+  dell'estensione dopo aver posizionato la riga.
+- Acquisisce dall'inizio del contenuto fino al punto indicato.
+- Individua anche il contenuto principale che scorre in un riquadro interno.
+- Prevede la conservazione della posizione visibile delle colonne indipendenti
+  accanto al punto finale scelto, con una composizione dedicata a questo uso.
+- Collega la riga al contenuto quando possibile, per seguirne gli spostamenti
+  dovuti a cambiamenti nell'impaginazione.
+- Consente di rimuovere la riga con la X o con Esc e di riposizionarla
+  richiamando il comando dal menu.
+- Usa il motore Full Page e, quando Multi Snip è attivo, aggiunge il risultato
+  alla raccolta.
+- A cattura completata rimuove la riga; il percorso conserva la vista scelta
+  anziché applicare il normale ritorno in cima di Full Page.
+
+Come si usa
+Raggiungere il punto che deve chiudere lo screenshot e sistemare le eventuali
+colonne laterali. Fare clic destro sulla pagina, scegliere «Set screenshot
+end line», cliccare per posizionare la riga e trascinarla se serve una
+regolazione. Avviare con «Capture to here» oppure con l'icona dell'estensione.
+
+A cosa serve e possibili utilizzi
+Permette di decidere il punto finale mentre si sta già leggendo, senza
+tornare all'inizio per impostare una selezione. Per esempio, è utile per
+conservare l'inizio di un articolo fino al paragrafo raggiunto, una sequenza
+di messaggi o una parte di documentazione con le colonne nella vista scelta.
+
+
+8. MULTI SNIP: RACCOLTA DI PIÙ CATTURE
+
+Cosa fa
+- Raccoglie più immagini nella stessa sessione, dalla stessa pagina o da
+  schede diverse.
+- Permette di mescolare pezzi Full Page, Area e Visible Only nella raccolta;
+  anche una cattura fino alla riga può diventarne un pezzo.
+- Mostra sulla pagina un pannello con «+ Area», «+ Screen» e «+ Page».
+- Indica il numero dei pezzi nel pannello e sull'icona dell'estensione,
+  quando non è in corso una cattura con Stop.
+- Mostra una barra dello spazio occupato e il rapporto fra memoria utilizzata
+  e disponibile per la sessione.
+- Permette di togliere l'ultimo pezzo e recuperarlo con i comandi Undo e Redo
+  del pannello; il recupero conserva l'identità del pezzo.
+- Aggiungere un nuovo pezzo azzera la precedente sequenza di recupero.
+- Con «Save & Compose» apre l'editor oppure riporta all'editor già aperto.
+- Continua a ricevere nuovi pezzi anche se l'editor è aperto in un'altra scheda.
+- Dall'editor permette di richiedere altre catture; al termine riporta
+  all'editor. Se la cattura parte dal pannello sulla pagina, mantiene il
+  percorso di raccolta sulla pagina.
+- Usa gli stessi motori delle catture autonome, senza una seconda versione
+  separata della logica di acquisizione.
+
+Come si usa
+Scegliere Multi Snip e cliccare sull'icona. Aggiungere i pezzi dal pannello
+sulla pagina. Per un'altra pagina, cambiare scheda: con l'autorizzazione
+opzionale ai siti il pannello segue l'utente; senza quella autorizzazione
+si può richiamarlo cliccando l'icona nella nuova scheda. Quando la raccolta
+è pronta, premere «Save & Compose» per comporla nell'editor.
+
+La X del pannello termina la sessione. La raccolta è temporanea, conservata
+nella memoria di sessione del browser; chiudere la scheda dell'editor termina
+la raccolta. Non è un archivio permanente di progetti modificabili.
+
+A cosa serve e possibili utilizzi
+Unisce materiale sparso evitando di preparare ogni immagine con programmi
+diversi. Per esempio, può raccogliere prezzi da più pagine, passaggi di una
+procedura, risultati di una ricerca o schermate di un problema da segnalare.
+
+
+9. IMPORTAZIONE DI IMMAGINI DAGLI APPUNTI
+
+Cosa fa
+Consente di incollare un'immagine nell'editor come nuovo pezzo. L'immagine
+entra nella stessa raccolta e può essere spostata, ritagliata e annotata
+come una cattura eseguita con l'estensione.
+
+Come si usa
+Copiare un'immagine negli appunti e premere Ctrl+V nell'area dell'editor,
+fuori da un campo in cui si sta scrivendo. Si può usare anche un'immagine
+ottenuta con lo strumento di cattura del sistema operativo.
+
+A cosa serve e possibili utilizzi
+Integra contenuti provenienti da altre fonti. Per esempio, uno screenshot
+di un'altra applicazione o degli strumenti sviluppatore può essere acquisito
+con Windows e poi inserito nel lavoro Multi Snip. La cattura diretta di queste
+superfici da parte dell'estensione è un'idea distinta, ancora futura.
+
+
+10. EDITOR: COMPOSIZIONE E ORGANIZZAZIONE DEI PEZZI
+
+Cosa fa
+- Dispone inizialmente i pezzi uno sotto l'altro, ampliando lo spazio di lavoro
+  necessario entro i limiti previsti dal codice.
+- Consente di trascinarli liberamente, affiancarli e sovrapporli.
+- Un clic porta un pezzo davanti agli altri; Alt+clic permette di selezionare
+  un pezzo sottostante senza spostare quello che lo copre.
+- Ridimensiona proporzionalmente dagli angoli e separatamente in larghezza
+  o altezza dai lati.
+- Offre aggancio ai bordi e linee guida durante spostamento e ridimensionamento,
+  per allineare i pezzi o portarli alla stessa misura.
+- Mostra le dimensioni del pezzo e le misure durante i ridimensionamenti.
+- Permette di eliminare un pezzo con il cestino o con Canc.
+- Consente di ampliare o ridurre il foglio di lavoro dai lati e dagli angoli,
+  rispettando il contenuto già disposto.
+- Offre «Fit to pieces» per adattare il foglio ai pezzi e alle annotazioni;
+  una seconda pressione ripristina la disposizione precedente all'adattamento.
+- Mostra le dimensioni del foglio, che determinano la composizione esportata
+  prima dell'eventuale aggiunta dello sfondo esterno.
+- Dal menu Canvas, «+ Add piece» apre la scelta fra Full Page, Visible Only
+  e Select Area per continuare il lavoro.
+
+Come si usa
+Aprire l'editor da Multi Snip. Trascinare un pezzo per spostarlo e usare
+le maniglie per modificarne le dimensioni. Per cambiare il foglio trascinare
+i suoi bordi oppure usare «Canvas → Fit to pieces». Le frecce della tastiera
+spostano il pezzo selezionato; Shift rende lo spostamento dieci volte maggiore.
+
+A cosa serve e possibili utilizzi
+Trasforma una raccolta in un documento visivo ordinato. Per esempio,
+permette confronti affiancati, sequenze illustrate, tavole di schermate,
+schede prodotto e riepiloghi di materiali provenienti da pagine diverse.
+
+
+11. EDITOR: RITAGLIO DEI SINGOLI PEZZI
+
+Cosa fa
+Permette di tagliare i bordi di ogni immagine senza cancellare la sorgente
+durante la modifica. Mostra l'immagine intera attenuata e la zona mantenuta
+in evidenza. Si possono modificare i bordi o spostare la finestra di ritaglio
+per scegliere un'altra parte della stessa immagine.
+
+Come si usa
+Selezionare il pezzo e premere l'icona delle forbici. Trascinare le maniglie
+o la finestra di ritaglio; «Done» conferma la regolazione. Riaprendo il
+ritaglio è possibile recuperare le porzioni escluse, finché si lavora
+con quell'immagine nell'editor.
+
+A cosa serve e possibili utilizzi
+Elimina elementi inutili senza rifare la cattura. Per esempio, consente
+di togliere un margine, isolare una risposta o mantenere soltanto un grafico.
+
+
+12. EDITOR: COPERTURA E SFOCATURA
+
+Cosa fa
+- Offre «Redact» con copertura a tinta piena oppure sfocatura.
+- Permette di scegliere il colore della copertura da una tavolozza o con
+  il selettore libero dei colori.
+- Regola l'intensità della sfocatura, da trasparente fino al livello massimo
+  previsto dal cursore, indicato fino al 400%.
+- Consente di spostare, ridimensionare ed eliminare il riquadro.
+- Le coperture ancorate a un pezzo ne seguono posizione, scala e ritaglio.
+- Nell'esportazione applica la copertura o la sfocatura ai pixel della
+  composizione finale.
+
+Come si usa
+Scegliere «Annotate → Redact», disegnare il rettangolo e selezionare «Solid»
+o «Blur». Regolare colore o intensità e confermare con il segno di spunta.
+
+A cosa serve e possibili utilizzi
+Permette di coprire parti che non si vogliono mostrare nell'immagine finale.
+Per esempio, nomi, indirizzi, numeri identificativi o dettagli di un account.
+
+
+13. EDITOR: EVIDENZIATORE E LINEE
+
+Cosa fa
+- Disegna evidenziazioni rettangolari semitrasparenti, con colore personalizzabile.
+- Disegna linee con colore personalizzabile e due estremi regolabili.
+- Permette di spostare e cancellare le annotazioni.
+- Tenendo Shift mentre si regola l'estremo di una linea, aggancia la direzione
+  a intervalli di 15 gradi.
+- Collega le annotazioni al pezzo sottostante quando vengono ancorate.
+
+Come si usa
+Scegliere «Highlight» oppure «Line» da Annotate, quindi trascinare sulla
+composizione. Selezionare l'annotazione per regolarla o cambiarne il colore.
+
+A cosa serve e possibili utilizzi
+Richiama l'attenzione sui punti importanti. Per esempio, si può evidenziare
+una cifra, sottolineare un passaggio o collegare visivamente due elementi.
+Le frecce sono disponibili nella libreria Shapes.
+
+
+14. EDITOR: TESTO AGGIUNTO ALL'IMMAGINE
+
+Cosa fa
+Inserisce caselle di testo modificabili, spostabili e ridimensionabili.
+Permette di scegliere colore, carattere e dimensione del testo; dispone
+di sette famiglie: Segoe UI, Arial, Verdana, Georgia, Trebuchet MS,
+Courier New e Impact. Il controllo della dimensione va da 10 a 120 pixel.
+Gestisce gli a capo e il testo su più righe. Il doppio clic riapre la scrittura.
+
+Come si usa
+Scegliere «Annotate → Text», creare la casella e scrivere. Usare il pannello
+della casella per cambiare carattere, misura e colore, poi confermare.
+
+A cosa serve e possibili utilizzi
+Aggiunge spiegazioni direttamente al materiale visivo. Per esempio,
+titoli, didascalie, note operative e commenti a una schermata di assistenza.
+
+
+15. EDITOR: LIBRERIA DI 37 FORME
+
+Cosa fa
+Offre 37 forme selezionabili in una griglia:
+- Rettangolo, rettangolo arrotondato e cerchio.
+- Triangolo verso l'alto e triangolo verso il basso.
+- Rombo, pentagono, esagono, ottagono, parallelogramma e trapezio.
+- Stella a cinque punte e stella a sei punte.
+- Cuore, mezzaluna, nuvola, fulmine, scudo e goccia.
+- Simbolo più, segnalibro e cornice.
+- Frecce verso destra, sinistra, alto e basso.
+- Freccia doppia orizzontale e freccia doppia verticale.
+- Freccia sottile e freccia curva.
+- Spunta, croce e mirino.
+- Fumetto arrotondato, fumetto quadrato, fumetto di pensiero e fumetto a scoppio.
+
+Le forme possono essere spostate, ridimensionate, colorate ed eliminate.
+Quando la forma lo consente, si può scegliere il riempimento oppure il solo
+contorno e regolare lo spessore di quest'ultimo da 1 a 24. Alcuni simboli
+sono previsti soltanto come tratto. Il disegno a schermo e nell'immagine
+esportata deriva dalla stessa definizione della forma.
+
+Come si usa
+Aprire «Annotate → Shapes», scegliere la forma e trascinare per disegnarla.
+Selezionarla per modificare colore, riempimento o contorno.
+
+A cosa serve e possibili utilizzi
+Permette di indicare, circondare e commentare un dettaglio. Per esempio,
+frecce per guidare un clic, cerchi attorno a un dato e fumetti per spiegazioni.
+
+
+16. EDITOR: PASSAGGI NUMERATI
+
+Cosa fa
+Inserisce marcatori circolari numerati in sequenza. La numerazione viene
+ricalcolata quando si elimina un marcatore intermedio. Colore, posizione
+e dimensione sono modificabili; il marcatore mantiene la forma circolare.
+
+Come si usa
+Scegliere «Annotate → Steps» e cliccare sul punto da numerare; trascinando
+si può determinarne la grandezza. Richiamare lo strumento per aggiungere
+i passaggi successivi. Il pannello permette anche di regolare la misura.
+
+A cosa serve e possibili utilizzi
+Rende leggibile un ordine di azioni. Per esempio, una guida «prima clicca
+qui, poi qui», un percorso di compilazione o una procedura di assistenza.
+
+
+17. EDITOR: LENTE DI RICHIAMO PER INGRANDIRE UN DETTAGLIO
+
+Cosa fa
+Seleziona una regione di un pezzo e ne mostra una copia ingrandita in
+un riquadro separato, collegato da due linee di richiamo. Permette di
+spostare e ridimensionare il riquadro, regolare l'ingrandimento e cambiare
+il colore dei richiami. La regione di origine resta associata al pezzo.
+
+Come si usa
+Scegliere «Annotate → Zoom» e trascinare sulla parte da ingrandire.
+Posizionare il riquadro e usare i comandi più e meno per regolarlo.
+
+A cosa serve e possibili utilizzi
+Fa vedere un particolare mantenendo la vista d'insieme. Per esempio,
+un numero piccolo in una tabella, un controllo di interfaccia o una parte
+di un grafico. Ingrandisce i pixel della cattura, senza creare una nuova
+cattura della pagina a risoluzione superiore.
+
+
+18. EDITOR: SFONDI, CORNICI E PRESENTAZIONE
+
+Cosa fa
+- Aggiunge uno sfondo esterno alla composizione, attivabile o disattivabile.
+- Offre tinta unita oppure sfumatura attraverso dodici combinazioni predefinite:
+  menta, oceano, lilla, rosa, tramonto, lime, corallo, ghiaccio, crema,
+  ardesia, notte e carta.
+- Regola il margine esterno da 0 a 260, l'ombra da 0 a 90 e gli angoli
+  arrotondati esterni da 0 a 80 e interni da 0 a 60.
+- Mantiene le proporzioni originali oppure aggiunge spazio per ottenere
+  1:1, 16:9, 4:3 e 4:5.
+- Aggiunge una filigrana testuale facoltativa, fino a 60 caratteri.
+- Mostra un'anticipazione dello sfondo e del margine nell'area di lavoro;
+  l'anteprima finale comprende la composizione completa.
+
+Come si usa
+Aprire «Canvas → Backdrop», attivare «Background & frame» e scegliere
+stile, colori predefiniti, margini, ombra, angoli, proporzioni e filigrana.
+
+A cosa serve e possibili utilizzi
+Prepara immagini da condividere o presentare. Per esempio, schermate per
+guide, presentazioni, documentazione di prodotto e pubblicazioni social.
+
+
+19. EDITOR: ANNULLA, RIPETI, ZOOM E COMANDI DI PRECISIONE
+
+Cosa fa
+- Conserva una cronologia di modifica fino a 60 stati.
+- Permette di annullare e ripetere modifiche a pezzi, annotazioni, dimensioni
+  del foglio e sfondo.
+- Offre zoom dell'area di lavoro dal 10% al 400%, ritorno al 100% e
+  adattamento alla larghezza di lavoro disponibile.
+- Supporta Ctrl più rotellina per lo zoom e Shift più rotellina per
+  spostarsi orizzontalmente nell'area di lavoro.
+- Permette spostamenti di un'unità con le frecce e di dieci con Shift.
+- Offre un comando Move per tornare alla selezione e allo spostamento.
+- Con Esc chiude i pannelli, l'anteprima e il ritaglio, oppure abbandona
+  lo strumento di annotazione selezionato.
+
+Come si usa
+Usare Undo e Redo oppure Ctrl+Z, Ctrl+Shift+Z e Ctrl+Y. Regolare la vista
+con i pulsanti meno e più, il comando 100% o Fit. Selezionare un pezzo
+o un'annotazione per usare frecce e Canc.
+
+A cosa serve e possibili utilizzi
+Permette correzioni senza ricominciare e facilita i lavori di dettaglio.
+Per esempio, si può provare un'impaginazione, tornare indietro e confrontarla
+con la precedente, oppure allineare immagini con piccoli spostamenti.
+Lo zoom della vista non modifica la risoluzione della cattura.
+
+
+20. EDITOR: ANTEPRIMA, COPIA, STAMPA ED ESPORTAZIONE
+
+Cosa fa
+- «Preview» mostra la composizione finale pulita, senza i comandi dell'editor.
+- Dall'anteprima è disponibile «Print», che apre la stampa del browser
+  mostrando soltanto l'immagine.
+- «Copy» copia la composizione in PNG negli appunti senza creare un file
+  e senza chiudere l'editor.
+- «Export» permette di scegliere PNG, JPG, WEBP o PDF.
+- PNG conserva l'immagine senza compressione con perdita; JPG e WEBP
+  vengono prodotti con il livello di qualità previsto dal codice.
+- Se WEBP non viene prodotto dal browser, il salvataggio usa il formato
+  PNG effettivamente ottenuto e la relativa estensione del nome.
+- Il PDF contiene l'immagine della composizione in una sola pagina
+  dimensionata sul risultato. Non è un'esportazione di testo selezionabile.
+- L'esportazione comprende disposizione, ritagli, annotazioni e sfondo attivo.
+- Il risultato è una composizione unica, anche quando contiene più pezzi.
+- «Save» scarica il risultato, esegue anche la copia PNG negli appunti
+  e termina la sessione, chiudendo l'editor dopo la conferma.
+
+Come si usa
+Controllare il lavoro con Preview. Per condividerlo senza file, premere
+Copy e incollarlo nella destinazione. Per scaricarlo, aprire Export,
+scegliere il formato e premere il pulsante Save corrispondente.
+
+A cosa serve e possibili utilizzi
+Consegna lo stesso lavoro in formati diversi. Per esempio, PNG per una
+schermata nitida, JPG o WEBP per un'immagine più compatta, PDF per allegare
+una composizione a un documento e Print per una copia su carta.
+
+
+21. SALVATAGGIO E APPUNTI NELLE CATTURE AUTONOME
+
+Cosa fa
+Fuori da Multi Snip, ogni cattura completata viene salvata come file PNG
+nella sottocartella «screenshots» dei Download, con data e ora nel nome.
+La copia automatica negli appunti è attiva inizialmente e può essere spenta
+nelle impostazioni. Il download resta distinto dalla copia negli appunti.
+
+I nomi previsti sono «screenshot_...» per le catture autonome e
+«multisnip_...» per le composizioni esportate dall'editor.
+
+Come si usa
+Terminata la cattura, recuperare il file dai Download oppure premere
+Ctrl+V nella destinazione, se la copia automatica è attiva.
+
+Il comando Copy dell'editor è una scelta esplicita e il suo Save effettua
+comunque la copia PNG: il relativo percorso è distinto dall'interruttore
+che governa le catture autonome.
+
+A cosa serve e possibili utilizzi
+Permette sia di archiviare sia di condividere velocemente. Per esempio,
+incollare una cattura in una chat o in un documento mantenendone anche
+una copia nei Download. Le singole catture autonome sono già file separati;
+l'esportazione in blocco di tutti i pezzi Multi Snip è un'altra operazione,
+indicata fra le idee future.
+
+
+22. AVANZAMENTO, STOP E RIPRISTINO DELLA PAGINA
+
+Cosa fa
+- Durante Full Page e Area mostra sulla pagina un piccolo pannello bianco
+  con percentuale e barra di avanzamento, anche per i pezzi Multi Snip.
+- Nasconde il pannello durante gli scatti per escluderlo dall'immagine.
+- Sostituisce l'icona con Stop durante Full Page e Area.
+- Ferma la cattura in corso con un clic sull'icona oppure con Esc.
+- In Multi Snip annulla soltanto il pezzo in corso, conservando la raccolta
+  precedente e i pezzi recuperabili.
+- Non salva come risultato un pezzo interrotto prima del salvataggio finale.
+- Ripristina posizioni e modifiche temporanee della pagina al termine
+  dell'annullamento o di un errore.
+- Evita l'avvio di catture sovrapposte.
+- Visible Only mantiene l'icona normale: un secondo clic durante quella
+  cattura non avvia un'altra acquisizione e non diventa uno Stop nascosto.
+- Prevede l'annullamento se si cambia la scheda attiva durante l'acquisizione
+  degli scatti, si naviga nella scheda acquisita o la si chiude.
+- Prevede il recupero dello stato dopo un riavvio del processo di fondo
+  dell'estensione.
+
+Come si usa
+Seguire la barra durante una cattura lunga. Per interrompere usare l'icona
+Stop o Esc. Lo Stop riguarda il lavoro ancora in corso: non ritira un file
+completo già consegnato al browser per il salvataggio.
+
+A cosa serve e possibili utilizzi
+Mantiene il controllo su operazioni lunghe. Per esempio, se si sceglie
+il contenuto sbagliato si può annullare e ripetere senza perdere i pezzi
+Multi Snip già raccolti.
+
+
+23. GESTIONE AUTOMATICA DELLA PAGINA DURANTE GLI SCATTI
+
+Cosa fa
+Il codice contiene trattamenti automatici, condivisi anche con Multi Snip,
+per acquisire pagine con strutture più articolate:
+- Riconoscimento delle barre ferme in alto o in basso e degli elementi
+  che diventano fissi soltanto dopo lo scorrimento.
+- Individuazione delle barre superiori sovrapposte a riquadri interni,
+  comprese quelle posizionate in modo assoluto, senza limitarle a Claude
+  o a un nome di sito specifico.
+- Gestione dei menu laterali di navigazione con scorrimento proprio;
+  comportamento dedicato alla loro posizione quando si usa la riga finale.
+- Nascondimento temporaneo delle barre di scorrimento native e
+  riconoscimento di alcune barre personalizzate nei contenitori selezionati.
+- Pausa temporanea delle animazioni CSS e dei video che erano in esecuzione,
+  con successivo ripristino.
+- Blocco temporaneo di trasformazioni animate di elementi come ticker
+  e caroselli, con esclusione prevista per le righe riconosciute di
+  determinate liste che riutilizzano gli stessi elementi durante lo scroll.
+- Trattamento degli sfondi decorativi fissi a tutta finestra nelle catture
+  lunghe della pagina principale.
+- Preparazione di alcuni riquadri pubblicitari laterali riconoscibili,
+  per mantenerli nel flusso del documento durante la cattura.
+- Composizione basata sulle posizioni effettive raggiunte e, in alcuni
+  percorsi Area, confronto delle sovrapposizioni fra immagini.
+- Scarto di fotogrammi consecutivi identici nei percorsi previsti.
+- Attesa dell'assestamento e tentativi successivi quando il browser limita
+  temporaneamente la frequenza degli scatti.
+- Controlli sui cambiamenti di dimensioni, zoom, contenuto e copertura
+  delle parti da comporre, con messaggi se il risultato non può essere prodotto.
+
+Come si usa
+Non richiede un'impostazione dedicata: i trattamenti vengono scelti dal
+percorso di cattura e dalla struttura individuata nella pagina.
+
+A cosa serve e possibili utilizzi
+Affronta le strutture tipiche delle applicazioni web moderne. Per esempio,
+chat, webmail, documentazione con menu laterali, finestre di composizione,
+elenchi e pannelli con scorrimento interno.
+
+
+24. ELABORAZIONE LOCALE, DATI E AUTORIZZAZIONI
+
+Cosa fa
+- Esegue acquisizione, composizione, annotazioni ed esportazione sul dispositivo.
+- Non contiene un flusso di invio automatico delle catture a un server,
+  un sistema di analisi dell'utilizzo remoto o un servizio di tracciamento.
+- Non richiede un account dell'estensione né un caricamento nel cloud.
+- Conserva localmente le preferenze e il conteggio usato per l'invito
+  a recensire; i pezzi Multi Snip sono nella memoria temporanea di sessione.
+- Per la raccolta Multi Snip misura lo spazio disponibile, tenta una
+  compressione JPEG se un pezzo supera la capacità e gestisce il rifiuto
+  del pezzo che non può essere aggiunto.
+- Usa risorse e script inclusi nel pacchetto; i caratteri dell'editor
+  sono quelli di sistema.
+- Dichiara i permessi necessari alla scheda attiva, esecuzione degli script,
+  download, memoria, menu contestuali e scrittura negli appunti.
+- Rende opzionale l'autorizzazione estesa ai siti usata per far seguire
+  automaticamente il pannello Multi Snip fra le schede.
+
+Come si usa
+La lavorazione ordinaria non richiede registrazione. L'utente può scegliere
+se concedere l'autorizzazione opzionale per il pannello fra le schede.
+I collegamenti a recensioni, sito dell'autore e posta elettronica si aprono
+su iniziativa dell'utente e sono distinti dall'elaborazione delle immagini.
+
+A cosa serve e possibili utilizzi
+Consente un flusso di lavoro locale senza un servizio di archiviazione
+dell'estensione. Per esempio, raccogliere e annotare schermate da salvare
+sul proprio computer o condividere successivamente con strumenti scelti
+dall'utente.
+
+
+25. GUIDA, NOTE DI VERSIONE E CONTATTI
+
+Cosa fa
+- Include nelle impostazioni una guida «How it works» sulle modalità,
+  sull'editor, sul salvataggio e sulla riga finale.
+- Mostra il numero di versione letto dal manifest.
+- Offre «What's new» con le note della versione installata.
+- Non genera il bollino NEW automatico sull'icona dell'estensione:
+  le novità rimangono consultabili volontariamente nelle impostazioni.
+- Offre collegamenti alla pagina delle recensioni, alla posta per i
+  suggerimenti e al sito dell'autore.
+- Dopo la soglia prevista di 15 catture autonome riuscite dispone di
+  un invito sulla pagina, mostrato una sola volta quando può essere inserito,
+  con collegamenti sia alla recensione sia al feedback, e pulsante di chiusura.
+- Mostra messaggi di errore sulla pagina nei percorsi previsti e conferme
+  di salvataggio o copia nelle rispettive interfacce.
+
+Come si usa
+Aprire Capture Mode dalle impostazioni dell'icona. Consultare la guida
+o premere What's new. Per contattare l'autore usare i collegamenti presenti.
+La rimozione di NEW riguarda il bollino automatico sull'icona; nelle
+impostazioni restano testi ed etichette relativi alle novità.
+
+A cosa serve e possibili utilizzi
+Rende il prodotto comprensibile senza documentazione esterna e offre
+un canale di contatto. Per esempio, per scoprire un comando o segnalare
+una pagina da migliorare.
+
+
+26. PERIMETRO ATTUALE DEL PRODOTTO
+
+Queste precisazioni definiscono le capacità descritte nella relazione:
+- Le catture automatiche estese seguono lo scorrimento verticale.
+  La composizione manuale nell'editor permette anche l'affiancamento orizzontale.
+- La superficie di cattura è la pagina della scheda, non l'intero desktop.
+- L'editor è raggiungibile attraverso Multi Snip e può lavorare anche
+  con un solo pezzo, oltre che con immagini incollate.
+- La composizione esportata è un'immagine finale unica; il PDF ne contiene
+  una rappresentazione su una pagina, non un documento di testo riconosciuto.
+- Le modifiche dell'editor restano modificabili durante il lavoro;
+  il file esportato non conserva gli oggetti separati dell'editor.
+- La raccolta Multi Snip usa lo spazio di sessione disponibile, indicato
+  nel pannello; il codice usa come riferimento circa 10 MB.
+- Nell'editor sono previsti controlli a 32.000 pixel per lato e
+  240 milioni di pixel complessivi per la composizione di base. Anche
+  lo sfondo aggiuntivo viene confrontato con questi limiti.
+- La selezione Area attende il completamento del rettangolo per circa
+  un minuto; il codice prevede poi l'uscita dall'attesa senza acquisire
+  una selezione inesistente.
+- I percorsi di cattura includono controlli per immagini fuori misura;
+  non viene presentata come disponibile una lunghezza illimitata.
+- Quando non può eseguire gli script su una pagina, il codice prevede
+  il ripiego sulla parte visibile, se acquisibile dal browser.
+- La lingua prevalente dell'interfaccia è l'inglese, con alcuni messaggi
+  in italiano; non è presente una scelta completa fra più lingue.
+
+
+APPENDICE A — COMANDI E GESTI DISPONIBILI
+
+Sulla pagina
+- Clic sull'icona: modalità salvata oppure pannello rapido, secondo preferenza.
+- Clic destro sull'icona → Capture Mode: impostazioni.
+- Clic destro sulla pagina → Set screenshot end line: riga finale.
+- Clic e trascinamento in Area: selezione del rettangolo.
+- Bordi superiore e inferiore durante il trascinamento: scorrimento automatico.
+- Rotellina in Area: posizionamento o prosecuzione della selezione.
+- Spazio tenuto premuto in Area: pausa dello scorrimento.
+- Clic sulla pagina per fissare la riga e trascinamento successivo della riga:
+  regolazione.
+- Capture to here oppure icona con riga posizionata: avvio fino alla riga.
+- X della riga oppure Esc: rimozione della riga prima della cattura.
+- Icona Stop oppure Esc: annullamento durante Full Page e Area.
+
+Nel pannello Multi Snip
+- + Area / + Screen / + Page: aggiunta di una cattura.
+- Undo / Redo: rimozione e recupero dell'ultimo pezzo.
+- Save & Compose: apertura della composizione nell'editor.
+- X: fine della sessione.
+
+Nell'editor
+- Canvas → Add piece: nuova cattura Full Page, Visible Only o Select Area.
+- Ctrl+V fuori dai campi di testo: aggiunta di un'immagine dagli appunti.
+- Trascinamento del pezzo: spostamento con aggancio e guide.
+- Clic sul pezzo: selezione e primo piano; Alt+clic: selezione sottostante.
+- Maniglie agli angoli del pezzo: scala proporzionale; ai lati: scala su un asse.
+- Forbici: ritaglio; maniglie del ritaglio: bordi; trascinamento interno: zona.
+- Maniglie esterne del foglio: dimensionamento dell'area di composizione.
+- Fit to pieces: adattamento al contenuto; seconda pressione: ripristino.
+- Annotate: Move, Redact, Highlight, Line, Text, Zoom, Steps e Shapes.
+- Selezione di un'annotazione: pannello di regolazione e comando elimina.
+- Doppio clic sul testo: modifica del contenuto.
+- Shift durante la regolazione di un estremo di linea: angoli a scatti di 15°.
+- Frecce: spostamento di precisione; Shift+frecce: spostamento maggiore.
+- Canc: eliminazione del pezzo o dell'annotazione selezionati.
+- Undo / Ctrl+Z: annulla; Redo / Ctrl+Shift+Z / Ctrl+Y: ripeti.
+- Più / meno oppure Ctrl+rotellina: zoom della vista.
+- 100% e Fit: dimensione reale e adattamento della vista.
+- Shift+rotellina: spostamento orizzontale nel lavoro.
+- Preview: anteprima; Print dentro l'anteprima: stampa.
+- Copy: copia PNG senza download; Export → formato → Save: salvataggio.
+- Esc: chiusura dei pannelli o dell'anteprima e uscita dagli strumenti attivi.
+- Chiudi editor: fine della sessione e chiusura della scheda.
+
+
+APPENDICE B — RIFERIMENTI AI SORGENTI
+
+Tutti i percorsi seguenti sono relativi a full-page-screenshot-extension/.
+
+- manifest.json: versione, permessi e punti di avvio.
+- popup.html e popup.js: avvio, modalità, pannello rapido e preferenze rapide.
+- settings.html e settings.js: impostazioni, guida e note di versione.
+- end-line.js: creazione, posizionamento, regolazione e comandi della riga.
+- sw.js: menu contestuali, raccolta Multi Snip, pannello, gestione schede,
+  acquisizione Full Page / Area / Visible, composizione delle catture,
+  copia negli appunti, invito a recensire e messaggi.
+- capture-control.js: controllo comune delle catture, Stop, avanzamento,
+  ripristino, trattamento delle colonne, barre superiori, attesa del fondo
+  del documento e destinazione delle immagini.
+- editor.html e editor.js: composizione, ritaglio, annotazioni, forme,
+  sfondi, cronologia, importazione, anteprima, stampa, copia ed esportazione.
+
+Sono stati distinti i vecchi documenti e le pagine di servizio presenti nel
+pacchetto dai percorsi richiamati dall'interfaccia attuale. La presenza di
+panel, sidepanel, capture o progress come file non è stata trasformata
+in una promessa di ulteriori modalità accessibili all'utente.

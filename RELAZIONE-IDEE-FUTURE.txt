@@ -1,0 +1,333 @@
+FULL PAGE SCREENSHOT
+RELAZIONE SULLE IDEE FUTURE
+
+Destinazione: presentazione delle possibilità di sviluppo a un possibile acquirente.
+Data: 5 novembre 2026.
+Base: confronto fra IDEE.md, relativo archivio storico e sorgenti locali 9.15.
+
+Le capacità già presenti sono descritte in RELAZIONE-FUNZIONI-ATTUALI.txt.
+Questo documento raccoglie sviluppi proposti e decisioni aperte: non è
+un elenco di funzioni già disponibili né un impegno su tempi o versioni.
+IDEE.md resta il riferimento operativo delle idee del progetto; questa
+relazione ne presenta la situazione alla data indicata.
+
+
+IDEE DA REALIZZARE
+
+1. CATTURA CON SCORRIMENTO ORIZZONTALE
+
+Cosa aggiungerebbe
+Acquisire tutte le colonne di una tabella o di un contenuto più largo dello
+schermo, scorrendo anche verso destra e sinistra e ricomponendo le parti.
+Le righe dovrebbero rimanere allineate e le colonne non essere saltate
+o ripetute. La funzione riguarderebbe sia la pagina sia un riquadro interno
+che contiene una tabella più larga della sua area visibile.
+
+Uso immaginato
+L'utente indica il contenuto da acquisire; l'estensione percorre anche la
+larghezza. È ancora da scegliere il comando e in quali modalità proporlo.
+
+A cosa servirebbe e possibili utilizzi
+Conservare tabelle e pannelli che oggi richiedono di spostarsi lateralmente.
+Per esempio, prospetti con molte colonne, confronti di dati e tabelle
+di un'applicazione amministrativa.
+
+Situazione nel codice
+Sono presenti cattura verticale, gestione di colonne verticali indipendenti
+e affiancamento manuale delle immagini nell'editor. Non è presente un percorso
+automatico che percorre la larghezza e unisce le catture orizzontali.
+Idea aggiunta su richiesta dell'utente il 05/11/2026.
+
+
+2. CATTURE MOLTO LUNGHE DIVISE IN PARTI, RACCOLTE IN UNO ZIP
+
+Cosa aggiungerebbe
+Salvare progressivamente blocchi di una cattura molto lunga, continuare
+con i blocchi successivi e riunirli in un archivio ZIP. La richiesta comprende
+anche la conservazione dell'immagine lunga completa dentro lo stesso archivio.
+
+Uso immaginato
+L'utente avvia la cattura e riceve un pacchetto con parti ordinate e
+riconoscibili. Numero di scatti o altezza per blocco, attivazione automatica
+o manuale, nomi dei file e modalità di consegna sono ancora da definire.
+Va anche definito come trattare l'immagine completa quando supera i limiti
+di dimensione o memoria del browser: suddividere le parti non elimina
+automaticamente il limite dell'immagine unica.
+
+A cosa servirebbe e possibili utilizzi
+Rendere gestibili documenti molto estesi. Per esempio, conversazioni lunghe,
+grandi elenchi e pagine di documentazione da conservare in sezioni leggibili.
+
+Situazione nel codice
+La cattura viene composta in un'immagine unica; esistono controlli contro
+risultati vuoti o fuori misura. Non sono presenti salvataggio progressivo
+in blocchi, generazione dello ZIP o pacchetto con parti e immagine completa.
+
+
+3. SCORCIATOIA DA TASTIERA PER AVVIARE UNA CATTURA
+
+Cosa aggiungerebbe
+Un comando da tastiera per avviare la cattura senza cliccare sull'icona.
+La proposta annotata è aprire Select Area e aggiungere il risultato alla
+raccolta quando Multi Snip è attivo.
+
+Uso immaginato
+Premere una combinazione di tasti per iniziare. La combinazione e
+il comportamento definitivo sono ancora da concordare.
+
+A cosa servirebbe e possibili utilizzi
+Ridurre i passaggi nelle acquisizioni frequenti. Per esempio, raccogliere
+materiale mentre si consulta una pagina o documentare ripetutamente dettagli.
+
+Situazione nel codice
+Sono già presenti Esc per l'annullamento, Spazio per la pausa Area e
+le scorciatoie dell'editor. Non è registrato un comando globale
+dell'estensione per avviare la cattura.
+
+
+4. MODALITÀ RAFFICA
+
+Cosa aggiungerebbe
+Una sequenza di selezioni Area con salvataggio immediato di ogni rettangolo
+in un file autonomo e riapertura automatica della selezione successiva.
+
+Uso immaginato
+Avviare Raffica una volta, disegnare più rettangoli e terminare con
+un'uscita evidente, per esempio Esc. Sono previsti nell'idea il conteggio
+dei file salvati e una gestione chiara di errori e annullamento.
+
+A cosa servirebbe e possibili utilizzi
+Produrre molti file distinti senza riavviare ogni volta il comando.
+Per esempio, ritagliare esercizi, documentare più difetti di una pagina
+o preparare una serie di schermate per l'assistenza.
+
+Situazione nel codice
+Ogni cattura autonoma viene già salvata separatamente. Non è presente
+il ciclo che salva e riattiva automaticamente Area. Multi Snip invece
+raccoglie i pezzi per lavorarli insieme: è un flusso diverso.
+
+
+5. RICONOSCIMENTO DEL TESTO NELLE IMMAGINI, SUL DISPOSITIVO
+
+Cosa aggiungerebbe
+Estrarre le parole da un'immagine e copiarle come testo modificabile.
+La scelta annotata è un'elaborazione locale, senza inviare le immagini
+a un servizio esterno. Tesseract.js è una soluzione proposta, non integrata.
+
+Uso immaginato
+Selezionare un pezzo nell'editor e premere «Copia testo». Restano da
+definire lingue disponibili, gestione del risultato e inserimento della
+funzione senza appesantire inutilmente il pacchetto.
+
+A cosa servirebbe e possibili utilizzi
+Recuperare parole da contenuti fotografati. Per esempio, un testo dentro
+un'immagine, una scansione o una schermata che non consente di selezionarlo.
+
+Situazione nel codice
+Sono presenti scrittura di nuove annotazioni e copia dell'immagine negli
+appunti. Non sono presenti un motore di riconoscimento né il comando
+di estrazione del testo. Il PDF attuale contiene un'immagine, senza
+un livello di testo riconosciuto.
+
+Sviluppo collegato già previsto nell'idea originale
+Esportare il testo riconosciuto di più pezzi come testo unico. Anche
+questa uscita resta da realizzare e dipende dal riconoscimento locale.
+
+
+6. DOCUMENTO CON I COLLEGAMENTI ALLE FONTI DEI PEZZI
+
+Cosa aggiungerebbe
+Associare a ogni immagine raccolta la pagina da cui proviene e riportare
+il relativo collegamento nel documento esportato.
+
+Uso immaginato
+Raccogliere pezzi da più pagine come già avviene in Multi Snip; al termine
+ottenere una composizione o un documento con le fonti. Restano da definire
+presentazione, formato e trattamento degli indirizzi che contengono dati
+personali o parametri riservati.
+
+A cosa servirebbe e possibili utilizzi
+Permettere a chi riceve il materiale di risalire alle pagine originali.
+Per esempio, ricerche, confronti, raccolte di documentazione e dossier.
+
+Situazione nel codice
+La raccolta fra schede diverse e la composizione sono già presenti.
+I pezzi memorizzano immagine, tipo e identificativo; non memorizzano
+il collegamento alla fonte di ciascuna immagine. Manca quindi la parte
+di attribuzione ed esportazione delle fonti, non l'intera raccolta Multi Snip.
+
+
+7. ESPORTAZIONE IN BLOCCO DEI PEZZI MULTI SNIP COME FILE DISTINTI
+
+Cosa aggiungerebbe
+Scaricare insieme le immagini dei singoli pezzi raccolti in una sessione,
+invece di esportare soltanto la composizione unica.
+
+Uso immaginato
+Scegliere un'uscita che salva ogni pezzo separatamente. Sono ancora
+da concordare confezionamento, nomi, formato e rapporto con ritagli
+e annotazioni applicati nell'editor.
+
+A cosa servirebbe e possibili utilizzi
+Riutilizzare singolarmente il materiale di una raccolta. Per esempio,
+inserire ogni schermata in una diapositiva diversa o allegarla separatamente.
+
+Situazione nel codice e distinzione importante
+Le catture autonome sono già file distinti. L'editor Multi Snip permette
+già PNG, JPG, WEBP, PDF e copia negli appunti della composizione unica.
+Il suo comando Save compone tutti i pezzi e avvia un solo download;
+non presenta una scelta per scaricare in blocco i pezzi uno per uno.
+
+La dicitura «separate files» compare nella guida, nel README e in una
+vecchia nota di versione. Nel percorso attuale di esportazione quella
+dicitura non corrisponde a un comando di salvataggio multiplo. Per questo
+la relazione delle capacità attuali distingue i due tipi di operazione.
+
+
+8. INTERFACCIA MULTILINGUE
+
+Cosa aggiungerebbe
+La possibilità di usare l'estensione in più lingue con traduzioni
+organizzate di comandi, messaggi e guida.
+
+Uso immaginato
+Usare la lingua individuata dal browser o una lingua scelta dall'utente;
+la scelta fra queste soluzioni e l'elenco delle lingue sono ancora aperti.
+
+A cosa servirebbe e possibili utilizzi
+Rendere più accessibile il prodotto a chi non usa abitualmente l'inglese.
+Per esempio, gruppi di lavoro o utenti che preferiscono istruzioni
+nella propria lingua.
+
+Situazione nel codice
+L'interfaccia è prevalentemente in inglese, con alcuni messaggi italiani.
+Non è presente un sistema completo di traduzione o un selettore di lingua.
+La vecchia priorità bassa era una valutazione storica, non un'analisi
+commerciale aggiornata.
+
+
+IDEE SOSPESE, DA VALUTARE PRIMA DI RIPRENDERLE
+
+9. CATTURE A RISOLUZIONE DOPPIA
+
+Cosa aggiungerebbe
+Acquisire più dettaglio reale dalla pagina, anziché ingrandire i pixel
+di un'immagine già catturata.
+
+Uso immaginato
+Scegliere una modalità di qualità superiore prima della cattura.
+Le strade discusse erano una modifica temporanea dello zoom della pagina
+oppure l'uso degli strumenti di controllo del browser. Non è stata scelta
+una soluzione definitiva.
+
+A cosa servirebbe e possibili utilizzi
+Preparare immagini con maggiore dettaglio da ingrandire in seguito.
+Per esempio, particolari di interfaccia destinati a documentazione
+o presentazioni.
+
+Situazione nel codice
+Sono presenti gestione della scala dello schermo, zoom dell'editor e
+lente di richiamo. Non è presente una modalità di acquisizione forzata
+a risoluzione doppia. Queste funzioni attuali non equivalgono a tale modalità.
+
+Punti ancora aperti
+Impaginazione della pagina, memoria, immagini lunghe e autorizzazioni
+del browser. Nessuna assegnazione automatica a un'offerta a pagamento.
+
+
+10. CATTURA DIRETTA DI FINESTRE O DELL'INTERO SCHERMO
+
+Cosa aggiungerebbe
+Scegliere una finestra o uno schermo e acquisire anche superfici esterne
+alla pagina web, compresi gli strumenti sviluppatore.
+
+Uso immaginato
+Aprire una scelta esplicita della superficie da catturare e autorizzarne
+l'acquisizione. Interfaccia e autorizzazioni dedicate restano da valutare.
+
+A cosa servirebbe e possibili utilizzi
+Integrare nello stesso prodotto la cattura di applicazioni esterne.
+Per esempio, documentare un errore che coinvolge una pagina e un'altra
+finestra del computer.
+
+Situazione nel codice
+Non è presente la cattura diretta di finestre o desktop. È già presente
+l'alternativa di acquisire un'immagine con il sistema operativo e
+incollarla nell'editor con Ctrl+V: questa parte è una capacità attuale.
+
+
+ASPETTI APERTI DISTINTI DALLE NUOVE FUNZIONI
+
+11. PERFEZIONAMENTO DELLE PUBBLICITÀ NELLE CATTURE YAHOO
+
+Le note del progetto mantengono aperta la gestione di alcuni contenitori
+pubblicitari che cambiano posizione durante lo scorrimento. Il codice
+contiene già una preparazione dei riquadri riconoscibili, ma la voce
+documentale resta parziale. Si tratta di manutenzione della cattura,
+non di una nuova modalità da presentare come futura funzionalità separata.
+
+12. RIQUADRO LATERALE DI YAHOO FINANCE: SOSPESO PER DECISIONE DELL'UTENTE
+
+Il caso del riquadro con dati finanziari è conservato fra i limiti noti
+nell'archivio IDEE_FATTE.md. L'utente ha deciso di non investirvi risorse
+al momento. Non va rimesso automaticamente fra i lavori da eseguire.
+È distinto dai menu di navigazione laterali già trattati dal codice.
+
+13. SEGNALAZIONE OCCASIONALE SU CHATGPT: LASCIATA INVARIATA
+
+Le note e la conversazione conservano una segnalazione occasionale
+di movimento della pagina durante Area che l'utente aveva scelto di
+lasciare così. Non costituisce una nuova funzione richiesta né un
+intervento già autorizzato. Non viene confusa con le correzioni successive
+già presenti nei sorgenti.
+
+14. EVENTUALE MODELLO COMMERCIALE
+
+È stata discussa la monetizzazione, senza decidere prezzi, abbonamenti,
+acquisto singolo o distinzione fra funzioni gratuite e a pagamento.
+Il codice attuale non contiene un sistema di acquisto, licenze a pagamento
+o gestione di un abbonamento dell'estensione.
+
+Le ipotesi economiche conservate nelle vecchie note non costituiscono
+un'offerta approvata. Nessuna delle funzioni attuali viene considerata
+automaticamente destinata a un piano a pagamento.
+
+
+COSA NON È STATO RIMESSO FRA LE IDEE DA COSTRUIRE
+
+Sono già presenti nel codice e descritti nell'altra relazione:
+- Full Page, Visible Only e selezione Area anche oltre lo schermo.
+- Riga dal menu del tasto destro, regolazione e Capture to here.
+- Raccolta Multi Snip sulla stessa pagina e fra schede diverse.
+- Composizione libera, ritaglio, ridimensionamento e allineamento.
+- Copertura piena e sfocatura, evidenziatore, linee e testo.
+- Libreria di 37 forme, frecce, fumetti e marcatori numerati.
+- Lente di richiamo, sfondi, cornici, ombre, proporzioni e filigrana.
+- Cronologia, zoom, anteprima, stampa, copia ed esportazione in quattro formati.
+- Lente di precisione della selezione e pausa dello scorrimento con Spazio.
+- Importazione delle immagini dagli appunti.
+- Stop e avanzamento, anche per i pezzi Multi Snip.
+- Impostazioni, guida, note di versione e collegamenti per recensioni e feedback.
+
+Le vecchie indicazioni di versioni obiettivo e i confronti storici con
+concorrenti non sono stati trasformati in impegni di sviluppo o in
+affermazioni commerciali attuali. In particolare, la vecchia idea di
+segnalare le novità con NEW sull'icona è superata dalla decisione di
+rimuovere quel bollino: non è una funzione da reintrodurre.
+
+
+RIFERIMENTI DELLA RICOGNIZIONE
+
+- IDEE.md: elenco operativo delle idee aperte e situazione documentata.
+- IDEE_FATTE.md: funzioni realizzate, origine delle proposte e decisioni sospese.
+- full-page-screenshot-extension/manifest.json: versione e autorizzazioni.
+- full-page-screenshot-extension/sw.js e capture-control.js: acquisizione,
+  scorrimento, raccolta Multi Snip e salvataggio delle catture.
+- full-page-screenshot-extension/editor.html e editor.js: comandi attuali
+  dell'editor, importazione ed esportazione.
+- full-page-screenshot-extension/end-line.js: riga finale già presente.
+- full-page-screenshot-extension/settings.html e settings.js: preferenze,
+  guida e testi delle note di versione.
+
+Non sono stati assegnati nuovi tempi, versioni o priorità: richiedono
+una decisione del proprietario del prodotto.
